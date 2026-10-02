@@ -402,13 +402,13 @@ describe('InputController & Hit-testing AABB', () => {
     assert.equal(controller.isDragging, false);
     assert.equal(controller.initialRotateAngle, 0);
 
-    // 2. Mouse move hacia (150, 250) -> deltaX = 0, deltaY = 100 -> atan2(100, 0) = 90 grados
-    canvas.dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 250 });
+    // 2. Mouse move hacia (250, 150) -> deltaX = 100, deltaY = 0 -> rotación en sentido horario de 90 grados
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 250, clientY: 150 });
     let currentShape = stateManager.findNode('rect-rotate-interactive') as Rectangle;
     assert.equal(currentShape.rotation, 90, 'Debe actualizar rotation a 90 grados en tiempo real');
 
     // 3. Mouse up
-    canvas.dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 250 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 150 });
     assert.equal(controller.isRotating, false, '_isRotating debe restablecerse a false');
     assert.equal(commandManager.canUndo(), true, 'Debe haber registrado un RotateCommand');
 
@@ -422,6 +422,100 @@ describe('InputController & Hit-testing AABB', () => {
     currentShape = stateManager.findNode('rect-rotate-interactive') as Rectangle;
     assert.equal(currentShape.rotation, 90);
 
+    controller.destroy();
+  });
+
+  it('el inicio de giro no sufre salto de 90 grados al hacer clic y arrastrar levemente', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = stateManager.getState().children[0].id;
+    const rect: Rectangle = {
+      id: 'rect-rotate-smooth',
+      type: 'rectangle',
+      name: 'Rect Rotación Suave',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      rotation: 0,
+    };
+    stateManager.addShape(layerId, rect);
+    stateManager.selectNode('rect-rotate-smooth');
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    // Rotation handle está ubicado en (150, 70)
+    // 1. Mousedown sobre rotation handle
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 70 });
+    assert.equal(controller.isRotating, true);
+
+    // 2. Movimiento mínimo de 1px hacia arriba (150, 69) -> debe mantenerse en 0 grados (sin salto de 90)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 69 });
+    let currentShape = stateManager.findNode('rect-rotate-smooth') as Rectangle;
+    assert.equal(currentShape.rotation, 0, 'No debe sufrir un salto de 90 grados al arrastrar levemente');
+
+    // 3. Movimiento mínimo de 2px a la derecha (152, 70) -> debe rotar ~1 grado
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 152, clientY: 70 });
+    currentShape = stateManager.findNode('rect-rotate-smooth') as Rectangle;
+    assert.ok(
+      Math.abs((currentShape.rotation ?? 0) - 1) <= 1,
+      `Debe iniciar rotación suavemente cerca de 1 grado, obtenido: ${currentShape.rotation}`
+    );
+
+    // 4. Escape cancela y restaura el ángulo inicial 0
+    canvas.dispatchSimulatedEvent('keydown', { key: 'Escape' });
+    currentShape = stateManager.findNode('rect-rotate-smooth') as Rectangle;
+    assert.equal(currentShape.rotation, 0, 'Escape debe restaurar el ángulo inicial');
+    assert.equal(controller.isRotating, false, 'Escape debe finalizar el estado _isRotating');
+
+    controller.destroy();
+  });
+
+  it('rotación con Shift fuerza saltos discretos de 15 grados', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = stateManager.getState().children[0].id;
+    const rect: Rectangle = {
+      id: 'rect-rotate-shift',
+      type: 'rectangle',
+      name: 'Rect Shift Rot',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      rotation: 0,
+    };
+    stateManager.addShape(layerId, rect);
+    stateManager.selectNode('rect-rotate-shift');
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    // Mousedown en rotation handle (150, 70)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 70 });
+
+    // Mover hacia un ángulo intermedio (~37 grados) con Shift activo
+    // Centro: (150, 150). Radio: 80. Ángulo: -90 + 37 = -53 grados.
+    const rad = (-53 * Math.PI) / 180;
+    const targetX = 150 + 80 * Math.cos(rad);
+    const targetY = 150 + 80 * Math.sin(rad);
+
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: targetX, clientY: targetY, shiftKey: true });
+    let currentShape = stateManager.findNode('rect-rotate-shift') as Rectangle;
+    // 37 redondeado al múltiplo más cercano de 15 es 30 o 45 (en este caso 37/15 = 2.46 -> 30 o 45)
+    assert.ok(
+      (currentShape.rotation ?? 0) % 15 === 0,
+      `Debe ser múltiplo de 15 grados con Shift, obtenido: ${currentShape.rotation}`
+    );
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: targetX, clientY: targetY });
     controller.destroy();
   });
 
@@ -725,7 +819,274 @@ describe('InputController & Hit-testing AABB', () => {
 
     controller.destroy();
   });
+
+  it('herramienta rectangle: mousedown + mousemove genera vista previa y mouseup crea Rectangle con estilo por defecto y AddShapeCommand', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+    controller.setTool('rectangle');
+
+    assert.equal(controller.currentTool, 'rectangle');
+    assert.equal(canvas.style.cursor, 'crosshair');
+
+    // 1. Mousedown inicia la creación
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 50, clientY: 60 });
+    assert.equal(controller.isCreatingShape, true);
+
+    // 2. Mousemove actualiza la vista previa (no modifica el Scene Graph)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 120 });
+    assert.notEqual(controller.shapePreview, null);
+    assert.equal(controller.shapePreview?.type, 'rectangle');
+    assert.equal(controller.shapePreview?.x, 50);
+    assert.equal(controller.shapePreview?.y, 60);
+    assert.equal(controller.shapePreview?.width, 100);
+    assert.equal(controller.shapePreview?.height, 60);
+
+    const layerBefore = stateManager.findNode(layerId) as any;
+    assert.equal(layerBefore.children.length, 0, 'No debe añadirse la figura al Scene Graph antes de soltar');
+
+    // 3. Mouseup consolida la figura en el Scene Graph
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 120 });
+    const layerAfter = stateManager.findNode(layerId) as any;
+    assert.equal(layerAfter.children.length, 1);
+
+    const createdRect = layerAfter.children[0] as Rectangle;
+    assert.equal(createdRect.type, 'rectangle');
+    assert.equal(createdRect.x, 50);
+    assert.equal(createdRect.y, 60);
+    assert.equal(createdRect.width, 100);
+    assert.equal(createdRect.height, 60);
+    assert.equal(createdRect.fill, '#38bdf8');
+    assert.equal(createdRect.stroke, '#0284c7');
+    assert.equal(createdRect.strokeWidth, 2);
+    assert.equal(createdRect.name, 'Rectángulo 1');
+
+    // Tras crear la figura: seleccionada y retorna a herramienta 'select'
+    assert.equal(createdRect.selected, true);
+    assert.equal(stateManager.getSelectedNode()?.id, createdRect.id);
+    assert.equal(controller.currentTool, 'select');
+    assert.equal(controller.shapePreview, null);
+    assert.equal(controller.isCreatingShape, false);
+    assert.equal(commandManager.canUndo(), true);
+
+    controller.destroy();
+  });
+
+  it('herramienta ellipse: mousedown + mousemove genera vista previa y mouseup crea Ellipse con convención de centro x/y', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+    controller.setTool('ellipse');
+
+    assert.equal(controller.currentTool, 'ellipse');
+    assert.equal(canvas.style.cursor, 'crosshair');
+
+    // 1. Mousedown en (100, 100)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+    assert.equal(controller.isCreatingShape, true);
+
+    // 2. Mousemove a (200, 160) -> centro (150, 130), radios (50, 30)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 200, clientY: 160 });
+    assert.notEqual(controller.shapePreview, null);
+    assert.equal(controller.shapePreview?.type, 'ellipse');
+    assert.equal(controller.shapePreview?.x, 150);
+    assert.equal(controller.shapePreview?.y, 130);
+    assert.equal(controller.shapePreview?.radiusX, 50);
+    assert.equal(controller.shapePreview?.radiusY, 30);
+
+    // 3. Mouseup consolida la elipse
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 200, clientY: 160 });
+    const layerAfter = stateManager.findNode(layerId) as any;
+    assert.equal(layerAfter.children.length, 1);
+
+    const createdEllipse = layerAfter.children[0] as Ellipse;
+    assert.equal(createdEllipse.type, 'ellipse');
+    assert.equal(createdEllipse.x, 150);
+    assert.equal(createdEllipse.y, 130);
+    assert.equal(createdEllipse.radiusX, 50);
+    assert.equal(createdEllipse.radiusY, 30);
+    assert.equal(createdEllipse.fill, '#38bdf8');
+    assert.equal(createdEllipse.stroke, '#0284c7');
+    assert.equal(createdEllipse.name, 'Elipse 1');
+    assert.equal(createdEllipse.selected, true);
+
+    assert.equal(controller.currentTool, 'select');
+    assert.equal(controller.shapePreview, null);
+
+    controller.destroy();
+  });
+
+  it('Shift fuerza proporción 1:1 (cuadrado / círculo perfecto) durante el arrastre y creación', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    // 1. Rectángulo con Shift (100, 100) a (180, 130) -> lado mayor = 80 -> cuadrado 80x80
+    controller.setTool('rectangle');
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: true });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 180, clientY: 130, shiftKey: true });
+    assert.equal(controller.shapePreview?.width, 80);
+    assert.equal(controller.shapePreview?.height, 80);
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 180, clientY: 130, shiftKey: true });
+    let layer = stateManager.findNode(layerId) as any;
+    const rect = layer.children[0] as Rectangle;
+    assert.equal(rect.width, 80);
+    assert.equal(rect.height, 80);
+
+    // 2. Elipse con Shift (100, 100) a (180, 120) -> lado mayor = 80 -> radio = 40 (círculo)
+    controller.setTool('ellipse');
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: true });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 180, clientY: 120, shiftKey: true });
+    assert.equal(controller.shapePreview?.radiusX, 40);
+    assert.equal(controller.shapePreview?.radiusY, 40);
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 180, clientY: 120, shiftKey: true });
+    layer = stateManager.findNode(layerId) as any;
+    const ellipse = layer.children[1] as Ellipse;
+    assert.equal(ellipse.radiusX, 40);
+    assert.equal(ellipse.radiusY, 40);
+
+    controller.destroy();
+  });
+
+  it('cancelación con Escape descarta la creación y limpia la vista previa', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+    controller.setTool('rectangle');
+
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 50, clientY: 50 });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 120, clientY: 120 });
+    assert.equal(controller.isCreatingShape, true);
+    assert.notEqual(controller.shapePreview, null);
+
+    // Cancelar con Escape
+    controller.handleKeyDown({ key: 'Escape' } as KeyboardEvent);
+    assert.equal(controller.isCreatingShape, false);
+    assert.equal(controller.shapePreview, null);
+
+    // mouseup posterior no debe crear figura alguna
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 120, clientY: 120 });
+    const layer = stateManager.findNode(layerId) as any;
+    assert.equal(layer.children.length, 0);
+    assert.equal(commandManager.canUndo(), false);
+
+    controller.destroy();
+  });
+
+  it('umbral mínimo: arrastre menor de 3 px cancela sin crear nada ni registrar comando', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+    controller.setTool('rectangle');
+
+    // Clic con movimiento menor a 3px (deltaX=1, deltaY=1 -> dist ~1.41px)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 50, clientY: 50 });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 51, clientY: 51 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 51, clientY: 51 });
+
+    const layer = stateManager.findNode(layerId) as any;
+    assert.equal(layer.children.length, 0);
+    assert.equal(commandManager.canUndo(), false);
+
+    // Clic estático sin movimiento en herramienta elipse
+    controller.setTool('ellipse');
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+    assert.equal(layer.children.length, 0);
+    assert.equal(commandManager.canUndo(), false);
+
+    controller.destroy();
+  });
+
+  it('deshacer (undo) tras crear la figura la elimina del Scene Graph y la deselecciona, y rehacer (redo) la restaura', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const layerId = stateManager.getState().children[0].id;
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager, commandManager);
+    controller.setTool('rectangle');
+
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 50, clientY: 50 });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 100, clientY: 100 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+
+    let layer = stateManager.findNode(layerId) as any;
+    assert.equal(layer.children.length, 1);
+    const createdId = layer.children[0].id;
+    assert.equal(stateManager.getSelectedNode()?.id, createdId);
+
+    // Undo -> debe eliminar la figura y deseleccionarla
+    assert.equal(commandManager.undo(), true);
+    layer = stateManager.findNode(layerId) as any;
+    assert.equal(layer.children.length, 0);
+    assert.equal(stateManager.getSelectedNode(), null);
+
+    // Redo -> debe restaurar la figura
+    assert.equal(commandManager.redo(), true);
+    layer = stateManager.findNode(layerId) as any;
+    assert.equal(layer.children.length, 1);
+    assert.equal(layer.children[0].id, createdId);
+
+    controller.destroy();
+  });
+
+  it('atajos de teclado "R" y "E" activan las herramientas rectangle y ellipse y se ignoran al escribir en un input', () => {
+    const stateManager = new StateManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager);
+
+    assert.equal(controller.currentTool, 'select');
+
+    // 'r' activa herramienta rectangle
+    controller.handleKeyDown({ key: 'r' } as KeyboardEvent);
+    assert.equal(controller.currentTool, 'rectangle');
+
+    // 'e' activa herramienta ellipse
+    controller.handleKeyDown({ key: 'e' } as KeyboardEvent);
+    assert.equal(controller.currentTool, 'ellipse');
+
+    // Al escribir en un input o textarea no deben dispararse los atajos
+    controller.setTool('select');
+    controller.handleKeyDown({ key: 'r', target: { tagName: 'INPUT' } } as unknown as KeyboardEvent);
+    assert.equal(controller.currentTool, 'select', 'No debe cambiar a rectangle si el foco está en un INPUT');
+
+    controller.handleKeyDown({ key: 'e', target: { tagName: 'TEXTAREA' } } as unknown as KeyboardEvent);
+    assert.equal(controller.currentTool, 'select', 'No debe cambiar a ellipse si el foco está en un TEXTAREA');
+
+    controller.destroy();
+  });
 });
+
 
 
 

@@ -117,6 +117,8 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     const btnSelect = new MockElement('tool-select');
     const btnDirectSelect = new MockElement('tool-direct-select');
     const btnPen = new MockElement('tool-pen');
+    const btnRectangle = new MockElement('tool-rectangle');
+    const btnEllipse = new MockElement('tool-ellipse');
     const btnUndo = new MockElement('btn-undo');
     const btnRedo = new MockElement('btn-redo');
     const statusLabel = new MockElement('status-tool-label', 'span');
@@ -125,6 +127,8 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
       '#tool-select': btnSelect,
       '#tool-direct-select': btnDirectSelect,
       '#tool-pen': btnPen,
+      '#tool-rectangle': btnRectangle,
+      '#tool-ellipse': btnEllipse,
       '#btn-undo': btnUndo,
       '#btn-redo': btnRedo,
       '#status-tool-label': statusLabel,
@@ -146,9 +150,13 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     assert.equal(btnSelect.classList.contains('active'), true);
     assert.equal(btnDirectSelect.classList.contains('active'), false);
     assert.equal(btnPen.classList.contains('active'), false);
+    assert.equal(btnRectangle.classList.contains('active'), false);
+    assert.equal(btnEllipse.classList.contains('active'), false);
     assert.equal(btnSelect.getAttribute('aria-pressed'), 'true');
     assert.equal(btnDirectSelect.getAttribute('aria-pressed'), 'false');
     assert.equal(btnPen.getAttribute('aria-pressed'), 'false');
+    assert.equal(btnRectangle.getAttribute('aria-pressed'), 'false');
+    assert.equal(btnEllipse.getAttribute('aria-pressed'), 'false');
 
     // 2. Cambiar herramienta a direct-select
     inputController.setTool('direct-select');
@@ -166,19 +174,54 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     assert.equal(btnPen.getAttribute('aria-pressed'), 'true');
     assert.equal(statusLabel.textContent, 'Modo: Pluma (Bézier)');
 
-    // 4. Clic en botón HTML Selección Directa -> activa herramienta en InputController
+    // 4. Cambiar herramienta a rectangle
+    inputController.setTool('rectangle');
+    assert.equal(btnPen.classList.contains('active'), false);
+    assert.equal(btnRectangle.classList.contains('active'), true);
+    assert.equal(btnRectangle.getAttribute('aria-pressed'), 'true');
+    assert.equal(statusLabel.textContent, 'Modo: Rectángulo');
+
+    // 5. Cambiar herramienta a ellipse
+    inputController.setTool('ellipse');
+    assert.equal(btnRectangle.classList.contains('active'), false);
+    assert.equal(btnEllipse.classList.contains('active'), true);
+    assert.equal(btnEllipse.getAttribute('aria-pressed'), 'true');
+    assert.equal(statusLabel.textContent, 'Modo: Elipse');
+
+    // 6. Clic en botón HTML Rectángulo -> activa herramienta en InputController
+    btnRectangle.click();
+    assert.equal(inputController.currentTool, 'rectangle');
+    assert.equal(btnRectangle.classList.contains('active'), true);
+    assert.equal(statusLabel.textContent, 'Modo: Rectángulo');
+
+    // 7. Clic en botón HTML Elipse -> activa herramienta en InputController
+    btnEllipse.click();
+    assert.equal(inputController.currentTool, 'ellipse');
+    assert.equal(btnEllipse.classList.contains('active'), true);
+    assert.equal(statusLabel.textContent, 'Modo: Elipse');
+
+    // 8. Clic en botón HTML Selección Directa -> activa herramienta en InputController
     btnDirectSelect.click();
     assert.equal(inputController.currentTool, 'direct-select');
     assert.equal(btnDirectSelect.classList.contains('active'), true);
 
-    // 5. Clic en botón HTML Selección -> activa herramienta en InputController y actualiza DOM
+    // 9. Clic en botón HTML Selección -> activa herramienta en InputController y actualiza DOM
     btnSelect.click();
     assert.equal(inputController.currentTool, 'select');
     assert.equal(btnSelect.classList.contains('active'), true);
     assert.equal(btnDirectSelect.classList.contains('active'), false);
     assert.equal(btnPen.classList.contains('active'), false);
+    assert.equal(btnRectangle.classList.contains('active'), false);
+    assert.equal(btnEllipse.classList.contains('active'), false);
 
     cleanup();
+
+    // Tras cleanup, los clics en botones HTML ya no deben alterar InputController
+    btnRectangle.click();
+    assert.equal(inputController.currentTool, 'select', 'Cleanup debe desvincular el listener de btnRectangle');
+    btnEllipse.click();
+    assert.equal(inputController.currentTool, 'select', 'Cleanup debe desvincular el listener de btnEllipse');
+
     inputController.destroy();
     delete (globalThis as any).document;
   });

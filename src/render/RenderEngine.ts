@@ -1,6 +1,7 @@
 import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import { getPathBaseAABB, getShapeAABB } from '../utils/geometry.ts';
+import type { InputController, ShapePreview } from '../input/InputController.ts';
 
 export interface RenderEngineOptions {
   /**
@@ -13,6 +14,14 @@ export interface RenderEngineOptions {
    * Si es undefined, el lienzo se limpia de forma transparente.
    */
   backgroundColor?: string;
+  /**
+   * Instancia opcional de InputController para consultar la vista previa activa.
+   */
+  inputController?: InputController;
+  /**
+   * Proveedor funcional opcional de la vista previa de figuras en creación.
+   */
+  previewProvider?: () => ShapePreview | null;
 }
 
 /**
@@ -30,6 +39,8 @@ export class RenderEngine {
   private isRunning: boolean = false;
   private _renderCount: number = 0;
   private resizeHandler: (() => void) | null = null;
+  private inputController: InputController | null = null;
+  private preview: ShapePreview | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -67,6 +78,20 @@ export class RenderEngine {
    */
   public get renderCount(): number {
     return this._renderCount;
+  }
+
+  /**
+   * Establece o desvincula la instancia de InputController para la vista previa de creación.
+   */
+  public setInputController(controller: InputController | null): void {
+    this.inputController = controller;
+  }
+
+  /**
+   * Permite fijar o limpiar directamente una vista previa para testing o renderizado manual.
+   */
+  public setPreview(preview: ShapePreview | null): void {
+    this.preview = preview;
   }
 
   /**
@@ -178,6 +203,19 @@ export class RenderEngine {
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores para nodos seleccionados
     this.renderSelectionOverlay(documentState);
+
+    // Dibujar vista previa de creación de figura (trazo punteado y semitransparente)
+    const activePreview =
+      this.preview ??
+      this.options.previewProvider?.() ??
+      this.options.inputController?.shapePreview ??
+      this.inputController?.shapePreview ??
+      (this.canvas as any).__inputController?.shapePreview ??
+      null;
+
+    if (activePreview) {
+      this.renderShapePreview(activePreview);
+    }
 
     this.ctx.restore();
     this._renderCount++;
@@ -570,6 +608,42 @@ export class RenderEngine {
       this.ctx.fillRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
       this.ctx.strokeRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
     }
+  }
+
+  /**
+   * Dibuja la vista previa de una figura en proceso de creación interactiva por arrastre
+   * utilizando trazo punteado y relleno semitransparente.
+   */
+  private renderShapePreview(preview: ShapePreview): void {
+    if (preview.width < 1 && preview.height < 1) {
+      return;
+    }
+
+    this.ctx.save();
+    if (typeof this.ctx.setLineDash === 'function') {
+      this.ctx.setLineDash([6, 4]);
+    }
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+
+    this.ctx.beginPath();
+    if (preview.type === 'rectangle') {
+      this.ctx.rect(preview.x, preview.y, preview.width, preview.height);
+    } else if (preview.type === 'ellipse') {
+      const rx = preview.radiusX ?? preview.width / 2;
+      const ry = preview.radiusY ?? preview.height / 2;
+      if (typeof this.ctx.ellipse === 'function') {
+        this.ctx.ellipse(preview.x, preview.y, rx, ry, 0, 0, Math.PI * 2);
+      } else if (typeof this.ctx.arc === 'function') {
+        this.ctx.arc(preview.x, preview.y, (rx + ry) / 2, 0, Math.PI * 2);
+      }
+    }
+
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    this.ctx.restore();
   }
 }
 

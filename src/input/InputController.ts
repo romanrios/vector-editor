@@ -1,11 +1,12 @@
 import type { StateManager } from '../state/StateManager.ts';
-import type { AABB, Path, PathPoint, Shape, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Path, PathPoint, Rectangle, Shape, Vector2D } from '../types/scene-graph.ts';
 import {
   getPathBaseAABB,
   getSelectionHandles,
   getShapeAABB,
   isPointInAABB,
   isPointInPath,
+  normalizeShapeBounds,
   type HandleType,
 } from '../utils/geometry.ts';
 import { CommandManager } from '../commands/CommandManager.ts';
@@ -14,10 +15,24 @@ import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.t
 import { DeleteCommand } from '../commands/DeleteCommand.ts';
 import { RotateCommand } from '../commands/RotateCommand.ts';
 import { PointCommand } from '../commands/PointCommand.ts';
+import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse';
 export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
+
+/**
+ * Representa el estado y dimensiones de la vista previa de creación de figura por arrastre
+ */
+export interface ShapePreview {
+  readonly type: 'rectangle' | 'ellipse';
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly radiusX?: number;
+  readonly radiusY?: number;
+}
 
 /**
  * Tipo de objetivo seleccionado dentro de un punto de trazado en modo direct-select
@@ -67,6 +82,16 @@ export class InputController {
   private onMouseMoveHandler: (e: MouseEvent) => void;
   private onMouseUpHandler: (e: MouseEvent) => void;
   private onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private onKeyUpHandler: ((e: KeyboardEvent) => void) | null = null;
+
+  // Estado de creación interactiva de figuras (modos 'rectangle' y 'ellipse')
+  private _isCreatingShape: boolean = false;
+  private _creationStart: Vector2D | null = null;
+  private _creationCurrent: Vector2D | null = null;
+  private _creationShiftKey: boolean = false;
+  private _shapePreview: ShapePreview | null = null;
+  private rectangleCounter: number = 0;
+  private ellipseCounter: number = 0;
 
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
@@ -85,6 +110,8 @@ export class InputController {
   private _isRotating: boolean = false;
   private rotatingShapeId: string | null = null;
   private initialRotation: number | null = null;
+  private rotationAngleOffset: number = 0;
+  private rotationCentroid: { x: number; y: number } | null = null;
 
   // Estado de la herramienta Selección Directa (modo 'direct-select')
   private _draggedPointIndex: number | null = null;
@@ -121,6 +148,8 @@ export class InputController {
       ...options,
     };
 
+    (this.canvas as any).__inputController = this;
+
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
     this.onMouseUpHandler = (e: MouseEvent) => this.handleMouseUp(e);
@@ -141,9 +170,25 @@ export class InputController {
     if (this._currentTool === 'direct-select' && tool !== 'direct-select') {
       this.resetDirectSelect();
     }
+    if (
+      (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') &&
+      tool !== 'rectangle' &&
+      tool !== 'ellipse'
+    ) {
+      this.cancelCreation();
+    }
+    if (this._isRotating) {
+      if (this.rotatingShapeId && this.initialRotation !== null) {
+        this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
+      }
+      this.resetRotate();
+    }
 
     this._currentTool = tool;
-    this.canvas.style.cursor = tool === 'pen' ? 'crosshair' : 'default';
+    this.canvas.style.cursor =
+      tool === 'pen' || tool === 'rectangle' || tool === 'ellipse'
+        ? 'crosshair'
+        : 'default';
     this.emit('toolChange', tool);
   }
 
@@ -191,6 +236,14 @@ export class InputController {
 
   public get isDragging(): boolean {
     return this._isDragging;
+  }
+
+  public get isCreatingShape(): boolean {
+    return this._isCreatingShape;
+  }
+
+  public get shapePreview(): ShapePreview | null {
+    return this._shapePreview;
   }
 
   public get isResizing(): boolean {
@@ -270,9 +323,17 @@ export class InputController {
       this.canvas.addEventListener('mouseup', this.onMouseUpHandler);
     }
 
-    if (this.options.enableKeyboardShortcuts && typeof window !== 'undefined') {
+    if (this.options.enableKeyboardShortcuts) {
       this.onKeyDownHandler = (e: KeyboardEvent) => this.handleKeyDown(e);
-      window.addEventListener('keydown', this.onKeyDownHandler);
+      this.onKeyUpHandler = (e: KeyboardEvent) => this.handleKeyUp(e);
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('keydown', this.onKeyDownHandler);
+        window.addEventListener('keyup', this.onKeyUpHandler);
+      } else {
+        this.canvas.addEventListener('keydown', this.onKeyDownHandler);
+        this.canvas.addEventListener('keyup', this.onKeyUpHandler);
+      }
     }
   }
 
@@ -289,10 +350,27 @@ export class InputController {
         window.removeEventListener('keydown', this.onKeyDownHandler);
         this.onKeyDownHandler = null;
       }
+      if (this.onKeyUpHandler) {
+        window.removeEventListener('keyup', this.onKeyUpHandler);
+        this.onKeyUpHandler = null;
+      }
     } else {
       this.canvas.removeEventListener('mouseup', this.onMouseUpHandler);
+      if (this.onKeyDownHandler) {
+        this.canvas.removeEventListener('keydown', this.onKeyDownHandler);
+        this.onKeyDownHandler = null;
+      }
+      if (this.onKeyUpHandler) {
+        this.canvas.removeEventListener('keyup', this.onKeyUpHandler);
+        this.onKeyUpHandler = null;
+      }
     }
 
+    if ((this.canvas as any).__inputController === this) {
+      delete (this.canvas as any).__inputController;
+    }
+
+    this.cancelCreation();
     this.resetDrag();
     this.resetResize();
     this.resetRotate();
@@ -378,6 +456,16 @@ export class InputController {
   public handleMouseDown(event: MouseEvent): void {
     const { x, y } = this.getLocalCoordinates(event);
 
+    if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+      this._isCreatingShape = true;
+      this._creationStart = { x, y };
+      this._creationCurrent = { x, y };
+      this._creationShiftKey = Boolean(event.shiftKey);
+      this.updateShapePreview();
+      this.stateManager.markDirty();
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.handlePenMouseDown(x, y);
       return;
@@ -403,6 +491,16 @@ export class InputController {
           this._isDragging = false;
           this.rotatingShapeId = selectedNode.id;
           this.initialRotation = selectedNode.rotation ?? 0;
+
+          const centroid = this.getShapeCentroid(selectedNode);
+          this.rotationCentroid = centroid;
+          const clickAngle = (Math.atan2(y - centroid.y, x - centroid.x) * 180) / Math.PI;
+          const expectedHandleAngle = this.initialRotation - 90;
+          let offset = clickAngle - expectedHandleAngle;
+          while (offset > 180) offset -= 360;
+          while (offset <= -180) offset += 360;
+          this.rotationAngleOffset = offset;
+
           this.canvas.style.cursor = 'crosshair';
           return;
         }
@@ -555,6 +653,17 @@ export class InputController {
   public handleMouseMove(event: MouseEvent): void {
     const { x, y } = this.getLocalCoordinates(event);
 
+    if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+      if (this._isCreatingShape) {
+        this._creationCurrent = { x, y };
+        this._creationShiftKey = Boolean(event.shiftKey);
+        this.updateShapePreview();
+        this.stateManager.markDirty();
+      }
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.handlePenMouseMove(x, y);
       return;
@@ -571,11 +680,20 @@ export class InputController {
         (this.stateManager.findNode(this.rotatingShapeId) as Shape | null) ??
         this.stateManager.getSelectedNode();
       if (selectedShape) {
-        const centroid = this.getShapeCentroid(selectedShape);
+        const centroid = this.rotationCentroid ?? this.getShapeCentroid(selectedShape);
         const deltaX = x - centroid.x;
         const deltaY = y - centroid.y;
         const radians = Math.atan2(deltaY, deltaX);
-        const degrees = (radians * 180) / Math.PI;
+        const mouseAngle = (radians * 180) / Math.PI;
+
+        let degrees = mouseAngle - this.rotationAngleOffset + 90;
+        if (event.shiftKey) {
+          degrees = Math.round(degrees / 15) * 15;
+        } else {
+          degrees = Math.round(degrees);
+        }
+        while (degrees > 180) degrees -= 360;
+        while (degrees <= -180) degrees += 360;
 
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: degrees });
         this.canvas.style.cursor = 'crosshair';
@@ -691,6 +809,82 @@ export class InputController {
    * Maneja el evento mouseup según la herramienta activa.
    */
   public handleMouseUp(event: MouseEvent): void {
+    if (
+      this._isCreatingShape &&
+      (this._currentTool === 'rectangle' || this._currentTool === 'ellipse')
+    ) {
+      const { x, y } = this.getLocalCoordinates(event);
+      const start = this._creationStart ?? { x, y };
+      const dx = x - start.x;
+      const dy = y - start.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance < 3) {
+        this.cancelCreation();
+        return;
+      }
+
+      const isLocked = Boolean(event.shiftKey || this._creationShiftKey);
+
+      const currentState = this.stateManager.getState();
+      const targetLayer = currentState.children[0];
+      if (!targetLayer) {
+        this.cancelCreation();
+        return;
+      }
+
+      let newShape: Shape;
+      if (this._currentTool === 'rectangle') {
+        const bounds = normalizeShapeBounds(start, { x, y }, 'rectangle', isLocked);
+        this.rectangleCounter++;
+        const rectShape: Rectangle = {
+          id: `rect-${Date.now()}-${this.rectangleCounter}`,
+          type: 'rectangle',
+          name: `Rectángulo ${this.rectangleCounter}`,
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          fill: '#38bdf8',
+          stroke: '#0284c7',
+          strokeWidth: 2,
+          opacity: 0.85,
+          visible: true,
+          locked: false,
+          rotation: 0,
+        };
+        newShape = rectShape;
+      } else {
+        const bounds = normalizeShapeBounds(start, { x, y }, 'ellipse', isLocked);
+        this.ellipseCounter++;
+        const ellipseShape: Ellipse = {
+          id: `ellipse-${Date.now()}-${this.ellipseCounter}`,
+          type: 'ellipse',
+          name: `Elipse ${this.ellipseCounter}`,
+          x: bounds.x,
+          y: bounds.y,
+          radiusX: bounds.radiusX,
+          radiusY: bounds.radiusY,
+          fill: '#38bdf8',
+          stroke: '#0284c7',
+          strokeWidth: 2,
+          opacity: 0.85,
+          visible: true,
+          locked: false,
+          rotation: 0,
+        };
+        newShape = ellipseShape;
+      }
+
+      const command = new AddShapeCommand(this.stateManager, targetLayer.id, newShape);
+      this.commandManager.executeCommand(command);
+
+      this.stateManager.selectNode(newShape.id);
+      this.cancelCreation();
+      this.setTool('select');
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.isCreatingAnchor = false;
       return;
@@ -832,33 +1026,43 @@ export class InputController {
    * - Ctrl+Z / Ctrl+Y para Undo / Redo
    * - 'P' para activar herramienta Pluma
    * - 'V' para activar herramienta Selección
-   * - Escape / Enter para finalizar trazado activo
+   * - 'A' para activar herramienta Selección Directa
+   * - 'R' para activar herramienta Rectángulo
+   * - 'E' para activar herramienta Elipse
+   * - Escape / Enter para finalizar o cancelar trazado/creación activa
    */
-  private handleKeyDown(event: KeyboardEvent): void {
+  public handleKeyDown(event: KeyboardEvent): void {
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
 
     if (isCtrlOrCmd) {
       if (event.key.toLowerCase() === 'z') {
-        event.preventDefault();
+        event.preventDefault?.();
         if (event.shiftKey) {
           this.commandManager.redo();
         } else {
           this.commandManager.undo();
         }
       } else if (event.key.toLowerCase() === 'y') {
-        event.preventDefault();
+        event.preventDefault?.();
         this.commandManager.redo();
       }
       return;
     }
 
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return;
+    }
+
+    if (event.key === 'Shift' && this._isCreatingShape) {
+      this._creationShiftKey = true;
+      this.updateShapePreview(true);
+      this.stateManager.markDirty();
+      return;
+    }
+
     const key = event.key.toLowerCase();
     if (key === 'delete' || key === 'backspace') {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return;
-      }
-
       const selectedNode = this.stateManager.getSelectedNode();
       if (selectedNode) {
         event.preventDefault?.();
@@ -879,11 +1083,71 @@ export class InputController {
       this.setTool('select');
     } else if (key === 'a') {
       this.setTool('direct-select');
-    } else if (key === 'escape' || key === 'enter') {
+    } else if (key === 'r') {
+      this.setTool('rectangle');
+    } else if (key === 'e') {
+      this.setTool('ellipse');
+    } else if (key === 'escape') {
+      if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
+        this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
+        this.resetRotate();
+      } else if (this._isCreatingShape) {
+        this.cancelCreation();
+      } else if (this._currentTool === 'pen') {
+        this.finishActivePath();
+      }
+    } else if (key === 'enter') {
       if (this._currentTool === 'pen') {
         this.finishActivePath();
       }
     }
+  }
+
+  public handleKeyUp(event: KeyboardEvent): void {
+    if (event.key === 'Shift' && this._isCreatingShape) {
+      this._creationShiftKey = false;
+      this.updateShapePreview(false);
+      this.stateManager.markDirty();
+    }
+  }
+
+  /**
+   * Cancela la creación en curso de una figura por arrastre, limpiando la vista previa.
+   */
+  public cancelCreation(): void {
+    const wasCreating = this._isCreatingShape || this._shapePreview !== null;
+    this._isCreatingShape = false;
+    this._creationStart = null;
+    this._creationCurrent = null;
+    this._shapePreview = null;
+    if (wasCreating) {
+      this.stateManager.markDirty();
+    }
+  }
+
+  /**
+   * Recalcula la vista previa geométrica de la figura según los puntos inicial y actual del arrastre.
+   */
+  private updateShapePreview(shiftKey?: boolean): void {
+    if (!this._creationStart || !this._creationCurrent) {
+      this._shapePreview = null;
+      return;
+    }
+
+    if (this._currentTool !== 'rectangle' && this._currentTool !== 'ellipse') {
+      this._shapePreview = null;
+      return;
+    }
+
+    const lock = shiftKey ?? this._creationShiftKey;
+    const bounds = normalizeShapeBounds(
+      this._creationStart,
+      this._creationCurrent,
+      this._currentTool,
+      lock
+    );
+
+    this._shapePreview = bounds;
   }
 
   private resetDrag(): void {
@@ -905,6 +1169,8 @@ export class InputController {
     this._isRotating = false;
     this.rotatingShapeId = null;
     this.initialRotation = null;
+    this.rotationAngleOffset = 0;
+    this.rotationCentroid = null;
   }
 
   private resetDirectSelect(): void {

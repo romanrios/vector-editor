@@ -88,6 +88,8 @@ export function setupUIBindings(
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
   const btnDirectSelect = document.querySelector<HTMLButtonElement>('#tool-direct-select');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
+  const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
+  const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
   const btnExport = document.querySelector<HTMLButtonElement>('#btn-export, #btn-export-json');
@@ -122,13 +124,29 @@ export function setupUIBindings(
       btnPen.setAttribute('aria-pressed', String(isPen));
     }
 
+    if (btnRectangle) {
+      const isRect = tool === 'rectangle';
+      btnRectangle.classList.toggle('active', isRect);
+      btnRectangle.setAttribute('aria-pressed', String(isRect));
+    }
+
+    if (btnEllipse) {
+      const isEllipse = tool === 'ellipse';
+      btnEllipse.classList.toggle('active', isEllipse);
+      btnEllipse.setAttribute('aria-pressed', String(isEllipse));
+    }
+
     if (statusToolLabel) {
       statusToolLabel.textContent = `Modo: ${
         tool === 'pen'
           ? 'Pluma (Bézier)'
           : tool === 'direct-select'
             ? 'Selección Directa'
-            : 'Selección'
+            : tool === 'rectangle'
+              ? 'Rectángulo'
+              : tool === 'ellipse'
+                ? 'Elipse'
+                : 'Selección'
       }`;
     }
   };
@@ -142,10 +160,14 @@ export function setupUIBindings(
   const onSelectClick = () => inputController.setTool('select');
   const onDirectSelectClick = () => inputController.setTool('direct-select');
   const onPenClick = () => inputController.setTool('pen');
+  const onRectangleClick = () => inputController.setTool('rectangle');
+  const onEllipseClick = () => inputController.setTool('ellipse');
 
   btnSelect?.addEventListener('click', onSelectClick);
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
   btnPen?.addEventListener('click', onPenClick);
+  btnRectangle?.addEventListener('click', onRectangleClick);
+  btnEllipse?.addEventListener('click', onEllipseClick);
 
   // Inicializar estado visual de herramientas
   syncToolButtons(inputController.currentTool);
@@ -468,6 +490,8 @@ export function setupUIBindings(
       btnSelect?.removeEventListener('click', onSelectClick);
       btnDirectSelect?.removeEventListener('click', onDirectSelectClick);
       btnPen?.removeEventListener('click', onPenClick);
+      btnRectangle?.removeEventListener('click', onRectangleClick);
+      btnEllipse?.removeEventListener('click', onEllipseClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
       btnExport?.removeEventListener('click', onExportClick);

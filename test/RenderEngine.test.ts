@@ -152,4 +152,25 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
     // Al menos 4 para el relleno de los 4 manejadores (+ 1 si hay fondo)
     assert.ok(fillRectCalls.length >= 4, 'Debe rellenar los 4 manejadores');
   });
+
+  it('dibuja la vista previa con trazo punteado y relleno semitransparente cuando hay una previsualización activa', () => {
+    const { canvas, calls } = createMockCanvas();
+    const manager = new StateManager();
+    const engine = new RenderEngine(canvas, manager, { highDpi: false });
+
+    engine.setPreview({
+      type: 'rectangle',
+      x: 50,
+      y: 50,
+      width: 100,
+      height: 80,
+    });
+
+    engine.render();
+
+    assert.equal(calls.includes('setLineDash'), true, 'Debe configurar trazo punteado mediante setLineDash');
+    assert.equal(calls.includes('rect'), true, 'Debe dibujar el rectángulo de vista previa');
+    assert.equal(calls.includes('stroke'), true, 'Debe aplicar stroke al trazo punteado');
+    assert.equal(calls.includes('fill'), true, 'Debe aplicar fill semitransparente');
+  });
 });

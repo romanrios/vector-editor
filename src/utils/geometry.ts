@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Path, Rectangle, Shape } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Path, Rectangle, Shape, Vector2D } from '../types/scene-graph.ts';
 
 /**
  * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Rectangle.
@@ -570,4 +570,122 @@ export function isPointInPath(
 
   return false;
 }
+
+/**
+ * Resultado normalizado de dimensiones y posición para un Rectangle.
+ * (x, y) representa la esquina superior izquierda.
+ */
+export interface NormalizedRectangleBounds {
+  readonly type: 'rectangle';
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Resultado normalizado de dimensiones y posición para un Ellipse.
+ * (x, y) representa el centro geométrico de la elipse.
+ */
+export interface NormalizedEllipseBounds {
+  readonly type: 'ellipse';
+  readonly x: number;
+  readonly y: number;
+  readonly radiusX: number;
+  readonly radiusY: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type NormalizedShapeBounds = NormalizedRectangleBounds | NormalizedEllipseBounds;
+
+/**
+ * Calcula las dimensiones y coordenadas normalizadas para una figura dada la posición
+ * inicial y final de un arrastre interactivo sobre el lienzo.
+ *
+ * Funciona al arrastrar en cualquier dirección (los 4 cuadrantes), soporta
+ * forzar proporción 1:1 (cuadrado / círculo perfecto) y respeta las convenciones de coordenadas:
+ * - Para 'rectangle': (x, y) es la esquina superior izquierda.
+ * - Para 'ellipse': (x, y) es el centro de la figura (radiusX = width / 2, radiusY = height / 2).
+ *
+ * @param start Punto inicial donde comenzó el arrastre
+ * @param end Punto final o actual del cursor
+ * @param type Tipo de figura a normalizar ('rectangle' | 'ellipse')
+ * @param lockAspectRatio Si es true o { lockAspectRatio: true }, restringe las dimensiones a 1:1
+ */
+export function normalizeShapeBounds(
+  start: Vector2D,
+  end: Vector2D,
+  type: 'rectangle',
+  lockAspectRatio?: boolean | { lockAspectRatio?: boolean }
+): NormalizedRectangleBounds;
+
+export function normalizeShapeBounds(
+  start: Vector2D,
+  end: Vector2D,
+  type: 'ellipse',
+  lockAspectRatio?: boolean | { lockAspectRatio?: boolean }
+): NormalizedEllipseBounds;
+
+export function normalizeShapeBounds(
+  start: Vector2D,
+  end: Vector2D,
+  type?: 'rectangle' | 'ellipse',
+  lockAspectRatio?: boolean | { lockAspectRatio?: boolean }
+): NormalizedRectangleBounds | NormalizedEllipseBounds;
+
+export function normalizeShapeBounds(
+  start: Vector2D,
+  end: Vector2D,
+  type: 'rectangle' | 'ellipse' = 'rectangle',
+  lockAspectRatio: boolean | { lockAspectRatio?: boolean } = false
+): NormalizedRectangleBounds | NormalizedEllipseBounds {
+  const isLocked =
+    typeof lockAspectRatio === 'boolean'
+      ? lockAspectRatio
+      : Boolean(lockAspectRatio?.lockAspectRatio);
+
+  let currentEndX = end.x;
+  let currentEndY = end.y;
+
+  if (isLocked) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const side = Math.max(Math.abs(dx), Math.abs(dy));
+    const signX = dx >= 0 ? 1 : -1;
+    const signY = dy >= 0 ? 1 : -1;
+
+    currentEndX = start.x + signX * side;
+    currentEndY = start.y + signY * side;
+  }
+
+  const minX = Math.min(start.x, currentEndX);
+  const maxX = Math.max(start.x, currentEndX);
+  const minY = Math.min(start.y, currentEndY);
+  const maxY = Math.max(start.y, currentEndY);
+
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  if (type === 'ellipse') {
+    return {
+      type: 'ellipse',
+      x: minX + width / 2,
+      y: minY + height / 2,
+      radiusX: width / 2,
+      radiusY: height / 2,
+      width,
+      height,
+    };
+  }
+
+  return {
+    type: 'rectangle',
+    x: minX,
+    y: minY,
+    width,
+    height,
+  };
+}
+
 

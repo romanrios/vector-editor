@@ -700,13 +700,13 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
     assert.equal(controller.isRotating, true);
     assert.equal(controller.rotatingNodeId, 'path-interactive-rotate');
 
-    // Mover hacia (150, 250) -> deltaX = 0, deltaY = 100 -> 90 grados
-    canvas.dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 250 });
+    // Mover hacia (250, 150) -> deltaX = 100, deltaY = 0 -> rotación en sentido horario de 90 grados
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 250, clientY: 150 });
     let current = manager.findNode('path-interactive-rotate') as Path;
     assert.equal(current.rotation, 90, 'Path debe rotar a 90 grados en tiempo real');
 
     // Mouse up
-    canvas.dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 250 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 150 });
     assert.equal(controller.isRotating, false);
     assert.equal(commandManager.undoCount, 1);
 

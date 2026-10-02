@@ -24,6 +24,7 @@ export * from './commands/TranslateCommand.ts';
 export * from './commands/ResizeCommand.ts';
 export * from './commands/StyleCommand.ts';
 export * from './commands/DeleteCommand.ts';
+export * from './commands/AddShapeCommand.ts';
 export * from './commands/RotateCommand.ts';
 export * from './commands/PointCommand.ts';
 
