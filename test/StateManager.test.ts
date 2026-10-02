@@ -1,0 +1,189 @@
+import test, { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { StateManager } from '../src/state/StateManager.ts';
+import { injectSampleShapes, SAMPLE_SHAPES } from '../src/state/injectSampleShapes.ts';
+import type { Layer, Rectangle, Ellipse } from '../src/types/scene-graph.ts';
+
+describe('StateManager - Scene Graph Inmutable', () => {
+  it('inicializa con un documento y una capa base por defecto', () => {
+    const manager = new StateManager();
+    const state = manager.getState();
+
+    assert.equal(state.type, 'document');
+    assert.equal(state.children.length, 1);
+    assert.equal(state.children[0].type, 'layer');
+    assert.equal(state.children[0].children.length, 0);
+  });
+
+  it('mantiene la inmutabilidad y previene mutaciones directas (Object.freeze)', () => {
+    const manager = new StateManager();
+    const state = manager.getState();
+
+    assert.throws(() => {
+      // Intentar mutar una propiedad congelada
+      (state as unknown as { width: number }).width = 100;
+    }, TypeError);
+
+    assert.throws(() => {
+      // Intentar mutar el array de hijos
+      (state.children as unknown as unknown[]).push({} as Layer);
+    }, TypeError);
+  });
+
+  it('agrega figuras a una capa de forma inmutable (structural sharing)', () => {
+    const manager = new StateManager();
+    const state0 = manager.getState();
+    const layerId = state0.children[0].id;
+
+    const rect: Rectangle = {
+      id: 'rect-1',
+      type: 'rectangle',
+      name: 'Rect 1',
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+    };
+
+    manager.addNode(layerId, rect);
+    const state1 = manager.getState();
+
+    // El estado anterior permanece intacto
+    assert.notEqual(state0, state1);
+    assert.equal(state0.children[0].children.length, 0);
+    assert.equal(state1.children[0].children.length, 1);
+    assert.equal(state1.children[0].children[0].id, 'rect-1');
+  });
+
+  it('agrega capas al documento de forma inmutable', () => {
+    const manager = new StateManager();
+    const state0 = manager.getState();
+
+    const newLayer: Layer = {
+      id: 'layer-vector',
+      type: 'layer',
+      name: 'Capa Vector',
+      children: [],
+    };
+
+    manager.addNode(state0.id, newLayer);
+    const state1 = manager.getState();
+
+    assert.equal(state0.children.length, 1);
+    assert.equal(state1.children.length, 2);
+    assert.equal(state1.children[1].id, 'layer-vector');
+  });
+
+  it('rechaza agregar nodos en contenedores incompatibles', () => {
+    const manager = new StateManager();
+    const state = manager.getState();
+    const layerId = state.children[0].id;
+
+    const invalidLayer: Layer = {
+      id: 'sub-layer',
+      type: 'layer',
+      name: 'Sub-layer',
+      children: [],
+    };
+
+    const rect: Rectangle = {
+      id: 'rect-alone',
+      type: 'rectangle',
+      name: 'Rect',
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 50,
+    };
+
+    // Intentar agregar una capa dentro de otra capa
+    assert.throws(() => {
+      manager.addNode(layerId, invalidLayer);
+    }, /Solo se admiten figuras/);
+
+    // Intentar agregar una figura directamente al documento
+    assert.throws(() => {
+      manager.addNode(state.id, rect);
+    }, /Solo se admiten capas/);
+  });
+
+  it('reordena nodos en el array de una capa', () => {
+    const manager = new StateManager();
+    const layerId = manager.getState().children[0].id;
+
+    const rect: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 0, y: 0, width: 10, height: 10 };
+    const ellipse: Ellipse = { id: 'e1', type: 'ellipse', name: 'E1', x: 0, y: 0, radiusX: 5, radiusY: 5 };
+
+    manager.addNode(layerId, rect);
+    manager.addNode(layerId, ellipse);
+
+    const beforeOrder = manager.getState().children[0].children.map((s) => s.id);
+    assert.deepEqual(beforeOrder, ['r1', 'e1']);
+
+    // Mover 'e1' (índice 1) a la posición 0
+    manager.reorderNodes(layerId, 1, 0);
+
+    const afterOrder = manager.getState().children[0].children.map((s) => s.id);
+    assert.deepEqual(afterOrder, ['e1', 'r1']);
+  });
+
+  it('elimina nodos por ID de una capa y del documento', () => {
+    const manager = new StateManager();
+    const layerId = manager.getState().children[0].id;
+
+    const rect: Rectangle = { id: 'r-del', type: 'rectangle', name: 'R', x: 0, y: 0, width: 10, height: 10 };
+    manager.addNode(layerId, rect);
+    assert.equal(manager.getState().children[0].children.length, 1);
+
+    const removedShape = manager.removeNode('r-del');
+    assert.equal(removedShape, true);
+    assert.equal(manager.getState().children[0].children.length, 0);
+
+    // Agregar y eliminar una capa
+    const secondLayer: Layer = { id: 'layer-temp', type: 'layer', name: 'Temp', children: [] };
+    manager.addLayer(secondLayer);
+    assert.equal(manager.getState().children.length, 2);
+
+    const removedLayer = manager.removeNode('layer-temp');
+    assert.equal(removedLayer, true);
+    assert.equal(manager.getState().children.length, 1);
+  });
+
+  it('no permite eliminar el documento raíz', () => {
+    const manager = new StateManager();
+    assert.throws(() => {
+      manager.removeNode(manager.getState().id);
+    }, /No se puede eliminar el nodo raíz Document/);
+  });
+
+  it('inyecta las 3 figuras de prueba hardcodeadas correctamente', () => {
+    const manager = new StateManager();
+    const injected = injectSampleShapes(manager);
+
+    assert.equal(injected.length, 3);
+    assert.deepEqual(injected, SAMPLE_SHAPES);
+
+    const currentShapes = manager.getState().children[0].children;
+    assert.equal(currentShapes.length, 3);
+    assert.equal(currentShapes[0].type, 'rectangle');
+    assert.equal(currentShapes[1].type, 'ellipse');
+    assert.equal(currentShapes[2].type, 'ellipse');
+  });
+
+  it('notifica a los suscriptores en cada cambio de estado', () => {
+    const manager = new StateManager();
+    let callCount = 0;
+
+    const unsubscribe = manager.subscribe(() => {
+      callCount++;
+    });
+
+    injectSampleShapes(manager); // 3 figuras agregadas -> 3 eventos
+    assert.equal(callCount, 3);
+
+    unsubscribe();
+    manager.addLayer({ id: 'layer-silent', type: 'layer', name: 'Silent', children: [] });
+    // Ya no debe incrementar porque se desuscribió
+    assert.equal(callCount, 3);
+  });
+});
