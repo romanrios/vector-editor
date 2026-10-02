@@ -261,6 +261,132 @@
       .status-hints .separator {
         opacity: 0.4;
       }
+
+      /* Panel lateral derecho de propiedades */
+      .editor-panel {
+        position: absolute;
+        right: 18px;
+        top: 80px;
+        width: 260px;
+        z-index: 10;
+        background: var(--bg-panel);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-glass);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.1);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        animation: fadeInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes fadeInRight {
+        from {
+          opacity: 0;
+          transform: translateX(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-glass);
+      }
+
+      .panel-title {
+        font-family: var(--font-heading);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+      }
+
+      #no-selection-state {
+        color: var(--text-muted);
+        font-size: 13px;
+        text-align: center;
+        padding: 16px 8px;
+        line-height: 1.5;
+      }
+
+      #selection-state {
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .control-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .control-group label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .control-group input[type="color"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        background: transparent;
+        cursor: pointer;
+        padding: 2px;
+        outline: none;
+        transition: border-color 0.2s, transform 0.2s;
+      }
+
+      .control-group input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+
+      .control-group input[type="color"]::-webkit-color-swatch {
+        border-radius: 6px;
+        border: none;
+      }
+
+      .control-group input[type="color"]:hover {
+        border-color: var(--border-glass-hover);
+        transform: scale(1.05);
+      }
+
+      .control-group input[type="number"] {
+        width: 68px;
+        height: 32px;
+        padding: 0 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        text-align: right;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      .control-group input[type="number"]:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-glow);
+      }
     </style>
   </head>
   <body>
@@ -351,6 +477,26 @@
         </button>
       </div>
     </header>
+
+    <!-- Panel lateral derecho de propiedades de figura -->
+    <aside id="properties-panel" class="editor-panel" aria-label="Panel de propiedades">
+      <div id="no-selection-state">Ninguna figura seleccionada</div>
+
+      <div id="selection-state" style="display: none;">
+        <div class="control-group">
+          <label for="input-fill">Relleno</label>
+          <input type="color" id="input-fill">
+        </div>
+        <div class="control-group">
+          <label for="input-stroke">Borde</label>
+          <input type="color" id="input-stroke">
+        </div>
+        <div class="control-group">
+          <label for="input-stroke-width">Grosor</label>
+          <input type="number" id="input-stroke-width" min="0" max="100">
+        </div>
+      </div>
+    </aside>
 
 
     <!-- Footer flotante con estado reactivo -->

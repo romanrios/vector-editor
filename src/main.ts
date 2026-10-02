@@ -4,8 +4,9 @@ import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
 import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
+import { StyleCommand } from './commands/StyleCommand.ts';
 import { Serializer } from './state/Serializer.ts';
-import type { Path } from './types/scene-graph.ts';
+import type { Path, Shape } from './types/scene-graph.ts';
 
 console.log('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
@@ -41,11 +42,37 @@ stateManager.addShape(stateManager.getState().children[0].id, samplePath);
 console.log('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
 
 /**
+ * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)
+ * en un código hexadecimal válido de 7 caracteres (#rrggbb) aceptado por <input type="color">.
+ */
+export function toValidHexColor(color: string | undefined | null, fallback: string = '#000000'): string {
+  if (!color || color === 'transparent' || color === 'none') {
+    return fallback;
+  }
+  const trimmed = color.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
+  }
+  const rgbMatch = trimmed.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    const r = Math.min(255, Math.max(0, parseInt(rgbMatch[1], 10))).toString(16).padStart(2, '0');
+    const g = Math.min(255, Math.max(0, parseInt(rgbMatch[2], 10))).toString(16).padStart(2, '0');
+    const b = Math.min(255, Math.max(0, parseInt(rgbMatch[3], 10))).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+  }
+  return fallback;
+}
+
+/**
  * Sistema de observabilidad y binding reactivo entre los controles HTML del DOM y el estado de la aplicación.
  * Desvincula por completo la lógica del canvas de la manipulación del DOM:
  * - Escucha eventos del CommandManager para alternar las clases CSS (.disabled / .is-disabled) de Deshacer/Rehacer.
  * - Escucha el Event Emitter de InputController ('toolChange') para actualizar las clases .active en los botones de herramienta.
  * - Conecta el botón de exportación para serializar el Scene Graph y forzar la descarga de un archivo JSON.
+ * - Sincroniza el Panel de Propiedades de la figura seleccionada con previsualización en vivo y registro de comandos.
  */
 export function setupUIBindings(
   inputController: InputController,
@@ -56,7 +83,7 @@ export function setupUIBindings(
     return { cleanup: () => {} };
   }
 
-  const stateManager = stateManagerInstance ?? moduleStateManager;
+  const stateManager = stateManagerInstance ?? (inputController as any).stateManager ?? moduleStateManager;
 
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
@@ -66,6 +93,13 @@ export function setupUIBindings(
   const btnImport = document.querySelector<HTMLButtonElement>('#btn-import');
   const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');
   const statusToolLabel = document.querySelector<HTMLElement>('#status-tool-label');
+
+  // Controles del Panel de Propiedades
+  const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
+  const selectionState = document.querySelector<HTMLElement>('#selection-state');
+  const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
+  const inputStroke = document.querySelector<HTMLInputElement>('#input-stroke');
+  const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
   const syncToolButtons = (tool: ToolMode) => {
@@ -211,10 +245,211 @@ export function setupUIBindings(
   fileImportInput?.addEventListener('click', onFileInputClick);
   fileImportInput?.addEventListener('change', onFileChange);
 
+  // 5. Panel de Propiedades de Figuras (Observabilidad de Selección & Edición Reactiva)
+  let initialStyleSnapshot: Partial<Shape> | null = null;
+  let editingShapeId: string | null = null;
+
+  const captureInitialStyle = () => {
+    const selected = stateManager.getSelectedNode();
+    if (selected) {
+      editingShapeId = selected.id;
+      initialStyleSnapshot = {
+        fill: selected.fill,
+        stroke: selected.stroke,
+        strokeWidth: selected.strokeWidth,
+      };
+    }
+  };
+
+  const syncPropertiesPanel = () => {
+    const selectedShape = stateManager.getSelectedNode();
+
+    if (selectedShape) {
+      if (selectionState) {
+        if (!selectionState.style) (selectionState as any).style = {};
+        selectionState.style.display = 'block';
+      }
+      if (noSelectionState) {
+        if (!noSelectionState.style) (noSelectionState as any).style = {};
+        noSelectionState.style.display = 'none';
+      }
+
+      const isEditing = editingShapeId !== null;
+      if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
+        inputFill.value = toValidHexColor(selectedShape.fill, '#000000');
+      }
+      if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
+        inputStroke.value = toValidHexColor(selectedShape.stroke, '#000000');
+      }
+      if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
+        inputStrokeWidth.value = String(selectedShape.strokeWidth ?? 1);
+      }
+    } else {
+      if (selectionState) {
+        if (!selectionState.style) (selectionState as any).style = {};
+        selectionState.style.display = 'none';
+      }
+      if (noSelectionState) {
+        if (!noSelectionState.style) (noSelectionState as any).style = {};
+        noSelectionState.style.display = 'block';
+      }
+      initialStyleSnapshot = null;
+      editingShapeId = null;
+    }
+  };
+
+  // Suscripción al StateManager para sincronizar selección y estilos
+  const unsubscribeState = stateManager.subscribe(() => {
+    syncPropertiesPanel();
+  });
+
+  // Capturar estilos iniciales al iniciar interacción (mousedown, click, focus)
+  const onInputStart = () => {
+    captureInitialStyle();
+  };
+
+  inputFill?.addEventListener('mousedown', onInputStart);
+  inputFill?.addEventListener('click', onInputStart);
+  inputFill?.addEventListener('focus', onInputStart);
+
+  inputStroke?.addEventListener('mousedown', onInputStart);
+  inputStroke?.addEventListener('click', onInputStart);
+  inputStroke?.addEventListener('focus', onInputStart);
+
+  inputStrokeWidth?.addEventListener('mousedown', onInputStart);
+  inputStrokeWidth?.addEventListener('click', onInputStart);
+  inputStrokeWidth?.addEventListener('focus', onInputStart);
+
+  // Previsualización en vivo (evento 'input'): actualiza directamente en StateManager sin registrar comando
+  const onFillInput = () => {
+    const selected = stateManager.getSelectedNode();
+    if (!selected || !inputFill) return;
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+    stateManager.updateShape(selected.id, { fill: inputFill.value });
+  };
+
+  const onStrokeInput = () => {
+    const selected = stateManager.getSelectedNode();
+    if (!selected || !inputStroke) return;
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+    stateManager.updateShape(selected.id, { stroke: inputStroke.value });
+  };
+
+  const onStrokeWidthInput = () => {
+    const selected = stateManager.getSelectedNode();
+    if (!selected || !inputStrokeWidth) return;
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+    const parsed = parseFloat(inputStrokeWidth.value);
+    const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
+    stateManager.updateShape(selected.id, { strokeWidth });
+  };
+
+  inputFill?.addEventListener('input', onFillInput);
+  inputStroke?.addEventListener('input', onStrokeInput);
+  inputStrokeWidth?.addEventListener('input', onStrokeWidthInput);
+
+  // Consolidación final (evento 'change'): genera StyleCommand y registra en CommandManager
+  const onFillChange = () => {
+    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
+    if (!shapeId || !inputFill) return;
+
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+
+    const initialVal = initialStyleSnapshot?.fill;
+    const finalVal = inputFill.value;
+
+    stateManager.updateShape(shapeId, { fill: finalVal });
+
+    if (initialVal !== finalVal) {
+      const command = new StyleCommand(
+        stateManager,
+        shapeId,
+        { fill: initialVal },
+        { fill: finalVal }
+      );
+      commandManager.recordCommand(command);
+    }
+
+    initialStyleSnapshot = null;
+    editingShapeId = null;
+  };
+
+  const onStrokeChange = () => {
+    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
+    if (!shapeId || !inputStroke) return;
+
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+
+    const initialVal = initialStyleSnapshot?.stroke;
+    const finalVal = inputStroke.value;
+
+    stateManager.updateShape(shapeId, { stroke: finalVal });
+
+    if (initialVal !== finalVal) {
+      const command = new StyleCommand(
+        stateManager,
+        shapeId,
+        { stroke: initialVal },
+        { stroke: finalVal }
+      );
+      commandManager.recordCommand(command);
+    }
+
+    initialStyleSnapshot = null;
+    editingShapeId = null;
+  };
+
+  const onStrokeWidthChange = () => {
+    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
+    if (!shapeId || !inputStrokeWidth) return;
+
+    if (!initialStyleSnapshot) {
+      captureInitialStyle();
+    }
+
+    const parsed = parseFloat(inputStrokeWidth.value);
+    const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
+    const initialVal = initialStyleSnapshot?.strokeWidth;
+    const finalVal = strokeWidth;
+
+    stateManager.updateShape(shapeId, { strokeWidth: finalVal });
+
+    if (initialVal !== finalVal) {
+      const command = new StyleCommand(
+        stateManager,
+        shapeId,
+        { strokeWidth: initialVal },
+        { strokeWidth: finalVal }
+      );
+      commandManager.recordCommand(command);
+    }
+
+    initialStyleSnapshot = null;
+    editingShapeId = null;
+  };
+
+  inputFill?.addEventListener('change', onFillChange);
+  inputStroke?.addEventListener('change', onStrokeChange);
+  inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
+
+  // Sincronizar estado inicial del panel
+  syncPropertiesPanel();
+
   return {
     cleanup: () => {
       unsubscribeToolChange();
       unsubscribeHistory();
+      unsubscribeState();
       btnSelect?.removeEventListener('click', onSelectClick);
       btnPen?.removeEventListener('click', onPenClick);
       btnUndo?.removeEventListener('click', onUndoClick);
@@ -223,6 +458,24 @@ export function setupUIBindings(
       btnImport?.removeEventListener('click', onImportClick);
       fileImportInput?.removeEventListener('click', onFileInputClick);
       fileImportInput?.removeEventListener('change', onFileChange);
+
+      inputFill?.removeEventListener('mousedown', onInputStart);
+      inputFill?.removeEventListener('click', onInputStart);
+      inputFill?.removeEventListener('focus', onInputStart);
+      inputFill?.removeEventListener('input', onFillInput);
+      inputFill?.removeEventListener('change', onFillChange);
+
+      inputStroke?.removeEventListener('mousedown', onInputStart);
+      inputStroke?.removeEventListener('click', onInputStart);
+      inputStroke?.removeEventListener('focus', onInputStart);
+      inputStroke?.removeEventListener('input', onStrokeInput);
+      inputStroke?.removeEventListener('change', onStrokeChange);
+
+      inputStrokeWidth?.removeEventListener('mousedown', onInputStart);
+      inputStrokeWidth?.removeEventListener('click', onInputStart);
+      inputStrokeWidth?.removeEventListener('focus', onInputStart);
+      inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
+      inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
     },
   };
 }
@@ -282,6 +535,8 @@ const globals = {
   commandManager,
   uiBindings,
   TranslateCommand,
+  StyleCommand,
+  toValidHexColor,
   injectSampleShapes,
   setupUIBindings,
   Serializer,

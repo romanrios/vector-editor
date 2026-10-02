@@ -787,7 +787,9 @@ export class StateManager {
   /**
    * Actualiza propiedades de una figura existente en el Scene Graph de forma inmutable.
    */
-  public updateShape<T extends Shape>(shapeId: string, updater: Partial<T> | ((current: T) => T)): boolean {
+  public updateShape(shapeId: string, updater: Partial<Shape>): boolean;
+  public updateShape<T extends Shape>(shapeId: string, updater: Partial<T> | ((current: T) => T)): boolean;
+  public updateShape<T extends Shape>(shapeId: string, updater: Partial<Shape> | Partial<T> | ((current: T) => T)): boolean {
     let updated = false;
 
     const nextLayers = this._state.children.map((layer) => {
@@ -796,7 +798,7 @@ export class StateManager {
         if (shape.id === shapeId) {
           layerChanged = true;
           updated = true;
-          const nextVal = typeof updater === 'function' ? updater(shape as T) : { ...shape, ...updater };
+          const nextVal = (typeof updater === 'function' ? updater(shape as T) : { ...shape, ...updater }) as Shape;
           return nextVal;
         }
         return shape;

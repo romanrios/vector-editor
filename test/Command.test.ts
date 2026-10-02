@@ -4,6 +4,7 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
 import { ResizeCommand } from '../src/commands/ResizeCommand.ts';
+import { StyleCommand } from '../src/commands/StyleCommand.ts';
 import { InputController } from '../src/input/InputController.ts';
 import type { Ellipse, Rectangle } from '../src/types/scene-graph.ts';
 
@@ -407,5 +408,51 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
     assert.equal(commandManager.undoCount, 0, 'No debe registrar ResizeCommand si el delta fue 0');
     controller.destroy();
   });
+
+  it('StyleCommand: actualiza estilos y permite deshacer y rehacer', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const rect: Rectangle = {
+      id: 'rect-style',
+      type: 'rectangle',
+      name: 'Rect',
+      x: 10,
+      y: 10,
+      width: 100,
+      height: 100,
+      fill: '#ff0000',
+      stroke: '#000000',
+      strokeWidth: 1,
+      opacity: 1,
+    };
+    manager.addShape(manager.getState().children[0].id, rect);
+
+    const initialStyles = { fill: '#ff0000', strokeWidth: 1, opacity: 1 };
+    const finalStyles = { fill: '#00ff00', strokeWidth: 5, opacity: 0.5 };
+
+    const cmd = new StyleCommand(manager, 'rect-style', initialStyles, finalStyles);
+    commandManager.executeCommand(cmd);
+
+    let current = manager.findNode('rect-style') as Rectangle;
+    assert.equal(current.fill, '#00ff00');
+    assert.equal(current.strokeWidth, 5);
+    assert.equal(current.opacity, 0.5);
+
+    // Undo
+    assert.equal(commandManager.undo(), true);
+    current = manager.findNode('rect-style') as Rectangle;
+    assert.equal(current.fill, '#ff0000');
+    assert.equal(current.strokeWidth, 1);
+    assert.equal(current.opacity, 1);
+
+    // Redo
+    assert.equal(commandManager.redo(), true);
+    current = manager.findNode('rect-style') as Rectangle;
+    assert.equal(current.fill, '#00ff00');
+    assert.equal(current.strokeWidth, 5);
+    assert.equal(current.opacity, 0.5);
+  });
 });
+
 

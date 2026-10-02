@@ -16,6 +16,7 @@ class MockElement {
   public value: string = '';
   public files: any[] = [];
   public clickCount: number = 0;
+  public style: Record<string, string> = {};
   private attributes: Map<string, string> = new Map();
   private classes: Set<string> = new Set();
   private listeners: Map<string, Set<(e: any) => void>> = new Map();
@@ -337,6 +338,143 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     inputController.destroy();
     delete (globalThis as any).document;
     delete (globalThis as any).FileReader;
+  });
+
+  it('sincroniza el panel de propiedades al seleccionar figura y oculta cuando no hay selección', () => {
+    const noSelectionState = new MockElement('no-selection-state', 'div');
+    const selectionState = new MockElement('selection-state', 'div');
+    const inputFill = new MockElement('input-fill', 'input');
+    const inputStroke = new MockElement('input-stroke', 'input');
+    const inputStrokeWidth = new MockElement('input-stroke-width', 'input');
+
+    const domMap: Record<string, MockElement> = {
+      '#no-selection-state': noSelectionState,
+      '#selection-state': selectionState,
+      '#input-fill': inputFill,
+      '#input-stroke': inputStroke,
+      '#input-stroke-width': inputStrokeWidth,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const rect: Rectangle = {
+      id: 'prop-rect',
+      type: 'rectangle',
+      name: 'Prop Rect',
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 50,
+      fill: 'transparent',
+      stroke: '#ff00aa',
+      strokeWidth: 4,
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, rect);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Inicialmente sin selección
+    assert.equal(selectionState.style.display, 'none');
+    assert.equal(noSelectionState.style.display, 'block');
+
+    // Seleccionar figura
+    stateManager.selectNode('prop-rect');
+    assert.equal(selectionState.style.display, 'block');
+    assert.equal(noSelectionState.style.display, 'none');
+    assert.equal(inputFill.value, '#000000', 'transparent debe convertirse en hex code válido');
+    assert.equal(inputStroke.value, '#ff00aa');
+    assert.equal(inputStrokeWidth.value, '4');
+
+    // Deseleccionar
+    stateManager.selectNode(null);
+    assert.equal(selectionState.style.display, 'none');
+    assert.equal(noSelectionState.style.display, 'block');
+
+    cleanup();
+    inputController.destroy();
+    delete (globalThis as any).document;
+  });
+
+  it('panel de propiedades: evento input hace previsualización en vivo y change registra StyleCommand con undo/redo', () => {
+    const noSelectionState = new MockElement('no-selection-state', 'div');
+    const selectionState = new MockElement('selection-state', 'div');
+    const inputFill = new MockElement('input-fill', 'input');
+    const inputStroke = new MockElement('input-stroke', 'input');
+    const inputStrokeWidth = new MockElement('input-stroke-width', 'input');
+
+    const domMap: Record<string, MockElement> = {
+      '#no-selection-state': noSelectionState,
+      '#selection-state': selectionState,
+      '#input-fill': inputFill,
+      '#input-stroke': inputStroke,
+      '#input-stroke-width': inputStrokeWidth,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const rect: Rectangle = {
+      id: 'style-edit-rect',
+      type: 'rectangle',
+      name: 'Edit Rect',
+      x: 10,
+      y: 10,
+      width: 60,
+      height: 60,
+      fill: '#123456',
+      stroke: '#654321',
+      strokeWidth: 2,
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, rect);
+    stateManager.selectNode('style-edit-rect');
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // 1. Simular mousedown en inputFill para capturar estilo inicial
+    inputFill.dispatchEvent({ type: 'mousedown' });
+
+    // 2. Evento input -> previsualización en vivo sin registrar comando
+    inputFill.value = '#00ff00';
+    inputFill.dispatchEvent({ type: 'input' });
+
+    let currentShape = stateManager.findNode('style-edit-rect') as Rectangle;
+    assert.equal(currentShape.fill, '#00ff00');
+    assert.equal(commandManager.undoCount, 0, 'No debe registrar comando durante input');
+
+    // 3. Evento change -> consolidación y registro en CommandManager
+    inputFill.value = '#33cc33';
+    inputFill.dispatchEvent({ type: 'change' });
+
+    currentShape = stateManager.findNode('style-edit-rect') as Rectangle;
+    assert.equal(currentShape.fill, '#33cc33');
+    assert.equal(commandManager.undoCount, 1, 'Debe registrar 1 comando tras change');
+
+    // 4. Undo -> restaura valor previo a la interacción (#123456)
+    assert.equal(commandManager.undo(), true);
+    currentShape = stateManager.findNode('style-edit-rect') as Rectangle;
+    assert.equal(currentShape.fill, '#123456');
+
+    // 5. Redo -> re-aplica el valor consolidado (#33cc33)
+    assert.equal(commandManager.redo(), true);
+    currentShape = stateManager.findNode('style-edit-rect') as Rectangle;
+    assert.equal(currentShape.fill, '#33cc33');
+
+    cleanup();
+    inputController.destroy();
+    delete (globalThis as any).document;
   });
 });
 
