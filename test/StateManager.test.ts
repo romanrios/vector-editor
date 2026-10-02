@@ -1,4 +1,4 @@
-import test, { describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from '../src/state/injectSampleShapes.ts';

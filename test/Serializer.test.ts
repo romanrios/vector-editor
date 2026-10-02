@@ -47,7 +47,7 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
     assert.equal(parsedPath.points.length, 2);
     assert.equal(parsedPath.points[0].handleOut?.x, 70);
     assert.equal(parsedPath.closed, true);
-    assert.equal(parsedPath.isDirty, undefined);
+    assert.equal((parsedPath as any).isDirty, undefined);
   });
 
   it('serializeDocument soporta formato compacto cuando pretty es false', () => {

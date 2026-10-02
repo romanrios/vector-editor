@@ -119,12 +119,12 @@ describe('InputController & Hit-testing AABB', () => {
     // El hit-test inverso debe retornar shapeTop (el de mayor Z-index).
     const hit = controller.hitTest(160, 160);
     assert.ok(hit !== null);
-    assert.equal(hit.id, 'shape-top');
+    assert.equal(hit!.id, 'shape-top');
 
     // Punto (110, 110) solo está dentro de shapeBottom.
     const hitBottom = controller.hitTest(110, 110);
     assert.ok(hitBottom !== null);
-    assert.equal(hitBottom.id, 'shape-bottom');
+    assert.equal(hitBottom!.id, 'shape-bottom');
   });
 
   it('actualiza el estado marcando el nodo seleccionado con mousedown', () => {
@@ -156,8 +156,8 @@ describe('InputController & Hit-testing AABB', () => {
 
     const selected = manager.getSelectedNode();
     assert.ok(selected !== null);
-    assert.equal(selected.id, 'target-shape');
-    assert.equal(selected.selected, true);
+    assert.equal(selected!.id, 'target-shape');
+    assert.equal(selected!.selected, true);
 
     // Simular mousedown en espacio vacío (50, 50) -> deselecciona
     canvas.dispatchSimulatedEvent('mousedown', {

@@ -97,13 +97,13 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
 
       // Tick 1: isDirty = true -> render() se ejecuta y se limpia isDirty
       assert.ok(animationCallback !== null, 'RAF debe haber sido registrado');
-      animationCallback(16.6);
+      (animationCallback as any)(16.6);
 
       assert.equal(engine.renderCount, 1);
       assert.equal(manager.isDirty, false);
 
       // Tick 2: isDirty = false -> NO debe ejecutarse render()
-      animationCallback(33.3);
+      (animationCallback as any)(33.3);
       assert.equal(engine.renderCount, 1, 'No debe renderizar cuando isDirty es false');
 
       // Modificamos el estado (añadir nodo) -> isDirty pasa a true
@@ -120,7 +120,7 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
       assert.equal(manager.isDirty, true);
 
       // Tick 3: isDirty = true -> render() se ejecuta de nuevo
-      animationCallback(50.0);
+      (animationCallback as any)(50.0);
       assert.equal(engine.renderCount, 2, 'Debe renderizar al detectar isDirty = true');
       assert.equal(manager.isDirty, false);
 
