@@ -29,6 +29,8 @@ function createMockCanvas(): HTMLCanvasElement & { dispatchSimulatedEvent: (type
     strokeRect: () => calls.push('strokeRect'),
     ellipse: () => calls.push('ellipse'),
     arc: () => calls.push('arc'),
+    translate: () => calls.push('translate'),
+    rotate: () => calls.push('rotate'),
     setLineDash: () => calls.push('setLineDash'),
     fillStyle: '',
     strokeStyle: '',
@@ -194,5 +196,83 @@ describe('Primitiva Path, Herramienta Pluma y Hit-Testing No Rectangular', () =>
 
     assert.ok(canvas.calls.includes('bezierCurveTo'), 'RenderEngine debe usar bezierCurveTo para nodos Path');
     assert.ok(canvas.calls.includes('stroke'), 'RenderEngine debe aplicar trazo al Path');
+  });
+
+  it('RenderEngine aplica rotación al renderizar un nodo Path con rotation', () => {
+    const manager = new StateManager();
+    const canvas = createMockCanvas();
+
+    const rotatedPath: Path = {
+      id: 'rotated-path-render',
+      type: 'path',
+      name: 'Rotated Path',
+      x: 100,
+      y: 100,
+      points: [
+        { x: 100, y: 100 },
+        { x: 200, y: 200 },
+      ],
+      rotation: 45,
+      stroke: '#38bdf8',
+      strokeWidth: 2,
+    };
+
+    manager.addShape(manager.getState().children[0].id, rotatedPath);
+
+    const engine = new RenderEngine(canvas, manager, { highDpi: false });
+    engine.render();
+
+    assert.ok(canvas.calls.includes('rotate'), 'Debe invocar rotate en el contexto cuando el Path tiene rotation');
+    assert.ok(canvas.calls.includes('translate'), 'Debe invocar translate para centrar la rotación');
+  });
+
+  it('getPathAABB calcula el AABB considerando la rotación del Path', () => {
+    // Línea horizontal de (100, 150) a (200, 150), rotada 90 grados alrededor de su centro (150, 150)
+    // Tras rotar 90 grados, pasa a ser una línea vertical de (150, 100) a (150, 200)
+    const horizontalLine: Path = {
+      id: 'rot-line',
+      type: 'path',
+      name: 'Rotated Line',
+      x: 100,
+      y: 150,
+      points: [
+        { x: 100, y: 150 },
+        { x: 200, y: 150 },
+      ],
+      rotation: 90,
+    };
+
+    const aabb = getPathAABB(horizontalLine);
+    assert.ok(Math.abs(aabb.minX - 150) < 1e-4, 'minX debe ser ~150');
+    assert.ok(Math.abs(aabb.maxX - 150) < 1e-4, 'maxX debe ser ~150');
+    assert.ok(Math.abs(aabb.minY - 100) < 1e-4, 'minY debe ser ~100');
+    assert.ok(Math.abs(aabb.maxY - 200) < 1e-4, 'maxY debe ser ~200');
+  });
+
+  it('isPointInPath detecta colisiones sobre un trazado rotado', () => {
+    // Línea horizontal de (100, 150) a (200, 150) rotada 90 grados -> pasa a ser vertical en X=150, de Y=100 a Y=200
+    const rotatedLine: Path = {
+      id: 'rot-hit-test',
+      type: 'path',
+      name: 'Rotated Hit Test',
+      x: 100,
+      y: 150,
+      points: [
+        { x: 100, y: 150 },
+        { x: 200, y: 150 },
+      ],
+      rotation: 90,
+      stroke: '#000',
+      strokeWidth: 4,
+    };
+
+    // Un punto en (150, 150) está sobre la línea rotada
+    assert.equal(isPointInPath(150, 150, rotatedLine), true);
+
+    // Un punto en (150, 180) está sobre la línea rotada
+    assert.equal(isPointInPath(150, 180, rotatedLine), true);
+
+    // Un punto en (120, 150) estaba sobre la línea original NO rotada, pero NO sobre la rotada
+    assert.equal(isPointInPath(120, 150, rotatedLine), false);
   });
 });

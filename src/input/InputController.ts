@@ -1,6 +1,7 @@
 import type { StateManager } from '../state/StateManager.ts';
-import type { AABB, Path, PathPoint, Shape } from '../types/scene-graph.ts';
+import type { AABB, Path, PathPoint, Shape, Vector2D } from '../types/scene-graph.ts';
 import {
+  getPathBaseAABB,
   getSelectionHandles,
   getShapeAABB,
   isPointInAABB,
@@ -427,6 +428,15 @@ export class InputController {
             y: selectedNode.y,
             radiusX: selectedNode.radiusX,
             radiusY: selectedNode.radiusY,
+          };
+        } else if (selectedNode.type === 'path') {
+          const aabb = getPathBaseAABB(selectedNode);
+          this.initialDimensions = {
+            x: selectedNode.x,
+            y: selectedNode.y,
+            width: aabb.width,
+            height: aabb.height,
+            points: selectedNode.points,
           };
         } else {
           this.initialDimensions = null;
@@ -956,9 +966,20 @@ export class InputController {
       this.directSelectOrigin &&
       this.initialPathPoints
     ) {
-      const deltaX = x - this.directSelectOrigin.x;
-      const deltaY = y - this.directSelectOrigin.y;
+      let deltaX = x - this.directSelectOrigin.x;
+      let deltaY = y - this.directSelectOrigin.y;
       const { pathId, pointIndex, type } = this._draggedPointTarget;
+
+      const pathNode = this.stateManager.findNode(pathId) as Path | null;
+      if (pathNode && pathNode.rotation) {
+        const rad = (-pathNode.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const rotDx = deltaX * cos - deltaY * sin;
+        const rotDy = deltaX * sin + deltaY * cos;
+        deltaX = rotDx;
+        deltaY = rotDy;
+      }
 
       const nextPoints = this.initialPathPoints.map((pt, idx) => {
         if (idx !== pointIndex) return pt;
@@ -1033,19 +1054,34 @@ export class InputController {
   ): { index: number; type: DirectSelectTargetType } | null {
     if (!path.points || path.points.length === 0) return null;
 
+    let testX = x;
+    let testY = y;
+    if (path.rotation) {
+      const baseAABB = getPathBaseAABB(path);
+      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+      const rad = (-path.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const dx = x - cx;
+      const dy = y - cy;
+      testX = cx + dx * cos - dy * sin;
+      testY = cy + dx * sin + dy * cos;
+    }
+
     // 1. Evaluar primero colisiones con manejadores de control Bézier extendidos (handleIn y handleOut)
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
       if (pt.handleIn && (pt.handleIn.x !== pt.x || pt.handleIn.y !== pt.y)) {
         const handleInAABB = this.createHandleAABB(pt.handleIn.x, pt.handleIn.y, 10);
-        if (isPointInAABB(x, y, handleInAABB)) {
+        if (isPointInAABB(testX, testY, handleInAABB)) {
           return { index: i, type: 'handleIn' };
         }
       }
 
       if (pt.handleOut && (pt.handleOut.x !== pt.x || pt.handleOut.y !== pt.y)) {
         const handleOutAABB = this.createHandleAABB(pt.handleOut.x, pt.handleOut.y, 10);
-        if (isPointInAABB(x, y, handleOutAABB)) {
+        if (isPointInAABB(testX, testY, handleOutAABB)) {
           return { index: i, type: 'handleOut' };
         }
       }
@@ -1055,7 +1091,7 @@ export class InputController {
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
       const anchorAABB = this.createHandleAABB(pt.x, pt.y, 10);
-      if (isPointInAABB(x, y, anchorAABB)) {
+      if (isPointInAABB(testX, testY, anchorAABB)) {
         return { index: i, type: 'anchor' };
       }
     }
@@ -1094,6 +1130,13 @@ export class InputController {
         y: shape.y,
       };
     }
+    if (shape.type === 'path') {
+      const aabb = getPathBaseAABB(shape);
+      return {
+        x: (aabb.minX + aabb.maxX) / 2,
+        y: (aabb.minY + aabb.maxY) / 2,
+      };
+    }
     const aabb = getShapeAABB(shape);
     return {
       x: (aabb.minX + aabb.maxX) / 2,
@@ -1110,6 +1153,98 @@ export class InputController {
     dx: number,
     dy: number
   ): ShapeDimensions {
+    if (initial.points !== undefined && initial.points.length > 0) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      for (const pt of initial.points) {
+        const coords = [pt];
+        if (pt.handleIn) coords.push(pt.handleIn);
+        if (pt.handleOut) coords.push(pt.handleOut);
+
+        for (const { x, y } of coords) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+
+      const initW = Math.max(1, maxX - minX);
+      const initH = Math.max(1, maxY - minY);
+      const initX = minX;
+      const initY = minY;
+
+      let newX = initX;
+      let newY = initY;
+      let newW = initW;
+      let newH = initH;
+
+      switch (handle) {
+        case 'bottom-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'bottom-left':
+          newW = Math.max(5, initW - dx);
+          newX = initX + (initW - newW);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'top-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH - dy);
+          newY = initY + (initH - newH);
+          break;
+        case 'top-left':
+          newW = Math.max(5, initW - dx);
+          newX = initX + (initW - newW);
+          newH = Math.max(5, initH - dy);
+          newY = initY + (initH - newH);
+          break;
+      }
+
+      const scaleX = newW / initW;
+      const scaleY = newH / initH;
+
+      const newPoints: PathPoint[] = initial.points.map((pt) => {
+        const scaledPtX = newX + (pt.x - initX) * scaleX;
+        const scaledPtY = newY + (pt.y - initY) * scaleY;
+
+        let handleIn: Vector2D | undefined = undefined;
+        if (pt.handleIn) {
+          handleIn = {
+            x: newX + (pt.handleIn.x - initX) * scaleX,
+            y: newY + (pt.handleIn.y - initY) * scaleY,
+          };
+        }
+
+        let handleOut: Vector2D | undefined = undefined;
+        if (pt.handleOut) {
+          handleOut = {
+            x: newX + (pt.handleOut.x - initX) * scaleX,
+            y: newY + (pt.handleOut.y - initY) * scaleY,
+          };
+        }
+
+        return {
+          x: scaledPtX,
+          y: scaledPtY,
+          handleIn,
+          handleOut,
+        };
+      });
+
+      return {
+        x: newPoints[0]?.x ?? initial.x ?? newX,
+        y: newPoints[0]?.y ?? initial.y ?? newY,
+        width: newW,
+        height: newH,
+        points: newPoints,
+      };
+    }
+
     if (initial.width !== undefined && initial.height !== undefined) {
       const initX = initial.x ?? 0;
       const initY = initial.y ?? 0;
@@ -1211,6 +1346,9 @@ export class InputController {
    * Comprueba si las dimensiones han cambiado respecto a las iniciales.
    */
   private hasDimensionsChanged(a: ShapeDimensions, b: ShapeDimensions): boolean {
+    if (a.points && b.points) {
+      return this.havePointsChanged(a.points, b.points);
+    }
     return (
       a.x !== b.x ||
       a.y !== b.y ||

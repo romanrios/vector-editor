@@ -1,8 +1,9 @@
 import type { Command } from './Command.ts';
 import type { StateManager } from '../state/StateManager.ts';
+import type { PathPoint } from '../types/scene-graph.ts';
 
 /**
- * Representa las dimensiones espaciales y/o radios de una figura en el Scene Graph.
+ * Representa las dimensiones espaciales, radios y/o puntos de una figura en el Scene Graph.
  */
 export interface ShapeDimensions {
   readonly x?: number;
@@ -11,6 +12,7 @@ export interface ShapeDimensions {
   readonly height?: number;
   readonly radiusX?: number;
   readonly radiusY?: number;
+  readonly points?: readonly PathPoint[];
 }
 
 /**

@@ -93,10 +93,10 @@ export function getEllipseAABB(ellipse: Ellipse): AABB {
 }
 
 /**
- * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Path (trazado vectorial).
- * Incluye los puntos de ancla y sus manejadores de control Bézier.
+ * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Path sin rotación.
+ * Incluye los puntos de ancla y sus manejadores de control Bézier en espacio local.
  */
-export function getPathAABB(path: Path): AABB {
+export function getPathBaseAABB(path: Path): AABB {
   if (!path.points || path.points.length === 0) {
     return {
       minX: path.x,
@@ -123,6 +123,54 @@ export function getPathAABB(path: Path): AABB {
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
+    }
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
+ * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Path (trazado vectorial).
+ * Incluye los puntos de ancla y sus manejadores de control Bézier, y aplica la
+ * rotación centrada si está presente.
+ */
+export function getPathAABB(path: Path): AABB {
+  const baseAABB = getPathBaseAABB(path);
+  if (!path.rotation || !path.points || path.points.length === 0) {
+    return baseAABB;
+  }
+
+  const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+  const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+  const rad = (path.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const pt of path.points) {
+    const checkCoords = [pt];
+    if (pt.handleIn) checkCoords.push(pt.handleIn);
+    if (pt.handleOut) checkCoords.push(pt.handleOut);
+
+    for (const { x, y } of checkCoords) {
+      const rx = cx + (x - cx) * cos - (y - cy) * sin;
+      const ry = cy + (x - cx) * sin + (y - cy) * cos;
+
+      if (rx < minX) minX = rx;
+      if (rx > maxX) maxX = rx;
+      if (ry < minY) minY = ry;
+      if (ry > maxY) maxY = ry;
     }
   }
 
@@ -372,13 +420,29 @@ export function isPointInPath(
     return false;
   }
 
+  // Si tiene rotación, transformar (px, py) al espacio local del trazado no rotado
+  let testX = px;
+  let testY = py;
+  if (path.rotation) {
+    const baseAABB = getPathBaseAABB(path);
+    const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+    const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    const rad = (-path.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = px - cx;
+    const dy = py - cy;
+    testX = cx + dx * cos - dy * sin;
+    testY = cy + dx * sin + dy * cos;
+  }
+
   // 2. Intentar evaluación directa con Canvas 2D API (ctx.isPointInPath / ctx.isPointInStroke)
   if (ctx) {
     const path2d = buildPath2D(path);
     if (path2d) {
       // Si el trazado tiene relleno
       if (path.fill && path.fill !== 'transparent' && path.fill !== 'none') {
-        if (ctx.isPointInPath(path2d, px, py)) {
+        if (ctx.isPointInPath(path2d, testX, testY)) {
           return true;
         }
       }
@@ -387,7 +451,7 @@ export function isPointInPath(
       if (ctx.isPointInStroke) {
         ctx.save();
         ctx.lineWidth = Math.max(strokeWidth, 8);
-        const inStroke = ctx.isPointInStroke(path2d, px, py);
+        const inStroke = ctx.isPointInStroke(path2d, testX, testY);
         ctx.restore();
         if (inStroke) {
           return true;
@@ -428,7 +492,7 @@ export function isPointInPath(
 
     // Si está cerrado y tiene relleno, verificar con Ray-Casting
     if (path.fill && path.fill !== 'transparent' && path.fill !== 'none') {
-      if (pointInPolygon(px, py, sampledPolygon)) {
+      if (pointInPolygon(testX, testY, sampledPolygon)) {
         return true;
       }
     }
@@ -438,7 +502,7 @@ export function isPointInPath(
   for (let i = 0; i < sampledPolygon.length - 1; i++) {
     const segA = sampledPolygon[i];
     const segB = sampledPolygon[i + 1];
-    if (distToSegment(px, py, segA.x, segA.y, segB.x, segB.y) <= tolerance) {
+    if (distToSegment(testX, testY, segA.x, segA.y, segB.x, segB.y) <= tolerance) {
       return true;
     }
   }

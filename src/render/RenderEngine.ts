@@ -1,6 +1,6 @@
 import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import { getShapeAABB } from '../utils/geometry.ts';
+import { getPathBaseAABB, getShapeAABB } from '../utils/geometry.ts';
 
 export interface RenderEngineOptions {
   /**
@@ -420,6 +420,15 @@ export class RenderEngine {
     }
 
     this.ctx.save();
+
+    if (path.rotation) {
+      const baseAABB = getPathBaseAABB(path);
+      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+      this.ctx.translate(cx, cy);
+      this.ctx.rotate((path.rotation * Math.PI) / 180);
+      this.ctx.translate(-cx, -cy);
+    }
 
     const points = path.points;
     this.ctx.beginPath();

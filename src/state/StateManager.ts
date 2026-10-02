@@ -761,6 +761,29 @@ export class StateManager {
               radiusY: nextRy,
             };
           }
+
+          if (shape.type === 'path') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
+            const nextPoints = dimensions.points !== undefined ? dimensions.points : shape.points;
+
+            if (
+              nextX === shape.x &&
+              nextY === shape.y &&
+              nextPoints === shape.points
+            ) {
+              return shape;
+            }
+
+            layerChanged = true;
+            updated = true;
+            return {
+              ...shape,
+              x: nextX,
+              y: nextY,
+              points: nextPoints,
+            };
+          }
         }
         return shape;
       });

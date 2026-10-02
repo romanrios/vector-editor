@@ -567,6 +567,161 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
     current = manager.findNode('path-cmd-test') as Path;
     assert.deepEqual(current.points, finalPoints);
   });
+
+  it('ResizeCommand: escala puntos y manejadores de un Path y permite deshacer y rehacer', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = manager.getState().children[0].id;
+    const initialPoints = [
+      { x: 100, y: 100, handleOut: { x: 150, y: 100 } },
+      { x: 200, y: 200, handleIn: { x: 180, y: 200 } },
+    ];
+    const finalPoints = [
+      { x: 100, y: 100, handleOut: { x: 175, y: 100 } },
+      { x: 250, y: 250, handleIn: { x: 220, y: 250 } },
+    ];
+
+    const path: Path = {
+      id: 'path-resize-cmd',
+      type: 'path',
+      name: 'Path Resize Test',
+      x: 100,
+      y: 100,
+      points: initialPoints,
+    };
+    manager.addShape(layerId, path);
+
+    const initialDims = { x: 100, y: 100, width: 100, height: 100, points: initialPoints };
+    const finalDims = { x: 100, y: 100, width: 150, height: 150, points: finalPoints };
+
+    const cmd = new ResizeCommand(manager, 'path-resize-cmd', initialDims, finalDims);
+    commandManager.executeCommand(cmd);
+
+    let current = manager.findNode('path-resize-cmd') as Path;
+    assert.deepEqual(current.points, finalPoints);
+    assert.equal(commandManager.canUndo(), true);
+
+    // Undo -> restaura initialPoints
+    assert.equal(commandManager.undo(), true);
+    current = manager.findNode('path-resize-cmd') as Path;
+    assert.deepEqual(current.points, initialPoints);
+
+    // Redo -> reaplica finalPoints
+    assert.equal(commandManager.redo(), true);
+    current = manager.findNode('path-resize-cmd') as Path;
+    assert.deepEqual(current.points, finalPoints);
+  });
+
+  it('arrastre de manejador de esquina escala un Path interactivamente con soporte de undo/redo', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const layerId = manager.getState().children[0].id;
+    const path: Path = {
+      id: 'path-interactive-resize',
+      type: 'path',
+      name: 'Path Interactive Resize',
+      x: 100,
+      y: 100,
+      points: [
+        { x: 100, y: 100 },
+        { x: 200, y: 200 },
+      ],
+    };
+    manager.addShape(layerId, path);
+    manager.selectNode('path-interactive-resize');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // AABB va de (100, 100) a (200, 200). Manejador bottom-right está centrado en (200, 200)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200 });
+    assert.equal(controller.isResizing, true);
+    assert.equal(controller.currentResizeHandle, 'bottom-right');
+
+    // Mover ratón +50 en X, +50 en Y -> cursor en (250, 250) (escala a 150x150)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 250, clientY: 250 });
+    let current = manager.findNode('path-interactive-resize') as Path;
+    assert.equal(current.points[0].x, 100, 'Punto origen permanece fijo');
+    assert.equal(current.points[0].y, 100, 'Punto origen permanece fijo');
+    assert.equal(current.points[1].x, 250, 'Punto extremo se escala a 250');
+    assert.equal(current.points[1].y, 250, 'Punto extremo se escala a 250');
+
+    // Mouse up
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 250 });
+    assert.equal(controller.isResizing, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Undo -> restaura puntos originales
+    commandManager.undo();
+    current = manager.findNode('path-interactive-resize') as Path;
+    assert.equal(current.points[1].x, 200);
+    assert.equal(current.points[1].y, 200);
+
+    // Redo -> reaplica puntos escalados
+    commandManager.redo();
+    current = manager.findNode('path-interactive-resize') as Path;
+    assert.equal(current.points[1].x, 250);
+    assert.equal(current.points[1].y, 250);
+
+    controller.destroy();
+  });
+
+  it('arrastre de rotation-handle rota un Path interactivamente con soporte de undo/redo', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const layerId = manager.getState().children[0].id;
+    const path: Path = {
+      id: 'path-interactive-rotate',
+      type: 'path',
+      name: 'Path Interactive Rotate',
+      x: 100,
+      y: 100,
+      points: [
+        { x: 100, y: 100 },
+        { x: 200, y: 200 },
+      ],
+      rotation: 0,
+    };
+    manager.addShape(layerId, path);
+    manager.selectNode('path-interactive-rotate');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Centroide: (150, 150)
+    const centroid = controller.getShapeCentroid(path);
+    assert.deepEqual(centroid, { x: 150, y: 150 });
+
+    // Rotation handle está en (150, 70) (minY: 100 - 30 = 70)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 70 });
+    assert.equal(controller.isRotating, true);
+    assert.equal(controller.rotatingNodeId, 'path-interactive-rotate');
+
+    // Mover hacia (150, 250) -> deltaX = 0, deltaY = 100 -> 90 grados
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 250 });
+    let current = manager.findNode('path-interactive-rotate') as Path;
+    assert.equal(current.rotation, 90, 'Path debe rotar a 90 grados en tiempo real');
+
+    // Mouse up
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 250 });
+    assert.equal(controller.isRotating, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Undo -> restaura 0 grados
+    commandManager.undo();
+    current = manager.findNode('path-interactive-rotate') as Path;
+    assert.equal(current.rotation, 0);
+
+    // Redo -> reaplica 90 grados
+    commandManager.redo();
+    current = manager.findNode('path-interactive-rotate') as Path;
+    assert.equal(current.rotation, 90);
+
+    controller.destroy();
+  });
 });
 
 
