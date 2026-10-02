@@ -86,6 +86,7 @@ export function setupUIBindings(
   const stateManager = stateManagerInstance ?? (inputController as any).stateManager ?? moduleStateManager;
 
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
+  const btnDirectSelect = document.querySelector<HTMLButtonElement>('#tool-direct-select');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
@@ -109,6 +110,12 @@ export function setupUIBindings(
       btnSelect.setAttribute('aria-pressed', String(isSelect));
     }
 
+    if (btnDirectSelect) {
+      const isDirectSelect = tool === 'direct-select';
+      btnDirectSelect.classList.toggle('active', isDirectSelect);
+      btnDirectSelect.setAttribute('aria-pressed', String(isDirectSelect));
+    }
+
     if (btnPen) {
       const isPen = tool === 'pen';
       btnPen.classList.toggle('active', isPen);
@@ -116,7 +123,13 @@ export function setupUIBindings(
     }
 
     if (statusToolLabel) {
-      statusToolLabel.textContent = `Modo: ${tool === 'pen' ? 'Pluma (Bézier)' : 'Selección'}`;
+      statusToolLabel.textContent = `Modo: ${
+        tool === 'pen'
+          ? 'Pluma (Bézier)'
+          : tool === 'direct-select'
+            ? 'Selección Directa'
+            : 'Selección'
+      }`;
     }
   };
 
@@ -127,9 +140,11 @@ export function setupUIBindings(
 
   // Clic en botones de herramientas -> InputController
   const onSelectClick = () => inputController.setTool('select');
+  const onDirectSelectClick = () => inputController.setTool('direct-select');
   const onPenClick = () => inputController.setTool('pen');
 
   btnSelect?.addEventListener('click', onSelectClick);
+  btnDirectSelect?.addEventListener('click', onDirectSelectClick);
   btnPen?.addEventListener('click', onPenClick);
 
   // Inicializar estado visual de herramientas
@@ -451,6 +466,7 @@ export function setupUIBindings(
       unsubscribeHistory();
       unsubscribeState();
       btnSelect?.removeEventListener('click', onSelectClick);
+      btnDirectSelect?.removeEventListener('click', onDirectSelectClick);
       btnPen?.removeEventListener('click', onPenClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);

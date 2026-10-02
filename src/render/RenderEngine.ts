@@ -345,6 +345,8 @@ export class RenderEngine {
         const aabb = getShapeAABB(shape);
         const handleSize = 8;
         const halfHandle = handleSize / 2;
+        const midX = (aabb.minX + aabb.maxX) / 2;
+        const rotY = aabb.minY - 30;
 
         this.ctx.save();
 
@@ -354,7 +356,15 @@ export class RenderEngine {
         this.ctx.setLineDash([]);
         this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
 
-        // 2. Manejadores (cuadrados en las 4 esquinas)
+        // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = '#2563eb';
+        this.ctx.lineWidth = 1;
+        this.ctx.moveTo(midX, aabb.minY);
+        this.ctx.lineTo(midX, rotY);
+        this.ctx.stroke();
+
+        // 3. Manejadores (cuadrados en las 4 esquinas)
         const corners = [
           { x: aabb.minX, y: aabb.minY }, // Superior Izquierda
           { x: aabb.maxX, y: aabb.minY }, // Superior Derecha
@@ -382,6 +392,19 @@ export class RenderEngine {
             handleSize
           );
         }
+
+        // 4. Manejador de rotación flotante (círculo verde)
+        this.ctx.beginPath();
+        if (typeof this.ctx.arc === 'function') {
+          this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
+        } else if (typeof (this.ctx as any).ellipse === 'function') {
+          (this.ctx as any).ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
+        }
+        this.ctx.fillStyle = '#10b981'; // Verde para diferenciarlo visualmente de las esquinas azules
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#059669'; // Borde verde de definición
+        this.ctx.lineWidth = 1.5;
+        this.ctx.stroke();
 
         this.ctx.restore();
       }

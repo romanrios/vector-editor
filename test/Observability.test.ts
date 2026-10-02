@@ -115,6 +115,7 @@ function createMockCanvas(): HTMLCanvasElement {
 describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
   it('sincroniza clases .active en botones de herramienta mediante Event Emitter de InputController', () => {
     const btnSelect = new MockElement('tool-select');
+    const btnDirectSelect = new MockElement('tool-direct-select');
     const btnPen = new MockElement('tool-pen');
     const btnUndo = new MockElement('btn-undo');
     const btnRedo = new MockElement('btn-redo');
@@ -122,6 +123,7 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
 
     const domMap: Record<string, MockElement> = {
       '#tool-select': btnSelect,
+      '#tool-direct-select': btnDirectSelect,
       '#tool-pen': btnPen,
       '#btn-undo': btnUndo,
       '#btn-redo': btnRedo,
@@ -142,21 +144,38 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
 
     // 1. Estado inicial: Selección activa
     assert.equal(btnSelect.classList.contains('active'), true);
+    assert.equal(btnDirectSelect.classList.contains('active'), false);
     assert.equal(btnPen.classList.contains('active'), false);
     assert.equal(btnSelect.getAttribute('aria-pressed'), 'true');
+    assert.equal(btnDirectSelect.getAttribute('aria-pressed'), 'false');
     assert.equal(btnPen.getAttribute('aria-pressed'), 'false');
 
-    // 2. Cambiar herramienta en InputController mediante setTool -> notifica vía Event Emitter
+    // 2. Cambiar herramienta a direct-select
+    inputController.setTool('direct-select');
+    assert.equal(btnSelect.classList.contains('active'), false);
+    assert.equal(btnDirectSelect.classList.contains('active'), true);
+    assert.equal(btnPen.classList.contains('active'), false);
+    assert.equal(btnDirectSelect.getAttribute('aria-pressed'), 'true');
+    assert.equal(statusLabel.textContent, 'Modo: Selección Directa');
+
+    // 3. Cambiar herramienta a pen
     inputController.setTool('pen');
     assert.equal(btnSelect.classList.contains('active'), false);
+    assert.equal(btnDirectSelect.classList.contains('active'), false);
     assert.equal(btnPen.classList.contains('active'), true);
     assert.equal(btnPen.getAttribute('aria-pressed'), 'true');
     assert.equal(statusLabel.textContent, 'Modo: Pluma (Bézier)');
 
-    // 3. Clic en botón HTML Selección -> activa herramienta en InputController y actualiza DOM
+    // 4. Clic en botón HTML Selección Directa -> activa herramienta en InputController
+    btnDirectSelect.click();
+    assert.equal(inputController.currentTool, 'direct-select');
+    assert.equal(btnDirectSelect.classList.contains('active'), true);
+
+    // 5. Clic en botón HTML Selección -> activa herramienta en InputController y actualiza DOM
     btnSelect.click();
     assert.equal(inputController.currentTool, 'select');
     assert.equal(btnSelect.classList.contains('active'), true);
+    assert.equal(btnDirectSelect.classList.contains('active'), false);
     assert.equal(btnPen.classList.contains('active'), false);
 
     cleanup();

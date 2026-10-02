@@ -5,8 +5,11 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
 import { ResizeCommand } from '../src/commands/ResizeCommand.ts';
 import { StyleCommand } from '../src/commands/StyleCommand.ts';
+import { DeleteCommand } from '../src/commands/DeleteCommand.ts';
+import { RotateCommand } from '../src/commands/RotateCommand.ts';
+import { PointCommand } from '../src/commands/PointCommand.ts';
 import { InputController } from '../src/input/InputController.ts';
-import type { Ellipse, Rectangle } from '../src/types/scene-graph.ts';
+import type { Ellipse, Path, Rectangle } from '../src/types/scene-graph.ts';
 
 // Mock de Canvas para simular eventos en Node.js
 function createMockCanvas(): HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void } {
@@ -452,6 +455,117 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
     assert.equal(current.fill, '#00ff00');
     assert.equal(current.strokeWidth, 5);
     assert.equal(current.opacity, 0.5);
+  });
+
+  it('DeleteCommand: elimina una figura del Scene Graph y permite deshacer y rehacer', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = manager.getState().children[0].id;
+    const rect: Rectangle = {
+      id: 'rect-delete',
+      type: 'rectangle',
+      name: 'Rect Para Eliminar',
+      x: 10,
+      y: 10,
+      width: 100,
+      height: 100,
+    };
+    manager.addShape(layerId, rect);
+
+    assert.equal(manager.findNode('rect-delete') !== null, true);
+
+    const cmd = new DeleteCommand(manager, rect, layerId);
+    commandManager.executeCommand(cmd);
+
+    // Debe haberse eliminado
+    assert.equal(manager.findNode('rect-delete'), null);
+    assert.equal(commandManager.canUndo(), true);
+
+    // Undo -> debe reinyectar el shape
+    assert.equal(commandManager.undo(), true);
+    assert.equal(manager.findNode('rect-delete') !== null, true);
+
+    // Redo -> debe eliminarlo de nuevo
+    assert.equal(commandManager.redo(), true);
+    assert.equal(manager.findNode('rect-delete'), null);
+  });
+
+  it('RotateCommand: actualiza el ángulo de rotación y permite deshacer y rehacer', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = manager.getState().children[0].id;
+    const rect: Rectangle = {
+      id: 'rect-rotate-cmd',
+      type: 'rectangle',
+      name: 'Rect Rotate Cmd',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      rotation: 0,
+    };
+    manager.addShape(layerId, rect);
+
+    const cmd = new RotateCommand(manager, 'rect-rotate-cmd', 0, 45);
+    commandManager.executeCommand(cmd);
+
+    let current = manager.findNode('rect-rotate-cmd') as Rectangle;
+    assert.equal(current.rotation, 45);
+    assert.equal(commandManager.canUndo(), true);
+
+    // Undo -> debe regresar a 0
+    assert.equal(commandManager.undo(), true);
+    current = manager.findNode('rect-rotate-cmd') as Rectangle;
+    assert.equal(current.rotation, 0);
+
+    // Redo -> debe volver a 45
+    assert.equal(commandManager.redo(), true);
+    current = manager.findNode('rect-rotate-cmd') as Rectangle;
+    assert.equal(current.rotation, 45);
+  });
+
+  it('PointCommand: modifica los puntos de un Path y permite deshacer y rehacer', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+
+    const layerId = manager.getState().children[0].id;
+    const initialPoints = [
+      { x: 10, y: 10 },
+      { x: 50, y: 50 },
+    ];
+    const finalPoints = [
+      { x: 25, y: 30 },
+      { x: 50, y: 50 },
+    ];
+
+    const path: Path = {
+      id: 'path-cmd-test',
+      type: 'path',
+      name: 'Path Cmd Test',
+      x: 0,
+      y: 0,
+      points: initialPoints,
+    };
+    manager.addShape(layerId, path);
+
+    const cmd = new PointCommand(manager, 'path-cmd-test', initialPoints, finalPoints);
+    commandManager.executeCommand(cmd);
+
+    let current = manager.findNode('path-cmd-test') as Path;
+    assert.deepEqual(current.points, finalPoints);
+    assert.equal(commandManager.canUndo(), true);
+
+    // Undo -> debe restaurar initialPoints
+    assert.equal(commandManager.undo(), true);
+    current = manager.findNode('path-cmd-test') as Path;
+    assert.deepEqual(current.points, initialPoints);
+
+    // Redo -> debe aplicar finalPoints
+    assert.equal(commandManager.redo(), true);
+    current = manager.findNode('path-cmd-test') as Path;
+    assert.deepEqual(current.points, finalPoints);
   });
 });
 

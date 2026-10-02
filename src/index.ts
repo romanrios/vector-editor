@@ -23,6 +23,9 @@ export * from './commands/CommandManager.ts';
 export * from './commands/TranslateCommand.ts';
 export * from './commands/ResizeCommand.ts';
 export * from './commands/StyleCommand.ts';
+export * from './commands/DeleteCommand.ts';
+export * from './commands/RotateCommand.ts';
+export * from './commands/PointCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

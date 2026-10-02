@@ -163,28 +163,30 @@ export function isPointInAABB(px: number, py: number, aabb: AABB): boolean {
 }
 
 /**
- * Tipos de manejadores de esquina
+ * Tipos de manejadores de esquina y rotación
  */
-export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left';
+export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | 'rotation-handle';
 
 /**
- * Representación de un manejador de esquina como AABB pequeño
+ * Representación de un manejador de selección como AABB pequeño
  */
 export interface SelectionHandle extends AABB {
   readonly type: HandleType;
 }
 
 /**
- * Calcula el AABB de un Shape y devuelve un array con 4 objetos geométricos
- * (AABBs pequeños de 8x8px) correspondientes a los manejadores de sus 4 esquinas.
+ * Calcula el AABB de un Shape y devuelve un array con 5 objetos geométricos
+ * (AABBs pequeños de 8x8px) correspondientes a las 4 esquinas y al manejador de rotación flotante.
  *
  * @param shape Figura seleccionada
  * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
- * @returns Array con los 4 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left'
+ * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
  */
 export function getSelectionHandles(shape: Shape, handleSize: number = 8): SelectionHandle[] {
   const aabb = getShapeAABB(shape);
   const half = handleSize / 2;
+  const midX = (aabb.minX + aabb.maxX) / 2;
+  const rotY = aabb.minY - 30;
 
   return [
     {
@@ -220,6 +222,15 @@ export function getSelectionHandles(shape: Shape, handleSize: number = 8): Selec
       minY: aabb.maxY - half,
       maxX: aabb.minX + half,
       maxY: aabb.maxY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'rotation-handle',
+      minX: midX - half,
+      minY: rotY - half,
+      maxX: midX + half,
+      maxY: rotY + half,
       width: handleSize,
       height: handleSize,
     },

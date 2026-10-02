@@ -19,6 +19,7 @@ function createMockCanvas(): { canvas: HTMLCanvasElement; calls: string[] } {
     lineTo: () => calls.push('lineTo'),
     stroke: () => calls.push('stroke'),
     fill: () => calls.push('fill'),
+    arc: () => calls.push('arc'),
     rect: () => calls.push('rect'),
     roundRect: () => calls.push('roundRect'),
     strokeRect: () => calls.push('strokeRect'),

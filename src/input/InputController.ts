@@ -1,5 +1,5 @@
 import type { StateManager } from '../state/StateManager.ts';
-import type { Path, PathPoint, Shape } from '../types/scene-graph.ts';
+import type { AABB, Path, PathPoint, Shape } from '../types/scene-graph.ts';
 import {
   getSelectionHandles,
   getShapeAABB,
@@ -10,10 +10,30 @@ import {
 import { CommandManager } from '../commands/CommandManager.ts';
 import { TranslateCommand } from '../commands/TranslateCommand.ts';
 import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.ts';
+import { DeleteCommand } from '../commands/DeleteCommand.ts';
+import { RotateCommand } from '../commands/RotateCommand.ts';
+import { PointCommand } from '../commands/PointCommand.ts';
 
-export type ToolMode = 'select' | 'pen';
+export type ToolMode = 'select' | 'pen' | 'direct-select';
 export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
+
+/**
+ * Tipo de objetivo seleccionado dentro de un punto de trazado en modo direct-select
+ */
+export type DirectSelectTargetType = 'anchor' | 'handleIn' | 'handleOut';
+
+/**
+ * Representa el objetivo de arrastre o subselección en la herramienta Selección Directa
+ */
+export interface DirectSelectTarget {
+  readonly pathId: string;
+  readonly pointIndex: number;
+  readonly index: number;
+  readonly type: DirectSelectTargetType;
+  readonly targetType: DirectSelectTargetType;
+  readonly handleType: DirectSelectTargetType;
+}
 
 export interface InputControllerOptions {
   /**
@@ -22,7 +42,7 @@ export interface InputControllerOptions {
    */
   deselectOnEmptyClick?: boolean;
   /**
-   * Habilita los atajos de teclado globales (Ctrl+Z, Ctrl+Y, 'P' para pluma, 'V' para selección).
+   * Habilita los atajos de teclado globales (Ctrl+Z, Ctrl+Y, 'P' para pluma, 'V' para selección, 'A' para selección directa).
    * Por defecto true.
    */
   enableKeyboardShortcuts?: boolean;
@@ -59,6 +79,21 @@ export class InputController {
   private activeResizeHandle: HandleType | null = null;
   private resizingShapeId: string | null = null;
   private initialDimensions: ShapeDimensions | null = null;
+
+  // Estado de rotación (modo Selección)
+  private _isRotating: boolean = false;
+  private rotatingShapeId: string | null = null;
+  private initialRotation: number | null = null;
+
+  // Estado de la herramienta Selección Directa (modo 'direct-select')
+  private _draggedPointIndex: number | null = null;
+  private _draggedTargetType: DirectSelectTargetType | null = null;
+  private _draggedPointTarget: DirectSelectTarget | null = null;
+  private _dragTarget: DirectSelectTarget | null = null;
+  private _directSelectTarget: DirectSelectTarget | null = null;
+  private _isDraggingPoint: boolean = false;
+  private directSelectOrigin: { x: number; y: number } | null = null;
+  private initialPathPoints: readonly PathPoint[] | null = null;
 
   // Estado de la herramienta Pluma (modo Pen)
   private activePathId: string | null = null;
@@ -101,6 +136,9 @@ export class InputController {
 
     if (this._currentTool === 'pen' && tool !== 'pen') {
       this.finishActivePath();
+    }
+    if (this._currentTool === 'direct-select' && tool !== 'direct-select') {
+      this.resetDirectSelect();
     }
 
     this._currentTool = tool;
@@ -156,6 +194,42 @@ export class InputController {
 
   public get isResizing(): boolean {
     return this._isResizing;
+  }
+
+  public get isRotating(): boolean {
+    return this._isRotating;
+  }
+
+  public get rotatingNodeId(): string | null {
+    return this.rotatingShapeId;
+  }
+
+  public get initialRotateAngle(): number | null {
+    return this.initialRotation;
+  }
+
+  public get draggedPointIndex(): number | null {
+    return this._draggedPointIndex;
+  }
+
+  public get draggedTargetType(): DirectSelectTargetType | null {
+    return this._draggedTargetType;
+  }
+
+  public get draggedPointTarget(): DirectSelectTarget | null {
+    return this._draggedPointTarget;
+  }
+
+  public get dragTarget(): DirectSelectTarget | null {
+    return this._dragTarget;
+  }
+
+  public get directSelectTarget(): DirectSelectTarget | null {
+    return this._directSelectTarget;
+  }
+
+  public get isDraggingPoint(): boolean {
+    return this._isDraggingPoint;
   }
 
   public get resizeOriginPoint(): { x: number; y: number } | null {
@@ -218,6 +292,10 @@ export class InputController {
       this.canvas.removeEventListener('mouseup', this.onMouseUpHandler);
     }
 
+    this.resetDrag();
+    this.resetResize();
+    this.resetRotate();
+    this.resetDirectSelect();
     this.eventListeners.clear();
   }
 
@@ -304,6 +382,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'direct-select') {
+      this.handleDirectSelectMouseDown(x, y);
+      return;
+    }
+
     // Modo 'select'
     // 1. Antes de evaluar colisiones con figuras mediante hitTest,
     // verifica si ya existe un nodo seleccionado y si el cursor colisiona con uno de sus manejadores utilizando isPointInAABB
@@ -313,9 +396,20 @@ export class InputController {
       const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
       if (hitHandle) {
+        if (hitHandle.type === 'rotation-handle') {
+          this._isRotating = true;
+          this._isResizing = false;
+          this._isDragging = false;
+          this.rotatingShapeId = selectedNode.id;
+          this.initialRotation = selectedNode.rotation ?? 0;
+          this.canvas.style.cursor = 'crosshair';
+          return;
+        }
+
         // Marca la bandera _isResizing = true (y el origen del resize) en lugar de _isDragging
         this._isResizing = true;
         this._isDragging = false;
+        this._isRotating = false;
         this.resizeOrigin = { x, y };
         this.activeResizeHandle = hitHandle.type;
         this.resizingShapeId = selectedNode.id;
@@ -354,6 +448,7 @@ export class InputController {
 
       this._isDragging = true;
       this._isResizing = false;
+      this._isRotating = false;
       this.draggedShapeId = hitShape.id;
       this.dragOrigin = { x, y };
       this.initialShapePosition = { x: hitShape.x, y: hitShape.y };
@@ -364,6 +459,7 @@ export class InputController {
       }
       this.resetDrag();
       this.resetResize();
+      this.resetRotate();
     }
   }
 
@@ -452,7 +548,29 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'direct-select') {
+      this.handleDirectSelectMouseMove(x, y);
+      return;
+    }
+
     // Modo 'select'
+    if (this._isRotating && this.rotatingShapeId) {
+      const selectedShape =
+        (this.stateManager.findNode(this.rotatingShapeId) as Shape | null) ??
+        this.stateManager.getSelectedNode();
+      if (selectedShape) {
+        const centroid = this.getShapeCentroid(selectedShape);
+        const deltaX = x - centroid.x;
+        const deltaY = y - centroid.y;
+        const radians = Math.atan2(deltaY, deltaX);
+        const degrees = (radians * 180) / Math.PI;
+
+        this.stateManager.updateShape(this.rotatingShapeId, { rotation: degrees });
+        this.canvas.style.cursor = 'crosshair';
+        return;
+      }
+    }
+
     if (this._isDragging && this.draggedShapeId && this.dragOrigin && this.initialShapePosition) {
       const deltaX = x - this.dragOrigin.x;
       const deltaY = y - this.dragOrigin.y;
@@ -497,6 +615,10 @@ export class InputController {
       const handles = getSelectionHandles(selectedShape);
       const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
       if (hoveredHandle) {
+        if (hoveredHandle.type === 'rotation-handle') {
+          this.canvas.style.cursor = 'crosshair';
+          return;
+        }
         const isNwse = hoveredHandle.type === 'top-left' || hoveredHandle.type === 'bottom-right';
         this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
         return;
@@ -561,7 +683,66 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'direct-select') {
+      if (
+        this._isDraggingPoint &&
+        this._draggedPointTarget &&
+        this.initialPathPoints
+      ) {
+        const path = this.stateManager.findNode(this._draggedPointTarget.pathId) as Path | null;
+        if (path && this.havePointsChanged(this.initialPathPoints, path.points)) {
+          const command = new PointCommand(
+            this.stateManager,
+            this._draggedPointTarget.pathId,
+            this.initialPathPoints,
+            path.points
+          );
+          this.commandManager.recordCommand(command);
+        }
+      }
+
+      this._isDraggingPoint = false;
+      this.directSelectOrigin = null;
+      this.initialPathPoints = null;
+
+      const { x, y } = this.getLocalCoordinates(event);
+      const selectedNode = this.stateManager.getSelectedNode();
+      if (selectedNode && selectedNode.type === 'path') {
+        const hit = this.findPathPointHit(selectedNode as Path, x, y);
+        this.canvas.style.cursor = hit ? 'pointer' : 'default';
+      } else {
+        this.canvas.style.cursor = 'default';
+      }
+      return;
+    }
+
     // Modo 'select'
+    if (this._isRotating) {
+      if (this.rotatingShapeId && this.initialRotation !== null) {
+        const selectedShape =
+          (this.stateManager.findNode(this.rotatingShapeId) as Shape | null) ??
+          this.stateManager.getSelectedNode();
+        if (selectedShape) {
+          const finalRotation = selectedShape.rotation ?? this.initialRotation;
+          if (finalRotation !== this.initialRotation) {
+            const command = new RotateCommand(
+              this.stateManager,
+              this.rotatingShapeId,
+              this.initialRotation,
+              finalRotation
+            );
+            this.commandManager.recordCommand(command);
+          }
+        }
+      }
+
+      this.resetRotate();
+      const { x, y } = this.getLocalCoordinates(event);
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (hitShape.selected ? 'move' : 'pointer') : 'default';
+      return;
+    }
+
     if (this._isResizing) {
       if (
         this.resizingShapeId &&
@@ -659,10 +840,32 @@ export class InputController {
     }
 
     const key = event.key.toLowerCase();
+    if (key === 'delete' || key === 'backspace') {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      const selectedNode = this.stateManager.getSelectedNode();
+      if (selectedNode) {
+        event.preventDefault?.();
+        const parent = this.stateManager.findParent(selectedNode.id);
+        const layerId = parent ? parent.id : this.stateManager.getState().children[0]?.id;
+        if (layerId) {
+          const deleteCommand = new DeleteCommand(this.stateManager, selectedNode, layerId);
+          this.commandManager.executeCommand(deleteCommand);
+          this.stateManager.selectNode(null);
+        }
+      }
+      return;
+    }
+
     if (key === 'p') {
       this.setTool('pen');
     } else if (key === 'v') {
       this.setTool('select');
+    } else if (key === 'a') {
+      this.setTool('direct-select');
     } else if (key === 'escape' || key === 'enter') {
       if (this._currentTool === 'pen') {
         this.finishActivePath();
@@ -683,6 +886,219 @@ export class InputController {
     this.activeResizeHandle = null;
     this.resizingShapeId = null;
     this.initialDimensions = null;
+  }
+
+  private resetRotate(): void {
+    this._isRotating = false;
+    this.rotatingShapeId = null;
+    this.initialRotation = null;
+  }
+
+  private resetDirectSelect(): void {
+    this._draggedPointIndex = null;
+    this._draggedTargetType = null;
+    this._draggedPointTarget = null;
+    this._dragTarget = null;
+    this._directSelectTarget = null;
+    this._isDraggingPoint = false;
+    this.directSelectOrigin = null;
+    this.initialPathPoints = null;
+  }
+
+  /**
+   * Maneja el evento mousedown en modo 'direct-select' (Herramienta de Selección Directa / Subselección).
+   * No selecciona el Shape completo mediante hitTest, sino que itera sobre los points del Path
+   * seleccionado previamente. Si el usuario hace clic cerca de un punto de ancla o manejador de
+   * control (AABB de 10x10px), marca ese vértice o manejador específico como _draggedPointIndex u objetivo de arrastre.
+   */
+  private handleDirectSelectMouseDown(x: number, y: number): void {
+    const selectedNode = this.stateManager.getSelectedNode();
+    if (!selectedNode || selectedNode.type !== 'path') {
+      this.resetDirectSelect();
+      return;
+    }
+
+    const hit = this.findPathPointHit(selectedNode as Path, x, y);
+    if (hit) {
+      this._draggedPointIndex = hit.index;
+      this._draggedTargetType = hit.type;
+      const target: DirectSelectTarget = {
+        pathId: selectedNode.id,
+        pointIndex: hit.index,
+        index: hit.index,
+        type: hit.type,
+        targetType: hit.type,
+        handleType: hit.type,
+      };
+      this._draggedPointTarget = target;
+      this._dragTarget = target;
+      this._directSelectTarget = target;
+      this._isDraggingPoint = true;
+      this.directSelectOrigin = { x, y };
+      this.dragOrigin = { x, y };
+      this.initialPathPoints = structuredClone((selectedNode as Path).points);
+      this.canvas.style.cursor = 'grabbing';
+    } else {
+      this.resetDirectSelect();
+      this.canvas.style.cursor = 'default';
+    }
+  }
+
+  /**
+   * Maneja el evento mousemove en modo 'direct-select'.
+   * Arrastra exclusivamente el vértice o manejador seleccionado en tiempo real calculando el delta del cursor.
+   * Si está en reposo (hover), actualiza el cursor si sobrevuela un punto o manejador.
+   */
+  private handleDirectSelectMouseMove(x: number, y: number): void {
+    if (
+      this._isDraggingPoint &&
+      this._draggedPointTarget &&
+      this.directSelectOrigin &&
+      this.initialPathPoints
+    ) {
+      const deltaX = x - this.directSelectOrigin.x;
+      const deltaY = y - this.directSelectOrigin.y;
+      const { pathId, pointIndex, type } = this._draggedPointTarget;
+
+      const nextPoints = this.initialPathPoints.map((pt, idx) => {
+        if (idx !== pointIndex) return pt;
+        if (type === 'anchor') {
+          return {
+            ...pt,
+            x: pt.x + deltaX,
+            y: pt.y + deltaY,
+          };
+        } else if (type === 'handleIn') {
+          const initH = pt.handleIn ?? { x: pt.x, y: pt.y };
+          return {
+            ...pt,
+            handleIn: {
+              x: initH.x + deltaX,
+              y: initH.y + deltaY,
+            },
+          };
+        } else if (type === 'handleOut') {
+          const initH = pt.handleOut ?? { x: pt.x, y: pt.y };
+          return {
+            ...pt,
+            handleOut: {
+              x: initH.x + deltaX,
+              y: initH.y + deltaY,
+            },
+          };
+        }
+        return pt;
+      });
+
+      this.stateManager.updateShape<Path>(pathId, { points: nextPoints });
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    const selectedNode = this.stateManager.getSelectedNode();
+    if (selectedNode && selectedNode.type === 'path') {
+      const hit = this.findPathPointHit(selectedNode as Path, x, y);
+      this.canvas.style.cursor = hit ? 'pointer' : 'default';
+    } else {
+      this.canvas.style.cursor = 'default';
+    }
+  }
+
+  /**
+   * Comprueba si la matriz de puntos ha cambiado respecto a la inicial.
+   */
+  private havePointsChanged(
+    prev: readonly PathPoint[],
+    next: readonly PathPoint[]
+  ): boolean {
+    if (prev.length !== next.length) return true;
+    for (let i = 0; i < prev.length; i++) {
+      const p = prev[i];
+      const n = next[i];
+      if (p.x !== n.x || p.y !== n.y) return true;
+      if (p.handleIn?.x !== n.handleIn?.x || p.handleIn?.y !== n.handleIn?.y) return true;
+      if (p.handleOut?.x !== n.handleOut?.x || p.handleOut?.y !== n.handleOut?.y) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Itera sobre los puntos de un Path buscando colisiones con manejadores de control
+   * (handleIn / handleOut) o con el vértice principal (punto de ancla) usando una AABB de 10x10px.
+   */
+  public findPathPointHit(
+    path: Path,
+    x: number,
+    y: number
+  ): { index: number; type: DirectSelectTargetType } | null {
+    if (!path.points || path.points.length === 0) return null;
+
+    // 1. Evaluar primero colisiones con manejadores de control Bézier extendidos (handleIn y handleOut)
+    for (let i = 0; i < path.points.length; i++) {
+      const pt = path.points[i];
+      if (pt.handleIn && (pt.handleIn.x !== pt.x || pt.handleIn.y !== pt.y)) {
+        const handleInAABB = this.createHandleAABB(pt.handleIn.x, pt.handleIn.y, 10);
+        if (isPointInAABB(x, y, handleInAABB)) {
+          return { index: i, type: 'handleIn' };
+        }
+      }
+
+      if (pt.handleOut && (pt.handleOut.x !== pt.x || pt.handleOut.y !== pt.y)) {
+        const handleOutAABB = this.createHandleAABB(pt.handleOut.x, pt.handleOut.y, 10);
+        if (isPointInAABB(x, y, handleOutAABB)) {
+          return { index: i, type: 'handleOut' };
+        }
+      }
+    }
+
+    // 2. Evaluar colisiones con los vértices / puntos de ancla principales
+    for (let i = 0; i < path.points.length; i++) {
+      const pt = path.points[i];
+      const anchorAABB = this.createHandleAABB(pt.x, pt.y, 10);
+      if (isPointInAABB(x, y, anchorAABB)) {
+        return { index: i, type: 'anchor' };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Genera un AABB centrado en una coordenada (px, py) de tamaño size x size (por defecto 10x10px).
+   */
+  public createHandleAABB(px: number, py: number, size: number = 10): AABB {
+    const half = size / 2;
+    return {
+      minX: px - half,
+      minY: py - half,
+      maxX: px + half,
+      maxY: py + half,
+      width: size,
+      height: size,
+    };
+  }
+
+  /**
+   * Determina el centroide de una figura (rectángulo, elipse o trazado).
+   */
+  public getShapeCentroid(shape: Shape): { x: number; y: number } {
+    if (shape.type === 'rectangle') {
+      return {
+        x: shape.x + shape.width / 2,
+        y: shape.y + shape.height / 2,
+      };
+    }
+    if (shape.type === 'ellipse') {
+      return {
+        x: shape.x,
+        y: shape.y,
+      };
+    }
+    const aabb = getShapeAABB(shape);
+    return {
+      x: (aabb.minX + aabb.maxX) / 2,
+      y: (aabb.minY + aabb.maxY) / 2,
+    };
   }
 
   /**
