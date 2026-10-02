@@ -4,28 +4,343 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vector Editor - Scene Graph Canvas 2D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
     <style>
+      :root {
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --font-heading: 'Outfit', var(--font-sans);
+        --bg-main: #090d16;
+        --bg-panel: rgba(15, 23, 42, 0.8);
+        --bg-panel-hover: rgba(30, 41, 59, 0.85);
+        --border-glass: rgba(255, 255, 255, 0.1);
+        --border-glass-hover: rgba(255, 255, 255, 0.2);
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.35);
+        --accent-gradient: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+      }
+
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
+
       html, body {
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background-color: #0f172a;
+        background-color: var(--bg-main);
+        font-family: var(--font-sans);
+        color: var(--text-primary);
         user-select: none;
+        -webkit-user-select: none;
       }
+
       #viewport-canvas {
-        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100vw;
         height: 100vh;
+        display: block;
+        z-index: 1;
+      }
+
+      /* Floating Header Toolbar */
+      .editor-header {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 14px;
+        background: var(--bg-panel);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-glass);
+        border-radius: 9999px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.1);
+        animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -18px);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-right: 8px;
+        border-right: 1px solid var(--border-glass);
+      }
+
+      .brand-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--accent-gradient);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px var(--accent-glow);
+        color: #ffffff;
+      }
+
+      .brand-title {
+        font-family: var(--font-heading);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        background: linear-gradient(135deg, #ffffff 60%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .toolbar-divider {
+        width: 1px;
+        height: 24px;
+        background: var(--border-glass);
+        margin: 0 4px;
+      }
+
+      /* Buttons Common */
+      .ui-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 9999px;
+        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text-secondary);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        outline: none;
+      }
+
+      .ui-btn svg {
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+      }
+
+      .ui-btn kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: var(--text-muted);
+        font-family: var(--font-sans);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      /* Hover States */
+      .ui-btn:not(:disabled):not(.disabled):hover {
+        background: var(--bg-panel-hover);
+        border-color: var(--border-glass-hover);
+        color: var(--text-primary);
+        transform: translateY(-1px);
+      }
+
+      .ui-btn:not(:disabled):not(.disabled):hover svg {
+        transform: scale(1.08);
+      }
+
+      /* Tool Active State (.active) */
+      .tool-btn.active {
+        background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(14, 165, 233, 0.45));
+        border-color: var(--accent);
+        color: #ffffff;
+        box-shadow: 0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      }
+
+      .tool-btn.active kbd {
+        background: rgba(56, 189, 248, 0.3);
+        border-color: rgba(56, 189, 248, 0.5);
+        color: #e0f2fe;
+      }
+
+      /* History Buttons Disabled State (.disabled & :disabled) */
+      .action-btn.disabled,
+      .action-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+        filter: grayscale(0.5);
+        transform: none !important;
+        box-shadow: none !important;
+      }
+
+      /* Floating Bottom Status Pill */
+      .editor-footer {
+        position: absolute;
+        bottom: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 7px 18px;
+        background: var(--bg-panel);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--border-glass);
+        border-radius: 9999px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        pointer-events: none;
+        animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translate(-50%, 18px);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+      }
+
+      .status-hints {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+      }
+
+      .status-hints .separator {
+        opacity: 0.4;
       }
     </style>
   </head>
   <body>
+    <!-- Canvas de pantalla completa para el motor Canvas 2D -->
     <canvas id="viewport-canvas"></canvas>
+
+    <!-- Toolbar superior flotante con binding reactivo a herramientas e historial -->
+    <header class="editor-header" role="region" aria-label="Barra de herramientas del editor">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            <path d="M2 2l7.586 7.586"/>
+            <circle cx="11" cy="11" r="2"/>
+          </svg>
+        </div>
+        <span class="brand-title">Vector Engine</span>
+      </div>
+
+      <!-- Grupo de Herramientas (Modos de interacción) -->
+      <div class="toolbar-group tools" role="toolbar" aria-label="Herramientas de dibujo">
+        <button id="tool-select" class="ui-btn tool-btn active" title="Herramienta Selección (V)" aria-label="Herramienta Selección" aria-pressed="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3l7 18 3-7 7-3L3 3z"/>
+          </svg>
+          <span>Selección</span>
+          <kbd>V</kbd>
+        </button>
+
+        <button id="tool-pen" class="ui-btn tool-btn" title="Herramienta Pluma Bézier (P)" aria-label="Herramienta Pluma Bézier" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            <path d="M2 2l7.586 7.586"/>
+          </svg>
+          <span>Pluma</span>
+          <kbd>P</kbd>
+        </button>
+      </div>
+
+      <div class="toolbar-divider" aria-hidden="true"></div>
+
+      <!-- Grupo de Historial (Deshacer / Rehacer) -->
+      <div class="toolbar-group history" role="toolbar" aria-label="Historial de comandos">
+        <button id="btn-undo" class="ui-btn action-btn disabled" title="Deshacer última acción (Ctrl+Z)" aria-label="Deshacer" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7v6h6"/>
+            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+          </svg>
+          <span>Deshacer</span>
+          <kbd>Ctrl+Z</kbd>
+        </button>
+
+        <button id="btn-redo" class="ui-btn action-btn disabled" title="Rehacer acción deshecha (Ctrl+Y)" aria-label="Rehacer" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 7v6h-6"/>
+            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
+          </svg>
+          <span>Rehacer</span>
+          <kbd>Ctrl+Y</kbd>
+        </button>
+      </div>
+    </header>
+
+    <!-- Footer flotante con estado reactivo -->
+    <footer class="editor-footer" role="status" aria-live="polite">
+      <div class="status-indicator">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-tool-label">Modo: Selección</span>
+      </div>
+      <div class="status-hints">
+        <span>Arrastra esquinas para redimensionar</span>
+        <span class="separator" aria-hidden="true">•</span>
+        <span>Arrastra centro para mover</span>
+      </div>
+    </footer>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
+

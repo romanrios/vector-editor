@@ -186,4 +186,53 @@ describe('StateManager - Scene Graph Inmutable', () => {
     // Ya no debe incrementar porque se desuscribió
     assert.equal(callCount, 3);
   });
+
+  it('bringToFront: mueve el elemento al final del array y recalcula valores discretos de zIndex', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager); // 3 figuras: shape-rect-1, shape-ellipse-1, shape-ellipse-2
+
+    // Estado inicial: [shape-rect-1, shape-ellipse-1, shape-ellipse-2]
+    let shapes = manager.getState().children[0].children;
+    assert.equal(shapes[0].id, 'shape-rect-1');
+    assert.equal(shapes[1].id, 'shape-ellipse-1');
+    assert.equal(shapes[2].id, 'shape-ellipse-2');
+
+    // Mover la primera figura al frente
+    const res = manager.bringToFront('shape-rect-1');
+    assert.equal(res, true);
+
+    shapes = manager.getState().children[0].children;
+    assert.equal(shapes.length, 3);
+    assert.equal(shapes[0].id, 'shape-ellipse-1');
+    assert.equal(shapes[1].id, 'shape-ellipse-2');
+    assert.equal(shapes[2].id, 'shape-rect-1'); // Ahora al frente (último)
+
+    // Verificar que los valores discretos de zIndex coincidan con su orden
+    assert.equal(shapes[0].zIndex, 0);
+    assert.equal(shapes[1].zIndex, 1);
+    assert.equal(shapes[2].zIndex, 2);
+    assert.equal(manager.isDirty, true);
+  });
+
+  it('sendToBack: mueve el elemento al inicio del array y recalcula valores discretos de zIndex', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager); // 3 figuras: shape-rect-1, shape-ellipse-1, shape-ellipse-2
+
+    // Mover la última figura (shape-ellipse-2) al fondo
+    const res = manager.sendToBack('shape-ellipse-2');
+    assert.equal(res, true);
+
+    const shapes = manager.getState().children[0].children;
+    assert.equal(shapes.length, 3);
+    assert.equal(shapes[0].id, 'shape-ellipse-2'); // Ahora al fondo (primero)
+    assert.equal(shapes[1].id, 'shape-rect-1');
+    assert.equal(shapes[2].id, 'shape-ellipse-1');
+
+    // Verificar valores discretos de zIndex recalculados
+    assert.equal(shapes[0].zIndex, 0);
+    assert.equal(shapes[1].zIndex, 1);
+    assert.equal(shapes[2].zIndex, 2);
+  });
 });
+
+

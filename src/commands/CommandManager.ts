@@ -107,6 +107,20 @@ export class CommandManager {
     };
   }
 
+  /**
+   * Alias de suscripción estilo Event Emitter para consistencia en la observabilidad de la UI.
+   */
+  public on(_event: 'change', listener: HistoryListener): () => void {
+    return this.subscribe(listener);
+  }
+
+  /**
+   * Remueve un listener registrado con on o subscribe.
+   */
+  public off(_event: 'change', listener: HistoryListener): void {
+    this.listeners.delete(listener);
+  }
+
   private notify(): void {
     for (const listener of this.listeners) {
       listener(this.undoStack.length, this.redoStack.length);

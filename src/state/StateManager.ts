@@ -5,6 +5,7 @@ import type {
   SceneNode,
   Shape,
 } from '../types/scene-graph.ts';
+import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import { isDocument, isLayer, isShape } from '../types/scene-graph.ts';
 import {
   deepFreeze,
@@ -361,6 +362,158 @@ export class StateManager {
   }
 
   /**
+   * Mueve una figura (o capa) al frente de su contenedor (última posición visual en el array)
+   * y recalcula un valor discreto de zIndex (0, 1, 2, ...) para todos los elementos hermanos
+   * a fin de facilitar futuros cómputos asíncronos y ordenamientos independientes.
+   *
+   * @param shapeId ID de la figura o elemento a traer al frente
+   * @returns true si el elemento fue encontrado y reordenado, false en caso contrario
+   */
+  public bringToFront(shapeId: string): boolean {
+    const parent = this.findParent(shapeId);
+    if (!parent) {
+      return false;
+    }
+
+    if (isLayer(parent)) {
+      const shapes = parent.children;
+      const currentIndex = shapes.findIndex((s) => s.id === shapeId);
+      if (currentIndex === -1) {
+        return false;
+      }
+
+      // Mover al final del array
+      const targetShape = shapes[currentIndex];
+      const filtered = shapes.filter((_, idx) => idx !== currentIndex);
+      const reordered = [...filtered, targetShape];
+
+      // Recalcular valor discreto de zIndex para todos los elementos hermanos
+      const updatedShapes = reordered.map((shape, index) => ({
+        ...shape,
+        zIndex: index,
+      }));
+
+      const updatedLayer: Layer = {
+        ...parent,
+        children: updatedShapes,
+      };
+
+      const nextLayers = this._state.children.map((layer) =>
+        layer.id === parent.id ? updatedLayer : layer
+      );
+
+      this.setState({
+        ...this._state,
+        children: nextLayers,
+      });
+
+      return true;
+    }
+
+    if (isDocument(parent)) {
+      const layers = parent.children;
+      const currentIndex = layers.findIndex((l) => l.id === shapeId);
+      if (currentIndex === -1) {
+        return false;
+      }
+
+      const targetLayer = layers[currentIndex];
+      const filtered = layers.filter((_, idx) => idx !== currentIndex);
+      const reordered = [...filtered, targetLayer];
+
+      const updatedLayers = reordered.map((layer, index) => ({
+        ...layer,
+        zIndex: index,
+      }));
+
+      this.setState({
+        ...this._state,
+        children: updatedLayers,
+      });
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Mueve una figura (o capa) al fondo de su contenedor (primera posición visual en el array)
+   * y recalcula un valor discreto de zIndex (0, 1, 2, ...) para todos los elementos hermanos
+   * a fin de facilitar futuros cómputos asíncronos y ordenamientos independientes.
+   *
+   * @param shapeId ID de la figura o elemento a enviar al fondo
+   * @returns true si el elemento fue encontrado y reordenado, false en caso contrario
+   */
+  public sendToBack(shapeId: string): boolean {
+    const parent = this.findParent(shapeId);
+    if (!parent) {
+      return false;
+    }
+
+    if (isLayer(parent)) {
+      const shapes = parent.children;
+      const currentIndex = shapes.findIndex((s) => s.id === shapeId);
+      if (currentIndex === -1) {
+        return false;
+      }
+
+      // Mover al inicio del array
+      const targetShape = shapes[currentIndex];
+      const filtered = shapes.filter((_, idx) => idx !== currentIndex);
+      const reordered = [targetShape, ...filtered];
+
+      // Recalcular valor discreto de zIndex para todos los elementos hermanos
+      const updatedShapes = reordered.map((shape, index) => ({
+        ...shape,
+        zIndex: index,
+      }));
+
+      const updatedLayer: Layer = {
+        ...parent,
+        children: updatedShapes,
+      };
+
+      const nextLayers = this._state.children.map((layer) =>
+        layer.id === parent.id ? updatedLayer : layer
+      );
+
+      this.setState({
+        ...this._state,
+        children: nextLayers,
+      });
+
+      return true;
+    }
+
+    if (isDocument(parent)) {
+      const layers = parent.children;
+      const currentIndex = layers.findIndex((l) => l.id === shapeId);
+      if (currentIndex === -1) {
+        return false;
+      }
+
+      const targetLayer = layers[currentIndex];
+      const filtered = layers.filter((_, idx) => idx !== currentIndex);
+      const reordered = [targetLayer, ...filtered];
+
+      const updatedLayers = reordered.map((layer, index) => ({
+        ...layer,
+        zIndex: index,
+      }));
+
+      this.setState({
+        ...this._state,
+        children: updatedLayers,
+      });
+
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Marca un nodo como seleccionado (selected: true) y deselecciona los demás en el Scene Graph de forma inmutable.
    * Si targetNodeId es null, deselecciona todos los nodos.
    *
@@ -455,6 +608,116 @@ export class StateManager {
             x,
             y,
           };
+        }
+        return shape;
+      });
+
+      if (layerChanged) {
+        return {
+          ...layer,
+          children: nextShapes,
+        };
+      }
+      return layer;
+    });
+
+    if (updated) {
+      this.setState({
+        ...this._state,
+        children: nextLayers,
+      });
+    }
+
+    return updated;
+  }
+
+  /**
+   * Actualiza las dimensiones espaciales y/o radios de una figura (width/height para Rectangle,
+   * radiusX/radiusY para Ellipse) de forma inmutable en el Scene Graph.
+   * Produce una nueva copia estructural y marca el estado como sucio (isDirty = true).
+   *
+   * @param shapeId ID de la figura a redimensionar
+   * @param dimensions Nuevas dimensiones espaciales y/o radios
+   * @returns true si la figura fue encontrada y modificada, false en caso contrario
+   */
+  public updateShapeDimensions(shapeId: string, dimensions: ShapeDimensions): boolean {
+    let updated = false;
+
+    const nextLayers = this._state.children.map((layer) => {
+      let layerChanged = false;
+      const nextShapes = layer.children.map((shape) => {
+        if (shape.id === shapeId) {
+          if (shape.type === 'rectangle') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
+            const nextW =
+              dimensions.width !== undefined
+                ? dimensions.width
+                : dimensions.radiusX !== undefined
+                ? dimensions.radiusX * 2
+                : shape.width;
+            const nextH =
+              dimensions.height !== undefined
+                ? dimensions.height
+                : dimensions.radiusY !== undefined
+                ? dimensions.radiusY * 2
+                : shape.height;
+
+            if (
+              nextX === shape.x &&
+              nextY === shape.y &&
+              nextW === shape.width &&
+              nextH === shape.height
+            ) {
+              return shape;
+            }
+
+            layerChanged = true;
+            updated = true;
+            return {
+              ...shape,
+              x: nextX,
+              y: nextY,
+              width: nextW,
+              height: nextH,
+            };
+          }
+
+          if (shape.type === 'ellipse') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
+            const nextRx =
+              dimensions.radiusX !== undefined
+                ? dimensions.radiusX
+                : dimensions.width !== undefined
+                ? dimensions.width / 2
+                : shape.radiusX;
+            const nextRy =
+              dimensions.radiusY !== undefined
+                ? dimensions.radiusY
+                : dimensions.height !== undefined
+                ? dimensions.height / 2
+                : shape.radiusY;
+
+            if (
+              nextX === shape.x &&
+              nextY === shape.y &&
+              nextRx === shape.radiusX &&
+              nextRy === shape.radiusY
+            ) {
+              return shape;
+            }
+
+            layerChanged = true;
+            updated = true;
+            return {
+              ...shape,
+              x: nextX,
+              y: nextY,
+              radiusX: nextRx,
+              radiusY: nextRy,
+            };
+          }
         }
         return shape;
       });

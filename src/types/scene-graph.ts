@@ -47,6 +47,7 @@ export interface BaseNode {
   readonly visible?: boolean;
   readonly locked?: boolean;
   readonly selected?: boolean;
+  readonly zIndex?: number;
 }
 
 /**

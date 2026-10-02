@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { InputController } from '../src/input/InputController.ts';
-import { getShapeAABB, isPointInAABB } from '../src/utils/geometry.ts';
+import { getSelectionHandles, getShapeAABB, isPointInAABB } from '../src/utils/geometry.ts';
 import type { Rectangle, Ellipse } from '../src/types/scene-graph.ts';
 
 // Helper para mock de Canvas con eventos en Node.js
@@ -201,4 +201,120 @@ describe('InputController & Hit-testing AABB', () => {
 
     controller.destroy();
   });
+
+  it('getSelectionHandles calcula 4 AABBs de 8x8px correspondientes a las esquinas', () => {
+    const rect: Rectangle = {
+      id: 'handle-test-rect',
+      type: 'rectangle',
+      name: 'Rect',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    };
+
+    const handles = getSelectionHandles(rect);
+    assert.equal(handles.length, 4);
+
+    const [tl, tr, br, bl] = handles;
+
+    // Top-Left (100, 100) -> minX: 96, maxX: 104, minY: 96, maxY: 104
+    assert.equal(tl.type, 'top-left');
+    assert.equal(tl.width, 8);
+    assert.equal(tl.height, 8);
+    assert.equal(tl.minX, 96);
+    assert.equal(tl.maxX, 104);
+    assert.equal(tl.minY, 96);
+    assert.equal(tl.maxY, 104);
+
+    // Top-Right (300, 100) -> minX: 296, maxX: 304, minY: 96, maxY: 104
+    assert.equal(tr.type, 'top-right');
+    assert.equal(tr.minX, 296);
+    assert.equal(tr.maxX, 304);
+
+    // Bottom-Right (300, 200) -> minX: 296, maxX: 304, minY: 196, maxY: 204
+    assert.equal(br.type, 'bottom-right');
+    assert.equal(br.minY, 196);
+    assert.equal(br.maxY, 204);
+
+    // Bottom-Left (100, 200) -> minX: 96, maxX: 104, minY: 196, maxY: 204
+    assert.equal(bl.type, 'bottom-left');
+    assert.equal(bl.minX, 96);
+    assert.equal(bl.maxX, 104);
+  });
+
+  it('activa _isResizing = true y origen del resize al hacer clic en un manejador en lugar de _isDragging', () => {
+    const manager = new StateManager();
+    const layerId = manager.getState().children[0].id;
+
+    const rect: Rectangle = {
+      id: 'selected-rect',
+      type: 'rectangle',
+      name: 'Selected Rect',
+      x: 200,
+      y: 200,
+      width: 100,
+      height: 100,
+      selected: true,
+    };
+
+    manager.addNode(layerId, rect);
+    manager.selectNode('selected-rect');
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, manager);
+
+    // Top-Left corner handle está centrado en (200, 200), abarca de 196 a 204
+    // Clic en (200, 200) colisiona con el manejador 'top-left'
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200 });
+
+    assert.equal(controller.isResizing, true, '_isResizing debe ser true al hacer clic en un manejador');
+    assert.equal(controller.isDragging, false, '_isDragging debe ser false al hacer clic en un manejador');
+    assert.deepEqual(controller.resizeOriginPoint, { x: 200, y: 200 }, 'Debe registrar el origen del resize');
+    assert.equal(controller.currentResizeHandle, 'top-left');
+
+    // Soltar el mouse
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 200, clientY: 200 });
+    assert.equal(controller.isResizing, false);
+
+    // Clic en el cuerpo de la figura (250, 250), lejos de los manejadores
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 250, clientY: 250 });
+    assert.equal(controller.isResizing, false, '_isResizing debe ser false');
+    assert.equal(controller.isDragging, true, '_isDragging debe ser true');
+
+    controller.destroy();
+  });
+
+  it('Event Emitter emite toolChange al cambiar de herramienta y permite desuscribirse', () => {
+    const manager = new StateManager();
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, manager);
+
+    const emittedTools: string[] = [];
+    const unsubscribe = controller.on('toolChange', (tool) => {
+      emittedTools.push(tool);
+    });
+
+    controller.setTool('pen');
+    assert.deepEqual(emittedTools, ['pen']);
+
+    controller.setTool('select');
+    assert.deepEqual(emittedTools, ['pen', 'select']);
+
+    // Si se establece la misma herramienta activa no se debe reemitir
+    controller.setTool('select');
+    assert.deepEqual(emittedTools, ['pen', 'select']);
+
+    // Desuscribirse
+    unsubscribe();
+    controller.setTool('pen');
+    assert.deepEqual(emittedTools, ['pen', 'select'], 'No debe emitir tras desuscribirse');
+
+    controller.destroy();
+  });
 });
+

@@ -21,3 +21,4 @@ export * from './input/InputController.ts';
 export * from './commands/Command.ts';
 export * from './commands/CommandManager.ts';
 export * from './commands/TranslateCommand.ts';
+export * from './commands/ResizeCommand.ts';

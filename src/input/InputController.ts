@@ -1,10 +1,19 @@
 import type { StateManager } from '../state/StateManager.ts';
 import type { Path, PathPoint, Shape } from '../types/scene-graph.ts';
-import { getShapeAABB, isPointInAABB, isPointInPath } from '../utils/geometry.ts';
+import {
+  getSelectionHandles,
+  getShapeAABB,
+  isPointInAABB,
+  isPointInPath,
+  type HandleType,
+} from '../utils/geometry.ts';
 import { CommandManager } from '../commands/CommandManager.ts';
 import { TranslateCommand } from '../commands/TranslateCommand.ts';
+import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.ts';
 
 export type ToolMode = 'select' | 'pen';
+export type InputControllerEvent = 'toolChange';
+export type ToolChangeCallback = (tool: ToolMode) => void;
 
 export interface InputControllerOptions {
   /**
@@ -44,12 +53,22 @@ export class InputController {
   private initialShapePosition: { x: number; y: number } | null = null;
   private draggedShapeId: string | null = null;
 
+  // Estado del redimensionado por manejadores de esquina (modo Selección)
+  private _isResizing: boolean = false;
+  private resizeOrigin: { x: number; y: number } | null = null;
+  private activeResizeHandle: HandleType | null = null;
+  private resizingShapeId: string | null = null;
+  private initialDimensions: ShapeDimensions | null = null;
+
   // Estado de la herramienta Pluma (modo Pen)
   private activePathId: string | null = null;
   private isCreatingAnchor: boolean = false;
   private currentAnchorIndex: number = -1;
 
   private _hoveredShapeId: string | null = null;
+
+  // Event Emitter para observabilidad externa desacoplada del DOM
+  private eventListeners: Map<string, Set<(data: any) => void>> = new Map();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -86,10 +105,73 @@ export class InputController {
 
     this._currentTool = tool;
     this.canvas.style.cursor = tool === 'pen' ? 'crosshair' : 'default';
+    this.emit('toolChange', tool);
+  }
+
+  /**
+   * Registra un oyente de eventos (Event Emitter) en el controlador de entrada.
+   * Notifica a la UI externa desacoplando la lógica del canvas de la manipulación del DOM.
+   *
+   * @param event Nombre del evento ('toolChange')
+   * @param listener Callback ejecutado al emitirse el evento
+   * @returns Función de desuscripción
+   */
+  public on(event: 'toolChange', listener: ToolChangeCallback): () => void {
+    let listeners = this.eventListeners.get(event);
+    if (!listeners) {
+      listeners = new Set();
+      this.eventListeners.set(event, listeners);
+    }
+    listeners.add(listener as (data: any) => void);
+    return () => {
+      this.off(event, listener);
+    };
+  }
+
+  /**
+   * Remueve un oyente previamente registrado.
+   */
+  public off(event: 'toolChange', listener: ToolChangeCallback): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.delete(listener as (data: any) => void);
+    }
+  }
+
+  /**
+   * Emite un evento a todos los suscriptores registrados.
+   */
+  public emit(event: 'toolChange', tool: ToolMode): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      for (const listener of listeners) {
+        listener(tool);
+      }
+    }
   }
 
   public get isDragging(): boolean {
     return this._isDragging;
+  }
+
+  public get isResizing(): boolean {
+    return this._isResizing;
+  }
+
+  public get resizeOriginPoint(): { x: number; y: number } | null {
+    return this.resizeOrigin;
+  }
+
+  public get currentResizeHandle(): HandleType | null {
+    return this.activeResizeHandle;
+  }
+
+  public get resizingNodeId(): string | null {
+    return this.resizingShapeId;
+  }
+
+  public get initialResizeDimensions(): ShapeDimensions | null {
+    return this.initialDimensions;
   }
 
   public get hoveredShapeId(): string | null {
@@ -135,6 +217,8 @@ export class InputController {
     } else {
       this.canvas.removeEventListener('mouseup', this.onMouseUpHandler);
     }
+
+    this.eventListeners.clear();
   }
 
   /**
@@ -221,6 +305,46 @@ export class InputController {
     }
 
     // Modo 'select'
+    // 1. Antes de evaluar colisiones con figuras mediante hitTest,
+    // verifica si ya existe un nodo seleccionado y si el cursor colisiona con uno de sus manejadores utilizando isPointInAABB
+    const selectedNode = this.stateManager.getSelectedNode();
+    if (selectedNode) {
+      const handles = getSelectionHandles(selectedNode);
+      const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+
+      if (hitHandle) {
+        // Marca la bandera _isResizing = true (y el origen del resize) en lugar de _isDragging
+        this._isResizing = true;
+        this._isDragging = false;
+        this.resizeOrigin = { x, y };
+        this.activeResizeHandle = hitHandle.type;
+        this.resizingShapeId = selectedNode.id;
+
+        if (selectedNode.type === 'rectangle') {
+          this.initialDimensions = {
+            x: selectedNode.x,
+            y: selectedNode.y,
+            width: selectedNode.width,
+            height: selectedNode.height,
+          };
+        } else if (selectedNode.type === 'ellipse') {
+          this.initialDimensions = {
+            x: selectedNode.x,
+            y: selectedNode.y,
+            radiusX: selectedNode.radiusX,
+            radiusY: selectedNode.radiusY,
+          };
+        } else {
+          this.initialDimensions = null;
+        }
+
+        const isNwse = hitHandle.type === 'top-left' || hitHandle.type === 'bottom-right';
+        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+        return;
+      }
+    }
+
+    // 2. Si no hubo colisión con los manejadores, evaluar colisiones con figuras mediante hitTest
     const hitShape = this.hitTest(x, y);
 
     if (hitShape) {
@@ -229,6 +353,7 @@ export class InputController {
       }
 
       this._isDragging = true;
+      this._isResizing = false;
       this.draggedShapeId = hitShape.id;
       this.dragOrigin = { x, y };
       this.initialShapePosition = { x: hitShape.x, y: hitShape.y };
@@ -238,6 +363,7 @@ export class InputController {
         this.stateManager.selectNode(null);
       }
       this.resetDrag();
+      this.resetResize();
     }
   }
 
@@ -339,6 +465,44 @@ export class InputController {
       return;
     }
 
+    if (this._isResizing) {
+      if (
+        this.resizingShapeId &&
+        this.resizeOrigin &&
+        this.activeResizeHandle &&
+        this.initialDimensions
+      ) {
+        const deltaX = x - this.resizeOrigin.x;
+        const deltaY = y - this.resizeOrigin.y;
+
+        const newDimensions = this.calculateResizedDimensions(
+          this.initialDimensions,
+          this.activeResizeHandle,
+          deltaX,
+          deltaY
+        );
+
+        this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
+
+        const isNwse =
+          this.activeResizeHandle === 'top-left' || this.activeResizeHandle === 'bottom-right';
+        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+      }
+      return;
+    }
+
+    // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado
+    const selectedShape = this.stateManager.getSelectedNode();
+    if (selectedShape) {
+      const handles = getSelectionHandles(selectedShape);
+      const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+      if (hoveredHandle) {
+        const isNwse = hoveredHandle.type === 'top-left' || hoveredHandle.type === 'bottom-right';
+        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+        return;
+      }
+    }
+
     const hitShape = this.hitTest(x, y);
     this._hoveredShapeId = hitShape ? hitShape.id : null;
 
@@ -398,6 +562,44 @@ export class InputController {
     }
 
     // Modo 'select'
+    if (this._isResizing) {
+      if (
+        this.resizingShapeId &&
+        this.resizeOrigin &&
+        this.activeResizeHandle &&
+        this.initialDimensions
+      ) {
+        const { x, y } = this.getLocalCoordinates(event);
+        const deltaX = x - this.resizeOrigin.x;
+        const deltaY = y - this.resizeOrigin.y;
+
+        const finalDimensions = this.calculateResizedDimensions(
+          this.initialDimensions,
+          this.activeResizeHandle,
+          deltaX,
+          deltaY
+        );
+
+        this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
+
+        if (this.hasDimensionsChanged(this.initialDimensions, finalDimensions)) {
+          const command = new ResizeCommand(
+            this.stateManager,
+            this.resizingShapeId,
+            this.initialDimensions,
+            finalDimensions
+          );
+          this.commandManager.recordCommand(command);
+        }
+      }
+
+      this.resetResize();
+      const { x, y } = this.getLocalCoordinates(event);
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (hitShape.selected ? 'move' : 'pointer') : 'default';
+      return;
+    }
+
     if (!this._isDragging || !this.draggedShapeId || !this.dragOrigin || !this.initialShapePosition) {
       this.resetDrag();
       return;
@@ -474,4 +676,133 @@ export class InputController {
     this.initialShapePosition = null;
     this.draggedShapeId = null;
   }
+
+  private resetResize(): void {
+    this._isResizing = false;
+    this.resizeOrigin = null;
+    this.activeResizeHandle = null;
+    this.resizingShapeId = null;
+    this.initialDimensions = null;
+  }
+
+  /**
+   * Calcula las dimensiones redimensionadas relativas a la esquina de manejador arrastrada.
+   */
+  private calculateResizedDimensions(
+    initial: ShapeDimensions,
+    handle: HandleType,
+    dx: number,
+    dy: number
+  ): ShapeDimensions {
+    if (initial.width !== undefined && initial.height !== undefined) {
+      const initX = initial.x ?? 0;
+      const initY = initial.y ?? 0;
+      const initW = initial.width;
+      const initH = initial.height;
+
+      let newX = initX;
+      let newY = initY;
+      let newW = initW;
+      let newH = initH;
+
+      switch (handle) {
+        case 'bottom-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'bottom-left':
+          newW = Math.max(5, initW - dx);
+          newX = initX + (initW - newW);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'top-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH - dy);
+          newY = initY + (initH - newH);
+          break;
+        case 'top-left':
+          newW = Math.max(5, initW - dx);
+          newX = initX + (initW - newW);
+          newH = Math.max(5, initH - dy);
+          newY = initY + (initH - newH);
+          break;
+      }
+
+      return {
+        x: newX,
+        y: newY,
+        width: newW,
+        height: newH,
+      };
+    }
+
+    if (initial.radiusX !== undefined && initial.radiusY !== undefined) {
+      const initCenterX = initial.x ?? 0;
+      const initCenterY = initial.y ?? 0;
+      const initRx = initial.radiusX;
+      const initRy = initial.radiusY;
+
+      const initW = initRx * 2;
+      const initH = initRy * 2;
+      const initMinX = initCenterX - initRx;
+      const initMinY = initCenterY - initRy;
+
+      let newMinX = initMinX;
+      let newMinY = initMinY;
+      let newW = initW;
+      let newH = initH;
+
+      switch (handle) {
+        case 'bottom-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'bottom-left':
+          newW = Math.max(5, initW - dx);
+          newMinX = initMinX + (initW - newW);
+          newH = Math.max(5, initH + dy);
+          break;
+        case 'top-right':
+          newW = Math.max(5, initW + dx);
+          newH = Math.max(5, initH - dy);
+          newMinY = initMinY + (initH - newH);
+          break;
+        case 'top-left':
+          newW = Math.max(5, initW - dx);
+          newMinX = initMinX + (initW - newW);
+          newH = Math.max(5, initH - dy);
+          newMinY = initMinY + (initH - newH);
+          break;
+      }
+
+      const newRx = newW / 2;
+      const newRy = newH / 2;
+      const newCenterX = newMinX + newRx;
+      const newCenterY = newMinY + newRy;
+
+      return {
+        x: newCenterX,
+        y: newCenterY,
+        radiusX: newRx,
+        radiusY: newRy,
+      };
+    }
+
+    return initial;
+  }
+
+  /**
+   * Comprueba si las dimensiones han cambiado respecto a las iniciales.
+   */
+  private hasDimensionsChanged(a: ShapeDimensions, b: ShapeDimensions): boolean {
+    return (
+      a.x !== b.x ||
+      a.y !== b.y ||
+      a.width !== b.width ||
+      a.height !== b.height ||
+      a.radiusX !== b.radiusX ||
+      a.radiusY !== b.radiusY
+    );
+  }
 }
+

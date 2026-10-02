@@ -163,6 +163,70 @@ export function isPointInAABB(px: number, py: number, aabb: AABB): boolean {
 }
 
 /**
+ * Tipos de manejadores de esquina
+ */
+export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left';
+
+/**
+ * Representación de un manejador de esquina como AABB pequeño
+ */
+export interface SelectionHandle extends AABB {
+  readonly type: HandleType;
+}
+
+/**
+ * Calcula el AABB de un Shape y devuelve un array con 4 objetos geométricos
+ * (AABBs pequeños de 8x8px) correspondientes a los manejadores de sus 4 esquinas.
+ *
+ * @param shape Figura seleccionada
+ * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
+ * @returns Array con los 4 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left'
+ */
+export function getSelectionHandles(shape: Shape, handleSize: number = 8): SelectionHandle[] {
+  const aabb = getShapeAABB(shape);
+  const half = handleSize / 2;
+
+  return [
+    {
+      type: 'top-left',
+      minX: aabb.minX - half,
+      minY: aabb.minY - half,
+      maxX: aabb.minX + half,
+      maxY: aabb.minY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'top-right',
+      minX: aabb.maxX - half,
+      minY: aabb.minY - half,
+      maxX: aabb.maxX + half,
+      maxY: aabb.minY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'bottom-right',
+      minX: aabb.maxX - half,
+      minY: aabb.maxY - half,
+      maxX: aabb.maxX + half,
+      maxY: aabb.maxY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'bottom-left',
+      minX: aabb.minX - half,
+      minY: aabb.maxY - half,
+      maxX: aabb.minX + half,
+      maxY: aabb.maxY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+  ];
+}
+
+/**
  * Construye una instancia de Path2D para un trazado con curvas de Bézier cúbicas.
  */
 export function buildPath2D(path: Path): Path2D | null {

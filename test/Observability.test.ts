@@ -1,0 +1,218 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { StateManager } from '../src/state/StateManager.ts';
+import { CommandManager } from '../src/commands/CommandManager.ts';
+import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
+import { InputController } from '../src/input/InputController.ts';
+import { setupUIBindings } from '../src/main.ts';
+import type { Rectangle } from '../src/types/scene-graph.ts';
+
+// Mock de elemento DOM con soporte de classList y listeners
+class MockElement {
+  public id: string;
+  public tagName: string;
+  public disabled: boolean = false;
+  public textContent: string = '';
+  private attributes: Map<string, string> = new Map();
+  private classes: Set<string> = new Set();
+  private listeners: Map<string, Set<(e: any) => void>> = new Map();
+
+  constructor(id: string, tagName: string = 'button') {
+    this.id = id;
+    this.tagName = tagName;
+  }
+
+  public get classList() {
+    return {
+      add: (cls: string) => this.classes.add(cls),
+      remove: (cls: string) => this.classes.delete(cls),
+      contains: (cls: string) => this.classes.has(cls),
+      toggle: (cls: string, force?: boolean) => {
+        if (force !== undefined) {
+          if (force) this.classes.add(cls);
+          else this.classes.delete(cls);
+          return force;
+        }
+        if (this.classes.has(cls)) {
+          this.classes.delete(cls);
+          return false;
+        }
+        this.classes.add(cls);
+        return true;
+      },
+    };
+  }
+
+  public setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  public getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
+  public addEventListener(event: string, listener: (e: any) => void): void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(listener);
+  }
+
+  public removeEventListener(event: string, listener: (e: any) => void): void {
+    const set = this.listeners.get(event);
+    if (set) {
+      set.delete(listener);
+    }
+  }
+
+  public click(): void {
+    const set = this.listeners.get('click');
+    if (set) {
+      for (const listener of set) {
+        listener({ type: 'click', target: this });
+      }
+    }
+  }
+}
+
+function createMockCanvas(): HTMLCanvasElement {
+  const listeners: Record<string, ((e: unknown) => void)[]> = {};
+  return {
+    style: { cursor: 'default' },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    getContext: () => null,
+    addEventListener: (type: string, listener: (e: unknown) => void) => {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(listener);
+    },
+    removeEventListener: (type: string, listener: (e: unknown) => void) => {
+      if (listeners[type]) {
+        listeners[type] = listeners[type].filter((l) => l !== listener);
+      }
+    },
+  } as unknown as HTMLCanvasElement;
+}
+
+describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
+  it('sincroniza clases .active en botones de herramienta mediante Event Emitter de InputController', () => {
+    const btnSelect = new MockElement('tool-select');
+    const btnPen = new MockElement('tool-pen');
+    const btnUndo = new MockElement('btn-undo');
+    const btnRedo = new MockElement('btn-redo');
+    const statusLabel = new MockElement('status-tool-label', 'span');
+
+    const domMap: Record<string, MockElement> = {
+      '#tool-select': btnSelect,
+      '#tool-pen': btnPen,
+      '#btn-undo': btnUndo,
+      '#btn-redo': btnRedo,
+      '#status-tool-label': statusLabel,
+    };
+
+    // Mock global document
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager);
+
+    // 1. Estado inicial: Selección activa
+    assert.equal(btnSelect.classList.contains('active'), true);
+    assert.equal(btnPen.classList.contains('active'), false);
+    assert.equal(btnSelect.getAttribute('aria-pressed'), 'true');
+    assert.equal(btnPen.getAttribute('aria-pressed'), 'false');
+
+    // 2. Cambiar herramienta en InputController mediante setTool -> notifica vía Event Emitter
+    inputController.setTool('pen');
+    assert.equal(btnSelect.classList.contains('active'), false);
+    assert.equal(btnPen.classList.contains('active'), true);
+    assert.equal(btnPen.getAttribute('aria-pressed'), 'true');
+    assert.equal(statusLabel.textContent, 'Modo: Pluma (Bézier)');
+
+    // 3. Clic en botón HTML Selección -> activa herramienta en InputController y actualiza DOM
+    btnSelect.click();
+    assert.equal(inputController.currentTool, 'select');
+    assert.equal(btnSelect.classList.contains('active'), true);
+    assert.equal(btnPen.classList.contains('active'), false);
+
+    cleanup();
+    inputController.destroy();
+    delete (globalThis as any).document;
+  });
+
+  it('habilita y deshabilita botones Deshacer/Rehacer mediante clases CSS (.disabled) según CommandManager', () => {
+    const btnSelect = new MockElement('tool-select');
+    const btnPen = new MockElement('tool-pen');
+    const btnUndo = new MockElement('btn-undo');
+    const btnRedo = new MockElement('btn-redo');
+    const statusLabel = new MockElement('status-tool-label', 'span');
+
+    const domMap: Record<string, MockElement> = {
+      '#tool-select': btnSelect,
+      '#tool-pen': btnPen,
+      '#btn-undo': btnUndo,
+      '#btn-redo': btnRedo,
+      '#status-tool-label': statusLabel,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const rect: Rectangle = {
+      id: 'cmd-rect',
+      type: 'rectangle',
+      name: 'Rect',
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 50,
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, rect);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager);
+
+    // 1. Estado inicial sin historial: ambos deshabilitados
+    assert.equal(btnUndo.classList.contains('disabled'), true);
+    assert.equal(btnUndo.disabled, true);
+    assert.equal(btnRedo.classList.contains('disabled'), true);
+    assert.equal(btnRedo.disabled, true);
+
+    // 2. Ejecutar un comando -> habilita Deshacer
+    commandManager.executeCommand(new TranslateCommand(stateManager, 'cmd-rect', 0, 0, 10, 10));
+    assert.equal(btnUndo.classList.contains('disabled'), false);
+    assert.equal(btnUndo.disabled, false);
+    assert.equal(btnRedo.classList.contains('disabled'), true);
+    assert.equal(btnRedo.disabled, true);
+
+    // 3. Clic en botón HTML Deshacer -> ejecuta undo() y habilita Rehacer
+    btnUndo.click();
+    assert.equal(btnUndo.classList.contains('disabled'), true);
+    assert.equal(btnUndo.disabled, true);
+    assert.equal(btnRedo.classList.contains('disabled'), false);
+    assert.equal(btnRedo.disabled, false);
+
+    // 4. Clic en botón HTML Rehacer -> ejecuta redo() y rehabilita Deshacer
+    btnRedo.click();
+    assert.equal(btnUndo.classList.contains('disabled'), false);
+    assert.equal(btnUndo.disabled, false);
+    assert.equal(btnRedo.classList.contains('disabled'), true);
+    assert.equal(btnRedo.disabled, true);
+
+    cleanup();
+    inputController.destroy();
+    delete (globalThis as any).document;
+  });
+});
