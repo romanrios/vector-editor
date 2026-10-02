@@ -86,8 +86,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding-right: 8px;
-        border-right: 1px solid var(--border-glass);
+        padding-right: 4px;
       }
 
       .brand-icon {
@@ -282,6 +281,32 @@
         <span class="brand-title">Vector Engine</span>
       </div>
 
+      <div class="toolbar-divider" aria-hidden="true"></div>
+
+      <!-- Grupo de Archivo (Exportar / Importar) -->
+      <div class="toolbar-group file-actions" role="toolbar" aria-label="Gestión de archivos">
+        <button id="btn-export" class="ui-btn" title="Exportar Scene Graph como archivo JSON" aria-label="Exportar JSON">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Exportar JSON</span>
+        </button>
+
+        <button id="btn-import" class="ui-btn" title="Importar Scene Graph desde archivo JSON" aria-label="Importar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>Importar</span>
+          <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div class="toolbar-divider" aria-hidden="true"></div>
+
       <!-- Grupo de Herramientas (Modos de interacción) -->
       <div class="toolbar-group tools" role="toolbar" aria-label="Herramientas de dibujo">
         <button id="tool-select" class="ui-btn tool-btn active" title="Herramienta Selección (V)" aria-label="Herramienta Selección" aria-pressed="true">
@@ -326,6 +351,7 @@
         </button>
       </div>
     </header>
+
 
     <!-- Footer flotante con estado reactivo -->
     <footer class="editor-footer" role="status" aria-live="polite">

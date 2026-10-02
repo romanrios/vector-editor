@@ -2,7 +2,9 @@ import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from '../src/state/injectSampleShapes.ts';
-import type { Layer, Rectangle, Ellipse } from '../src/types/scene-graph.ts';
+import { CommandManager } from '../src/commands/CommandManager.ts';
+import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
+import type { Document, Layer, Rectangle, Ellipse } from '../src/types/scene-graph.ts';
 
 describe('StateManager - Scene Graph Inmutable', () => {
   it('inicializa con un documento y una capa base por defecto', () => {
@@ -233,6 +235,102 @@ describe('StateManager - Scene Graph Inmutable', () => {
     assert.equal(shapes[1].zIndex, 1);
     assert.equal(shapes[2].zIndex, 2);
   });
+
+  it('loadState: reemplaza por completo _state, marca _isDirty = true, notifica y preserva inmutabilidad', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+    assert.equal(manager.getState().children[0].children.length, 3);
+
+    let notifyCalled = false;
+    manager.subscribe(() => {
+      notifyCalled = true;
+    });
+
+    const newDoc: Document = {
+      id: 'loaded-doc',
+      type: 'document',
+      name: 'Documento Cargado',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-loaded',
+          type: 'layer',
+          name: 'Capa Cargada',
+          children: [
+            {
+              id: 'rect-loaded',
+              type: 'rectangle',
+              name: 'Rect Cargado',
+              x: 10,
+              y: 20,
+              width: 100,
+              height: 50,
+            },
+          ],
+        },
+      ],
+    };
+
+    manager.loadState(newDoc);
+
+    // 1. Estado reemplazado por completo
+    const state = manager.getState();
+    assert.equal(state.id, 'loaded-doc');
+    assert.equal(state.name, 'Documento Cargado');
+    assert.equal(state.children.length, 1);
+    assert.equal(state.children[0].children.length, 1);
+    assert.equal(state.children[0].children[0].id, 'rect-loaded');
+
+    // 2. isDirty activo y notificado
+    assert.equal(manager.isDirty, true);
+    assert.equal(notifyCalled, true);
+
+    // 3. Inmutabilidad
+    assert.throws(() => {
+      (state as any).width = 999;
+    });
+  });
+
+  it('loadState: invalida e historial de comandos (CommandManager) al cargar nuevo estado', () => {
+    const commandManager = new CommandManager();
+    const manager = new StateManager(undefined, commandManager);
+    injectSampleShapes(manager);
+
+    // Ejecutar un comando de traslación
+    const cmd = new TranslateCommand(manager, 'shape-rect-1', 80, 100, 120, 150);
+    commandManager.executeCommand(cmd);
+    assert.equal(commandManager.canUndo(), true);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Cargar nuevo estado -> debe invalidar/limpiar CommandManager
+    const freshDoc: Document = {
+      id: 'doc-clean',
+      type: 'document',
+      name: 'Limpio',
+      width: 1000,
+      height: 1000,
+      children: [],
+    };
+
+    manager.loadState(freshDoc);
+
+    assert.equal(commandManager.canUndo(), false, 'Pila de undo debe quedar vacía');
+    assert.equal(commandManager.canRedo(), false, 'Pila de redo debe quedar vacía');
+    assert.equal(commandManager.undoCount, 0);
+  });
+
+  it('loadState: arroja error si el objeto provisto no es un Document válido', () => {
+    const manager = new StateManager();
+    assert.throws(() => {
+      manager.loadState(null as any);
+    }, /loadState requiere un objeto Document válido/);
+
+    assert.throws(() => {
+      manager.loadState({ type: 'layer', id: 'l1', children: [] } as any);
+    }, /loadState requiere un objeto Document válido con type 'document'/);
+  });
 });
+
 
 

@@ -6,6 +6,7 @@ import type {
   Shape,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
+import type { CommandManager } from '../commands/CommandManager.ts';
 import { isDocument, isLayer, isShape } from '../types/scene-graph.ts';
 import {
   deepFreeze,
@@ -27,8 +28,9 @@ export class StateManager {
   private _state: Readonly<Document>;
   private _listeners: Set<StateListener> = new Set();
   private _isDirty: boolean = true;
+  private commandManager: CommandManager | null = null;
 
-  constructor(initialState?: Document) {
+  constructor(initialState?: Document, commandManager?: CommandManager) {
     const defaultState: Document = {
       id: 'doc-root',
       type: 'document',
@@ -49,6 +51,9 @@ export class StateManager {
     const initial = initialState ? { ...structuredClone(initialState), isDirty: initialState.isDirty ?? true } : defaultState;
     this._isDirty = initial.isDirty ?? true;
     this._state = deepFreeze(initial);
+    if (commandManager) {
+      this.commandManager = commandManager;
+    }
   }
 
   /**
@@ -89,6 +94,44 @@ export class StateManager {
    */
   public getState(): Readonly<Document> {
     return this._state;
+  }
+
+  /**
+   * Vincula una instancia de CommandManager para permitir la invalidación automática
+   * del historial de operaciones al cargar un nuevo estado.
+   */
+  public setCommandManager(commandManager: CommandManager | null): void {
+    this.commandManager = commandManager;
+  }
+
+  /**
+   * Reemplaza por completo el árbol de estado actual (_state) con el newState provisto.
+   * Marca la bandera _isDirty = true, invalida el historial de comandos en CommandManager
+   * y llama a notify() para forzar el repintado masivo y actualización de suscriptores.
+   *
+   * @param newState Nuevo Document raíz a cargar
+   * @param commandManager Opcional: instancia de CommandManager a invalidar si no fue inyectada previamente
+   */
+  public loadState(newState: Document, commandManager?: CommandManager): void {
+    if (!newState || newState.type !== 'document') {
+      throw new Error(
+        `[StateManager] loadState requiere un objeto Document válido con type 'document'.`
+      );
+    }
+
+    const cm = commandManager ?? this.commandManager;
+    if (cm) {
+      cm.clear();
+    }
+
+    this._isDirty = true;
+    const cloned = structuredClone(newState);
+    this._state = deepFreeze({
+      ...cloned,
+      isDirty: true,
+    });
+
+    this.notify();
   }
 
   /**

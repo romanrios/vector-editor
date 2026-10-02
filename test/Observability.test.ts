@@ -13,6 +13,9 @@ class MockElement {
   public tagName: string;
   public disabled: boolean = false;
   public textContent: string = '';
+  public value: string = '';
+  public files: any[] = [];
+  public clickCount: number = 0;
   private attributes: Map<string, string> = new Map();
   private classes: Set<string> = new Set();
   private listeners: Map<string, Set<(e: any) => void>> = new Map();
@@ -68,10 +71,23 @@ class MockElement {
   }
 
   public click(): void {
+    this.clickCount++;
     const set = this.listeners.get('click');
     if (set) {
       for (const listener of set) {
-        listener({ type: 'click', target: this });
+        listener({ type: 'click', target: this, stopPropagation: () => {} });
+      }
+    }
+  }
+
+  public dispatchEvent(e: any): void {
+    if (!e.stopPropagation) {
+      e.stopPropagation = () => {};
+    }
+    const set = this.listeners.get(e.type);
+    if (set) {
+      for (const listener of set) {
+        listener(e);
       }
     }
   }
@@ -215,4 +231,112 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     inputController.destroy();
     delete (globalThis as any).document;
   });
+
+  it('vincula #btn-export y #btn-import para exportación y carga de archivos JSON con FileReader', async () => {
+    // Mock de FileReader
+    class MockFileReader {
+      public result: string | null = null;
+      public onload: ((e: any) => void) | null = null;
+      public onerror: ((e: any) => void) | null = null;
+
+      public readAsText(blob: any): void {
+        if (typeof blob.text === 'function') {
+          blob.text().then((text: string) => {
+            this.result = text;
+            this.onload?.({ target: this });
+          });
+        } else {
+          this.result = String(blob);
+          setTimeout(() => this.onload?.({ target: this }), 0);
+        }
+      }
+    }
+
+    (globalThis as any).FileReader = MockFileReader;
+
+    const btnExport = new MockElement('btn-export');
+    const btnImport = new MockElement('btn-import');
+    const fileInput = new MockElement('file-import-input', 'input');
+
+    const domMap: Record<string, MockElement> = {
+      '#btn-export, #btn-export-json': btnExport,
+      '#btn-export': btnExport,
+      '#btn-import': btnImport,
+      '#file-import-input': fileInput,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    // Agregar un comando al historial antes de importar
+    const rect: Rectangle = {
+      id: 'pre-import-rect',
+      type: 'rectangle',
+      name: 'Pre Import Rect',
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, rect);
+    commandManager.executeCommand(new TranslateCommand(stateManager, 'pre-import-rect', 0, 0, 5, 5));
+    assert.equal(commandManager.canUndo(), true);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // 1. Clic en #btn-export (no debe lanzar error y serializa el estado)
+    btnExport.click();
+
+    // 2. Clic en #btn-import dispara click en #file-import-input
+    assert.equal(fileInput.clickCount, 0);
+    btnImport.click();
+    assert.equal(fileInput.clickCount, 1);
+
+    // 3. Simular selección de archivo JSON en #file-import-input
+    const validJsonDoc = {
+      id: 'doc-imported',
+      type: 'document',
+      name: 'Imported Scene',
+      children: [
+        {
+          id: 'layer-imported',
+          type: 'layer',
+          name: 'Capa Importada',
+          children: [],
+        },
+      ],
+    };
+
+    fileInput.files = [
+      {
+        name: 'test.json',
+        text: async () => JSON.stringify(validJsonDoc),
+      },
+    ];
+
+    fileInput.dispatchEvent({ type: 'change', target: fileInput });
+
+    // Esperar microtareas asíncronas de FileReader, parseDocument y loadState
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Verificar que el estado del StateManager se actualizó
+    assert.equal(stateManager.getState().id, 'doc-imported');
+    assert.equal(stateManager.getState().name, 'Imported Scene');
+
+    // Verificar que commandManager.clear() reinició el historial
+    assert.equal(commandManager.canUndo(), false);
+    assert.equal(commandManager.canRedo(), false);
+
+    cleanup();
+    inputController.destroy();
+    delete (globalThis as any).document;
+    delete (globalThis as any).FileReader;
+  });
 });
+

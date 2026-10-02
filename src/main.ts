@@ -4,13 +4,15 @@ import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
 import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
+import { Serializer } from './state/Serializer.ts';
 import type { Path } from './types/scene-graph.ts';
 
 console.log('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
 // 1. Inicializar el StateManager inmutable y el CommandManager
-const stateManager = new StateManager();
 const commandManager = new CommandManager();
+const stateManager = new StateManager(undefined, commandManager);
+const moduleStateManager = stateManager;
 
 // 2. Inyectar las 3 figuras de prueba hardcodeadas iniciales
 injectSampleShapes(stateManager);
@@ -43,19 +45,26 @@ console.log('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.
  * Desvincula por completo la lógica del canvas de la manipulación del DOM:
  * - Escucha eventos del CommandManager para alternar las clases CSS (.disabled / .is-disabled) de Deshacer/Rehacer.
  * - Escucha el Event Emitter de InputController ('toolChange') para actualizar las clases .active en los botones de herramienta.
+ * - Conecta el botón de exportación para serializar el Scene Graph y forzar la descarga de un archivo JSON.
  */
 export function setupUIBindings(
   inputController: InputController,
-  commandManager: CommandManager
+  commandManager: CommandManager,
+  stateManagerInstance?: StateManager
 ): { cleanup: () => void } {
   if (typeof document === 'undefined') {
     return { cleanup: () => {} };
   }
 
+  const stateManager = stateManagerInstance ?? moduleStateManager;
+
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
+  const btnExport = document.querySelector<HTMLButtonElement>('#btn-export, #btn-export-json');
+  const btnImport = document.querySelector<HTMLButtonElement>('#btn-import');
+  const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');
   const statusToolLabel = document.querySelector<HTMLElement>('#status-tool-label');
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
@@ -125,6 +134,83 @@ export function setupUIBindings(
   // Inicializar estado visual de botones de historial
   syncHistoryButtons();
 
+  // 3. Exportación y Descarga de JSON (Serializer -> DOM)
+  const onExportClick = () => {
+    if (stateManager) {
+      const jsonContent = Serializer.serializeDocument(stateManager.getState());
+      Serializer.downloadJson('vector-scene.json', jsonContent);
+      console.log('💾 [Serializer] Documento serializado y descargado como vector-scene.json');
+    }
+  };
+
+  btnExport?.addEventListener('click', onExportClick);
+
+  // 4. Importación de JSON (Input File -> FileReader -> Serializer -> StateManager & CommandManager)
+  const onImportClick = (e: MouseEvent) => {
+    if (e.target !== fileImportInput) {
+      fileImportInput?.click();
+    }
+  };
+
+  const onFileInputClick = (e: MouseEvent) => {
+    e.stopPropagation?.();
+  };
+
+  const onFileChange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file || !stateManager) return;
+
+    const readWithFileReader = (f: Blob | File) => {
+      const reader = new FileReader();
+
+      reader.onload = async () => {
+        try {
+          const text = typeof reader.result === 'string' ? reader.result : '';
+          const doc = await Serializer.parseDocument(text);
+          stateManager.loadState(doc);
+          commandManager.clear();
+          console.log('📂 [Serializer] Documento importado y cargado con éxito:', doc);
+        } catch (error) {
+          console.error('❌ Error al importar documento JSON:', error);
+          if (typeof alert !== 'undefined') {
+            alert(`Error al importar el archivo JSON: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        } finally {
+          target.value = '';
+        }
+      };
+
+      reader.onerror = () => {
+        console.error('❌ Error al leer el archivo con FileReader:', reader.error);
+        target.value = '';
+      };
+
+      reader.readAsText(f);
+    };
+
+    if (typeof FileReader !== 'undefined') {
+      readWithFileReader(file);
+    } else if (typeof (file as any).text === 'function') {
+      (async () => {
+        try {
+          const text = await (file as any).text();
+          const doc = await Serializer.parseDocument(text);
+          stateManager.loadState(doc);
+          commandManager.clear();
+        } catch (error) {
+          console.error('❌ Error al importar documento JSON:', error);
+        } finally {
+          target.value = '';
+        }
+      })();
+    }
+  };
+
+  btnImport?.addEventListener('click', onImportClick);
+  fileImportInput?.addEventListener('click', onFileInputClick);
+  fileImportInput?.addEventListener('change', onFileChange);
+
   return {
     cleanup: () => {
       unsubscribeToolChange();
@@ -133,9 +219,14 @@ export function setupUIBindings(
       btnPen?.removeEventListener('click', onPenClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
+      btnExport?.removeEventListener('click', onExportClick);
+      btnImport?.removeEventListener('click', onImportClick);
+      fileImportInput?.removeEventListener('click', onFileInputClick);
+      fileImportInput?.removeEventListener('change', onFileChange);
     },
   };
 }
+
 
 // 4. Vincular el RenderEngine e InputController al elemento <canvas> de pantalla completa
 let renderEngine: RenderEngine | null = null;
@@ -157,7 +248,7 @@ if (typeof document !== 'undefined') {
     inputController = new InputController(canvas, stateManager, commandManager);
 
     // Sistema de observabilidad DOM <-> Estado
-    uiBindings = setupUIBindings(inputController, commandManager);
+    uiBindings = setupUIBindings(inputController, commandManager, stateManager);
 
     console.log('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo).');
     console.log('✒️  Herramienta Pluma:');
@@ -193,6 +284,10 @@ const globals = {
   TranslateCommand,
   injectSampleShapes,
   setupUIBindings,
+  Serializer,
+  serializeDocument: Serializer.serializeDocument,
+  downloadJson: Serializer.downloadJson,
+  parseDocument: Serializer.parseDocument,
 };
 
 if (typeof window !== 'undefined') {

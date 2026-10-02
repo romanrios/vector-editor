@@ -22,3 +22,6 @@ export * from './commands/Command.ts';
 export * from './commands/CommandManager.ts';
 export * from './commands/TranslateCommand.ts';
 export * from './commands/ResizeCommand.ts';
+
+// Serialización y Exportación de Documentos
+export * from './state/Serializer.ts';
