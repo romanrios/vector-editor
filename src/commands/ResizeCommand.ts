@@ -13,6 +13,7 @@ export interface ShapeDimensions {
   readonly radiusX?: number;
   readonly radiusY?: number;
   readonly points?: readonly PathPoint[];
+  readonly rotation?: number;
 }
 
 /**

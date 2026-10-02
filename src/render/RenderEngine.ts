@@ -342,34 +342,80 @@ export class RenderEngine {
           continue;
         }
 
-        const aabb = getShapeAABB(shape);
         const handleSize = 8;
         const halfHandle = handleSize / 2;
-        const midX = (aabb.minX + aabb.maxX) / 2;
-        const rotY = aabb.minY - 30;
+        const rotation = shape.rotation ?? 0;
+
+        let baseX = 0;
+        let baseY = 0;
+        let baseWidth = 0;
+        let baseHeight = 0;
+        let cx = 0;
+        let cy = 0;
+
+        if (!rotation) {
+          const aabb = getShapeAABB(shape);
+          baseX = aabb.minX;
+          baseY = aabb.minY;
+          baseWidth = aabb.width;
+          baseHeight = aabb.height;
+          cx = (baseX + baseWidth) / 2;
+          cy = (baseY + baseHeight) / 2;
+        } else if (shape.type === 'rectangle') {
+          baseX = shape.x;
+          baseY = shape.y;
+          baseWidth = shape.width;
+          baseHeight = shape.height;
+          cx = shape.x + shape.width / 2;
+          cy = shape.y + shape.height / 2;
+        } else if (shape.type === 'ellipse') {
+          baseX = shape.x - shape.radiusX;
+          baseY = shape.y - shape.radiusY;
+          baseWidth = shape.radiusX * 2;
+          baseHeight = shape.radiusY * 2;
+          cx = shape.x;
+          cy = shape.y;
+        } else if (shape.type === 'path') {
+          const baseAABB = getPathBaseAABB(shape);
+          baseX = baseAABB.minX;
+          baseY = baseAABB.minY;
+          baseWidth = baseAABB.width;
+          baseHeight = baseAABB.height;
+          cx = (baseAABB.minX + baseAABB.maxX) / 2;
+          cy = (baseAABB.minY + baseAABB.maxY) / 2;
+        }
+
+        const midX = baseX + baseWidth / 2;
+        const rotY = baseY - 30;
 
         this.ctx.save();
+
+        if (rotation) {
+          this.ctx.translate(cx, cy);
+          this.ctx.rotate((rotation * Math.PI) / 180);
+          this.ctx.translate(-cx, -cy);
+        }
 
         // 1. Caja delimitadora (Bounding Box) azul
         this.ctx.strokeStyle = '#2563eb'; // Azul primario vibrante
         this.ctx.lineWidth = 1.5;
         this.ctx.setLineDash([]);
-        this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
+        this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
 
         // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
         this.ctx.beginPath();
         this.ctx.strokeStyle = '#2563eb';
         this.ctx.lineWidth = 1;
-        this.ctx.moveTo(midX, aabb.minY);
+        this.ctx.moveTo(midX, baseY);
         this.ctx.lineTo(midX, rotY);
         this.ctx.stroke();
 
         // 3. Manejadores (cuadrados en las 4 esquinas)
         const corners = [
-          { x: aabb.minX, y: aabb.minY }, // Superior Izquierda
-          { x: aabb.maxX, y: aabb.minY }, // Superior Derecha
-          { x: aabb.maxX, y: aabb.maxY }, // Inferior Derecha
-          { x: aabb.minX, y: aabb.maxY }, // Inferior Izquierda
+          { x: baseX, y: baseY }, // Superior Izquierda
+          { x: baseX + baseWidth, y: baseY }, // Superior Derecha
+          { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
+          { x: baseX, y: baseY + baseHeight }, // Inferior Izquierda
         ];
 
         for (const corner of corners) {

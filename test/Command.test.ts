@@ -722,6 +722,129 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
 
     controller.destroy();
   });
+
+  it('arrastre de manejador en rectángulo rotado escala la figura manteniendo fijo el vértice opuesto', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const layerId = manager.getState().children[0].id;
+    const rect: Rectangle = {
+      id: 'rect-rot-resize',
+      type: 'rectangle',
+      name: 'Rect Rot Resize',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      rotation: 45,
+    };
+    manager.addShape(layerId, rect);
+    manager.selectNode('rect-rot-resize');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Centro inicial: (150, 150). Rad = 45°.
+    // Vértice Top-Left inicial en mundo: (150, 150 - 50*sqrt(2)) = (150, 79.2893)
+    // Vértice Bottom-Right inicial en mundo: (150, 150 + 50*sqrt(2)) = (150, 220.7107)
+    const initBR = { x: 150, y: 150 + 50 * Math.SQRT2 };
+    const initTL = { x: 150, y: 150 - 50 * Math.SQRT2 };
+
+    // Mousedown en Bottom-Right
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: initBR.x, clientY: initBR.y });
+    assert.equal(controller.isResizing, true);
+    assert.equal(controller.currentResizeHandle, 'bottom-right');
+
+    // Mover cursor en +10 en X, +10 en Y
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: initBR.x + 10, clientY: initBR.y + 10 });
+    let current = manager.findNode('rect-rot-resize') as Rectangle;
+
+    // Calcular el vértice Top-Left en mundo tras redimensionar
+    const rad = ((current.rotation ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const cx = current.x + current.width / 2;
+    const cy = current.y + current.height / 2;
+    const tlWorldX = cx + (-current.width / 2) * cos - (-current.height / 2) * sin;
+    const tlWorldY = cy + (-current.width / 2) * sin + (-current.height / 2) * cos;
+
+    assert.ok(Math.abs(tlWorldX - initTL.x) < 1e-3, `TL X en mundo (${tlWorldX}) debe permanecer fijo (~${initTL.x})`);
+    assert.ok(Math.abs(tlWorldY - initTL.y) < 1e-3, `TL Y en mundo (${tlWorldY}) debe permanecer fijo (~${initTL.y})`);
+
+    // Mouseup
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: initBR.x + 10, clientY: initBR.y + 10 });
+    assert.equal(controller.isResizing, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Undo restaura dimensiones originales
+    commandManager.undo();
+    current = manager.findNode('rect-rot-resize') as Rectangle;
+    assert.equal(current.width, 100);
+    assert.equal(current.height, 100);
+
+    // Redo reaplica
+    commandManager.redo();
+    current = manager.findNode('rect-rot-resize') as Rectangle;
+    assert.ok(current.width > 100);
+
+    controller.destroy();
+  });
+
+  it('arrastre de manejador en elipse rotada mantiene fijo el vértice opuesto de su envolvente', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const layerId = manager.getState().children[0].id;
+    const ellipse: Ellipse = {
+      id: 'ellipse-rot-resize',
+      type: 'ellipse',
+      name: 'Ellipse Rot Resize',
+      x: 200,
+      y: 200,
+      radiusX: 60,
+      radiusY: 40,
+      rotation: 30,
+    };
+    manager.addShape(layerId, ellipse);
+    manager.selectNode('ellipse-rot-resize');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Rad = 30°. Centro: (200, 200).
+    const rad = (30 * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Top-Left en mundo antes de escalar
+    const initTL = {
+      x: 200 + (-60) * cos - (-40) * sin,
+      y: 200 + (-60) * sin + (-40) * cos,
+    };
+    // Bottom-Right en mundo antes de escalar
+    const initBR = {
+      x: 200 + 60 * cos - 40 * sin,
+      y: 200 + 60 * sin + 40 * cos,
+    };
+
+    // Mousedown en Bottom-Right
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: initBR.x, clientY: initBR.y });
+    assert.equal(controller.isResizing, true);
+
+    // Mover ratón +15 en X, +20 en Y
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: initBR.x + 15, clientY: initBR.y + 20 });
+    let current = manager.findNode('ellipse-rot-resize') as Ellipse;
+
+    const currTL = {
+      x: current.x + (-current.radiusX) * cos - (-current.radiusY) * sin,
+      y: current.y + (-current.radiusX) * sin + (-current.radiusY) * cos,
+    };
+
+    assert.ok(Math.abs(currTL.x - initTL.x) < 1e-3, `Top-Left opuesto X (${currTL.x}) debe permanecer fijo (~${initTL.x})`);
+    assert.ok(Math.abs(currTL.y - initTL.y) < 1e-3, `Top-Left opuesto Y (${currTL.y}) debe permanecer fijo (~${initTL.y})`);
+
+    controller.destroy();
+  });
 });
 
 

@@ -231,57 +231,118 @@ export interface SelectionHandle extends AABB {
  * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
  */
 export function getSelectionHandles(shape: Shape, handleSize: number = 8): SelectionHandle[] {
-  const aabb = getShapeAABB(shape);
   const half = handleSize / 2;
-  const midX = (aabb.minX + aabb.maxX) / 2;
-  const rotY = aabb.minY - 30;
+  const rotation = shape.rotation ?? 0;
+
+  if (!rotation) {
+    const aabb = getShapeAABB(shape);
+    const midX = (aabb.minX + aabb.maxX) / 2;
+    const rotY = aabb.minY - 30;
+
+    return [
+      {
+        type: 'top-left',
+        minX: aabb.minX - half,
+        minY: aabb.minY - half,
+        maxX: aabb.minX + half,
+        maxY: aabb.minY + half,
+        width: handleSize,
+        height: handleSize,
+      },
+      {
+        type: 'top-right',
+        minX: aabb.maxX - half,
+        minY: aabb.minY - half,
+        maxX: aabb.maxX + half,
+        maxY: aabb.minY + half,
+        width: handleSize,
+        height: handleSize,
+      },
+      {
+        type: 'bottom-right',
+        minX: aabb.maxX - half,
+        minY: aabb.maxY - half,
+        maxX: aabb.maxX + half,
+        maxY: aabb.maxY + half,
+        width: handleSize,
+        height: handleSize,
+      },
+      {
+        type: 'bottom-left',
+        minX: aabb.minX - half,
+        minY: aabb.maxY - half,
+        maxX: aabb.minX + half,
+        maxY: aabb.maxY + half,
+        width: handleSize,
+        height: handleSize,
+      },
+      {
+        type: 'rotation-handle',
+        minX: midX - half,
+        minY: rotY - half,
+        maxX: midX + half,
+        maxY: rotY + half,
+        width: handleSize,
+        height: handleSize,
+      },
+    ];
+  }
+
+  // Figura con rotación: calcular esquinas y manejador de rotación en espacio rotado (OBB)
+  let cx = 0;
+  let cy = 0;
+  let hw = 0;
+  let hh = 0;
+
+  if (shape.type === 'rectangle') {
+    hw = shape.width / 2;
+    hh = shape.height / 2;
+    cx = shape.x + hw;
+    cy = shape.y + hh;
+  } else if (shape.type === 'ellipse') {
+    hw = shape.radiusX;
+    hh = shape.radiusY;
+    cx = shape.x;
+    cy = shape.y;
+  } else if (shape.type === 'path') {
+    const baseAABB = getPathBaseAABB(shape);
+    hw = baseAABB.width / 2;
+    hh = baseAABB.height / 2;
+    cx = (baseAABB.minX + baseAABB.maxX) / 2;
+    cy = (baseAABB.minY + baseAABB.maxY) / 2;
+  }
+
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const rotatePoint = (dx: number, dy: number): { x: number; y: number } => ({
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  });
+
+  const tl = rotatePoint(-hw, -hh);
+  const tr = rotatePoint(hw, -hh);
+  const br = rotatePoint(hw, hh);
+  const bl = rotatePoint(-hw, hh);
+  const rot = rotatePoint(0, -hh - 30);
+
+  const createHandle = (pt: { x: number; y: number }, type: HandleType): SelectionHandle => ({
+    type,
+    minX: pt.x - half,
+    minY: pt.y - half,
+    maxX: pt.x + half,
+    maxY: pt.y + half,
+    width: handleSize,
+    height: handleSize,
+  });
 
   return [
-    {
-      type: 'top-left',
-      minX: aabb.minX - half,
-      minY: aabb.minY - half,
-      maxX: aabb.minX + half,
-      maxY: aabb.minY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'top-right',
-      minX: aabb.maxX - half,
-      minY: aabb.minY - half,
-      maxX: aabb.maxX + half,
-      maxY: aabb.minY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'bottom-right',
-      minX: aabb.maxX - half,
-      minY: aabb.maxY - half,
-      maxX: aabb.maxX + half,
-      maxY: aabb.maxY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'bottom-left',
-      minX: aabb.minX - half,
-      minY: aabb.maxY - half,
-      maxX: aabb.minX + half,
-      maxY: aabb.maxY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'rotation-handle',
-      minX: midX - half,
-      minY: rotY - half,
-      maxX: midX + half,
-      maxY: rotY + half,
-      width: handleSize,
-      height: handleSize,
-    },
+    createHandle(tl, 'top-left'),
+    createHandle(tr, 'top-right'),
+    createHandle(br, 'bottom-right'),
+    createHandle(bl, 'bottom-left'),
+    createHandle(rot, 'rotation-handle'),
   ];
 }
 

@@ -421,6 +421,7 @@ export class InputController {
             y: selectedNode.y,
             width: selectedNode.width,
             height: selectedNode.height,
+            rotation: selectedNode.rotation ?? 0,
           };
         } else if (selectedNode.type === 'ellipse') {
           this.initialDimensions = {
@@ -428,6 +429,7 @@ export class InputController {
             y: selectedNode.y,
             radiusX: selectedNode.radiusX,
             radiusY: selectedNode.radiusY,
+            rotation: selectedNode.rotation ?? 0,
           };
         } else if (selectedNode.type === 'path') {
           const aabb = getPathBaseAABB(selectedNode);
@@ -437,13 +439,13 @@ export class InputController {
             width: aabb.width,
             height: aabb.height,
             points: selectedNode.points,
+            rotation: selectedNode.rotation ?? 0,
           };
         } else {
           this.initialDimensions = null;
         }
 
-        const isNwse = hitHandle.type === 'top-left' || hitHandle.type === 'bottom-right';
-        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+        this.canvas.style.cursor = this.getResizeCursor(hitHandle.type, selectedNode.rotation ?? 0);
         return;
       }
     }
@@ -612,9 +614,11 @@ export class InputController {
 
         this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
 
-        const isNwse =
-          this.activeResizeHandle === 'top-left' || this.activeResizeHandle === 'bottom-right';
-        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+        const currentShape = this.stateManager.findNode(this.resizingShapeId) as Shape | null;
+        this.canvas.style.cursor = this.getResizeCursor(
+          this.activeResizeHandle,
+          currentShape?.rotation ?? this.initialDimensions.rotation ?? 0
+        );
       }
       return;
     }
@@ -629,8 +633,7 @@ export class InputController {
           this.canvas.style.cursor = 'crosshair';
           return;
         }
-        const isNwse = hoveredHandle.type === 'top-left' || hoveredHandle.type === 'bottom-right';
-        this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+        this.canvas.style.cursor = this.getResizeCursor(hoveredHandle.type, selectedShape.rotation ?? 0);
         return;
       }
     }
@@ -1145,7 +1148,37 @@ export class InputController {
   }
 
   /**
-   * Calcula las dimensiones redimensionadas relativas a la esquina de manejador arrastrada.
+   * Obtiene el estilo de cursor apropiado para un manejador de redimensionamiento,
+   * teniendo en cuenta la rotación de la figura para que la dirección visual sea coherente.
+   */
+  public getResizeCursor(handle: HandleType, rotation: number = 0): string {
+    const handleAngles: Record<string, number> = {
+      'top-left': 225,
+      'top-right': 315,
+      'bottom-right': 45,
+      'bottom-left': 135,
+    };
+    const baseAngle = handleAngles[handle];
+    if (baseAngle === undefined) return 'default';
+
+    let totalAngle = (baseAngle + rotation) % 360;
+    if (totalAngle < 0) totalAngle += 360;
+
+    if ((totalAngle >= 337.5 || totalAngle < 22.5) || (totalAngle >= 157.5 && totalAngle < 202.5)) {
+      return 'ew-resize';
+    }
+    if ((totalAngle >= 22.5 && totalAngle < 67.5) || (totalAngle >= 202.5 && totalAngle < 247.5)) {
+      return 'nwse-resize';
+    }
+    if ((totalAngle >= 67.5 && totalAngle < 112.5) || (totalAngle >= 247.5 && totalAngle < 292.5)) {
+      return 'ns-resize';
+    }
+    return 'nesw-resize';
+  }
+
+  /**
+   * Calcula las dimensiones redimensionadas relativas a la esquina de manejador arrastrada,
+   * manteniendo fijo el vértice opuesto (ancla) en espacio global y respetando la rotación de la figura.
    */
   private calculateResizedDimensions(
     initial: ShapeDimensions,
@@ -1153,6 +1186,15 @@ export class InputController {
     dx: number,
     dy: number
   ): ShapeDimensions {
+    const rotation = initial.rotation ?? 0;
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Proyectar el desplazamiento del cursor (delta de pantalla) en el sistema de coordenadas local rotado
+    const localDx = dx * cos + dy * sin;
+    const localDy = -dx * sin + dy * cos;
+
     if (initial.points !== undefined && initial.points.length > 0) {
       let minX = Infinity;
       let minY = Infinity;
@@ -1174,74 +1216,79 @@ export class InputController {
 
       const initW = Math.max(1, maxX - minX);
       const initH = Math.max(1, maxY - minY);
-      const initX = minX;
-      const initY = minY;
 
-      let newX = initX;
-      let newY = initY;
       let newW = initW;
       let newH = initH;
+      let anchorX = minX;
+      let anchorY = minY;
+      let localShiftX = 0;
+      let localShiftY = 0;
 
       switch (handle) {
         case 'bottom-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH + localDy);
+          anchorX = minX;
+          anchorY = minY;
+          localShiftX = (newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'bottom-left':
-          newW = Math.max(5, initW - dx);
-          newX = initX + (initW - newW);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH + localDy);
+          anchorX = maxX;
+          anchorY = minY;
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'top-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH - dy);
-          newY = initY + (initH - newH);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH - localDy);
+          anchorX = minX;
+          anchorY = maxY;
+          localShiftX = (newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
         case 'top-left':
-          newW = Math.max(5, initW - dx);
-          newX = initX + (initW - newW);
-          newH = Math.max(5, initH - dy);
-          newY = initY + (initH - newH);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH - localDy);
+          anchorX = maxX;
+          anchorY = maxY;
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
       }
 
       const scaleX = newW / initW;
       const scaleY = newH / initH;
 
+      // Compensación de rotación para mantener fijo el punto ancla en coordenadas de pantalla:
+      // T = (R(theta) - I) * localShift
+      const tx = (localShiftX * cos - localShiftY * sin) - localShiftX;
+      const ty = (localShiftX * sin + localShiftY * cos) - localShiftY;
+
+      const scaleCoord = (pt: Vector2D): Vector2D => ({
+        x: anchorX + (pt.x - anchorX) * scaleX + tx,
+        y: anchorY + (pt.y - anchorY) * scaleY + ty,
+      });
+
       const newPoints: PathPoint[] = initial.points.map((pt) => {
-        const scaledPtX = newX + (pt.x - initX) * scaleX;
-        const scaledPtY = newY + (pt.y - initY) * scaleY;
-
-        let handleIn: Vector2D | undefined = undefined;
-        if (pt.handleIn) {
-          handleIn = {
-            x: newX + (pt.handleIn.x - initX) * scaleX,
-            y: newY + (pt.handleIn.y - initY) * scaleY,
-          };
-        }
-
-        let handleOut: Vector2D | undefined = undefined;
-        if (pt.handleOut) {
-          handleOut = {
-            x: newX + (pt.handleOut.x - initX) * scaleX,
-            y: newY + (pt.handleOut.y - initY) * scaleY,
-          };
-        }
-
+        const scaledMain = scaleCoord(pt);
         return {
-          x: scaledPtX,
-          y: scaledPtY,
-          handleIn,
-          handleOut,
+          x: scaledMain.x,
+          y: scaledMain.y,
+          handleIn: pt.handleIn ? scaleCoord(pt.handleIn) : undefined,
+          handleOut: pt.handleOut ? scaleCoord(pt.handleOut) : undefined,
         };
       });
 
       return {
-        x: newPoints[0]?.x ?? initial.x ?? newX,
-        y: newPoints[0]?.y ?? initial.y ?? newY,
+        x: newPoints[0]?.x ?? initial.x ?? 0,
+        y: newPoints[0]?.y ?? initial.y ?? 0,
         width: newW,
         height: newH,
         points: newPoints,
+        rotation,
       };
     }
 
@@ -1251,39 +1298,50 @@ export class InputController {
       const initW = initial.width;
       const initH = initial.height;
 
-      let newX = initX;
-      let newY = initY;
       let newW = initW;
       let newH = initH;
+      let localShiftX = 0;
+      let localShiftY = 0;
 
       switch (handle) {
         case 'bottom-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH + localDy);
+          localShiftX = (newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'bottom-left':
-          newW = Math.max(5, initW - dx);
-          newX = initX + (initW - newW);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH + localDy);
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'top-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH - dy);
-          newY = initY + (initH - newH);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH - localDy);
+          localShiftX = (newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
         case 'top-left':
-          newW = Math.max(5, initW - dx);
-          newX = initX + (initW - newW);
-          newH = Math.max(5, initH - dy);
-          newY = initY + (initH - newH);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH - localDy);
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
       }
 
+      const initCenterX = initX + initW / 2;
+      const initCenterY = initY + initH / 2;
+
+      const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
+      const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
+
       return {
-        x: newX,
-        y: newY,
+        x: newCenterX - newW / 2,
+        y: newCenterY - newH / 2,
         width: newW,
         height: newH,
+        rotation,
       };
     }
 
@@ -1295,47 +1353,51 @@ export class InputController {
 
       const initW = initRx * 2;
       const initH = initRy * 2;
-      const initMinX = initCenterX - initRx;
-      const initMinY = initCenterY - initRy;
 
-      let newMinX = initMinX;
-      let newMinY = initMinY;
       let newW = initW;
       let newH = initH;
+      let localShiftX = 0;
+      let localShiftY = 0;
 
       switch (handle) {
         case 'bottom-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH + localDy);
+          localShiftX = (newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'bottom-left':
-          newW = Math.max(5, initW - dx);
-          newMinX = initMinX + (initW - newW);
-          newH = Math.max(5, initH + dy);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH + localDy);
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = (newH - initH) / 2;
           break;
         case 'top-right':
-          newW = Math.max(5, initW + dx);
-          newH = Math.max(5, initH - dy);
-          newMinY = initMinY + (initH - newH);
+          newW = Math.max(5, initW + localDx);
+          newH = Math.max(5, initH - localDy);
+          localShiftX = (newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
         case 'top-left':
-          newW = Math.max(5, initW - dx);
-          newMinX = initMinX + (initW - newW);
-          newH = Math.max(5, initH - dy);
-          newMinY = initMinY + (initH - newH);
+          newW = Math.max(5, initW - localDx);
+          newH = Math.max(5, initH - localDy);
+          localShiftX = -(newW - initW) / 2;
+          localShiftY = -(newH - initH) / 2;
           break;
       }
 
       const newRx = newW / 2;
       const newRy = newH / 2;
-      const newCenterX = newMinX + newRx;
-      const newCenterY = newMinY + newRy;
+
+      const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
+      const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
 
       return {
         x: newCenterX,
         y: newCenterY,
         radiusX: newRx,
         radiusY: newRy,
+        rotation,
       };
     }
 
