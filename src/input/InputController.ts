@@ -24,6 +24,39 @@ export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
 
 /**
+ * Definición estructurada de un atajo de teclado soportado en el editor
+ */
+export interface KeyboardShortcut {
+  readonly key: string;
+  readonly description: string;
+  readonly category: string;
+}
+
+/**
+ * Lista maestra de atajos de teclado reales implementados en InputController
+ */
+export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
+  { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
+  { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
+  { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
+  { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
+  { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
+  { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
+  { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
+  { key: 'Ctrl+C / Cmd+C', description: 'Copiar figura seleccionada', category: 'Edición' },
+  { key: 'Ctrl+V / Cmd+V', description: 'Pegar figura del portapapeles', category: 'Edición' },
+  { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figura seleccionada', category: 'Edición' },
+  { key: 'Supr / Backspace', description: 'Eliminar figura seleccionada', category: 'Edición' },
+  { key: 'Ctrl+Shift+]', description: 'Traer figura al frente', category: 'Objeto' },
+  { key: 'Ctrl+Shift+[', description: 'Enviar figura al fondo', category: 'Objeto' },
+  { key: 'Flechas', description: 'Mover figura seleccionada (1 px)', category: 'Transformación' },
+  { key: 'Shift + Flechas', description: 'Mover figura seleccionada (10 px)', category: 'Transformación' },
+  { key: 'Shift (al arrastrar)', description: 'Restringir proporción 1:1', category: 'Dibujo' },
+  { key: 'Escape', description: 'Cancelar creación/rotación o terminar trazado', category: 'Navegación' },
+  { key: 'Enter', description: 'Finalizar trazado Bézier activo', category: 'Dibujo' },
+];
+
+/**
  * Representa el estado y dimensiones de la vista previa de creación de figura por arrastre
  */
 export interface ShapePreview {
@@ -323,6 +356,15 @@ export class InputController {
 
   public get pasteCount(): number {
     return this._pasteCount;
+  }
+
+  public static readonly SHORTCUTS: readonly KeyboardShortcut[] = KEYBOARD_SHORTCUTS;
+
+  /**
+   * Retorna la lista inmutable de atajos de teclado reales soportados por el controlador.
+   */
+  public getShortcuts(): readonly KeyboardShortcut[] {
+    return KEYBOARD_SHORTCUTS;
   }
 
   /**
@@ -1156,16 +1198,8 @@ export class InputController {
 
     const keyLower = key ? key.toLowerCase() : '';
     if (keyLower === 'delete' || keyLower === 'backspace') {
-      const selectedNode = this.stateManager.getSelectedNode();
-      if (selectedNode) {
+      if (this.deleteSelected()) {
         event.preventDefault?.();
-        const parent = this.stateManager.findParent(selectedNode.id);
-        const layerId = parent ? parent.id : this.stateManager.getState().children[0]?.id;
-        if (layerId) {
-          const deleteCommand = new DeleteCommand(this.stateManager, selectedNode, layerId);
-          this.commandManager.executeCommand(deleteCommand);
-          this.stateManager.selectNode(null);
-        }
       }
       return;
     }
@@ -1351,6 +1385,28 @@ export class InputController {
     const offset = this._pasteCount * 10;
 
     return this.insertClonedShape(this._clipboard, targetLayerId, offset, offset, undefined);
+  }
+
+  /**
+   * Elimina la figura actualmente seleccionada del Scene Graph mediante DeleteCommand.
+   * Registra la acción en el CommandManager para permitir deshacer/rehacer.
+   *
+   * @returns true si se eliminó una figura, false si no había figura seleccionada o no pudo eliminarse
+   */
+  public deleteSelected(): boolean {
+    const selected = this.stateManager.getSelectedNode();
+    if (!selected || !isShape(selected)) {
+      return false;
+    }
+
+    const parent = this.stateManager.findParent(selected.id);
+    if (!parent) {
+      return false;
+    }
+
+    const command = new DeleteCommand(this.stateManager, selected, parent.id);
+    this.commandManager.executeCommand(command);
+    return true;
   }
 
   /**

@@ -39,6 +39,7 @@ export class RenderEngine {
   private isRunning: boolean = false;
   private _renderCount: number = 0;
   private resizeHandler: (() => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private inputController: InputController | null = null;
   private preview: ShapePreview | null = null;
 
@@ -125,6 +126,14 @@ export class RenderEngine {
     };
 
     window.addEventListener('resize', this.resizeHandler);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const target = this.canvas.parentElement ?? this.canvas;
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resizeToDisplaySize();
+      });
+      this.resizeObserver.observe(target);
+    }
   }
 
   /**
@@ -170,6 +179,10 @@ export class RenderEngine {
     if (typeof window !== 'undefined' && this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
     }
   }
 
@@ -227,7 +240,7 @@ export class RenderEngine {
   private renderGrid(width: number, height: number): void {
     const gridSize = 40;
     this.ctx.save();
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
     this.ctx.lineWidth = 1;
 
     this.ctx.beginPath();

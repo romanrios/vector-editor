@@ -11,17 +11,48 @@
       :root {
         --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         --font-heading: 'Outfit', var(--font-sans);
-        --bg-main: #090d16;
-        --bg-panel: rgba(15, 23, 42, 0.8);
-        --bg-panel-hover: rgba(30, 41, 59, 0.85);
-        --border-glass: rgba(255, 255, 255, 0.1);
-        --border-glass-hover: rgba(255, 255, 255, 0.2);
-        --text-primary: #f8fafc;
-        --text-secondary: #94a3b8;
-        --text-muted: #64748b;
+
+        /* Dimensiones del Layout */
+        --topbar-height: 36px;
+        --toolbar-width: 44px;
+        --panel-width: 240px;
+        --statusbar-height: 26px;
+
+        /* Paleta Neutra Minimalista (Estilo Adobe Illustrator / Figma Dark) */
+        --bg-app: #18181b;
+        --bg-bar: #1f1f23;
+        --bg-panel: #1b1b1f;
+        --bg-canvas: #141416;
+        --bg-control: #27272a;
+        --bg-control-hover: #323238;
+        --bg-control-active: #3f3f46;
+
+        /* Bordes sutiles de 1 px sin sombras pesadas ni glassmorphism */
+        --border-subtle: #27272a;
+        --border-default: #323238;
+        --border-hover: #45454e;
+        --border-focus: #38bdf8;
+
+        /* Textos con contraste WCAG AA garantizado */
+        --text-primary: #f4f4f5;
+        --text-secondary: #a1a1aa;
+        --text-muted: #9ca3af;
+
+        /* Acento Vectorial */
         --accent: #38bdf8;
-        --accent-glow: rgba(56, 189, 248, 0.35);
-        --accent-gradient: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+        --accent-hover: #0ea5e9;
+        --accent-muted: rgba(56, 189, 248, 0.12);
+
+        /* Radios de borde compactos */
+        --radius-xs: 3px;
+        --radius-sm: 4px;
+        --radius-md: 6px;
+        --transition: 0.12s ease;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
       }
 
       * {
@@ -34,265 +65,400 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background-color: var(--bg-main);
+        background-color: var(--bg-app);
         font-family: var(--font-sans);
         color: var(--text-primary);
         user-select: none;
         -webkit-user-select: none;
       }
 
-      #viewport-canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        display: block;
-        z-index: 1;
+      /* Cuadrícula CSS Grid de pantalla completa */
+      body {
+        display: grid;
+        grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height);
+        grid-template-columns: var(--toolbar-width) 1fr var(--panel-width);
       }
 
-      /* Floating Header Toolbar */
+      /* 1. Header con Barra de Menú y Acciones Rápidas */
       .editor-header {
-        position: absolute;
-        top: 18px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10;
+        grid-column: 1 / -1;
+        grid-row: 1;
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 8px 14px;
-        background: var(--bg-panel);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid var(--border-glass);
-        border-radius: 9999px;
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.1);
-        animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        justify-content: space-between;
+        padding: 0 12px;
+        background: var(--bg-bar);
+        border-bottom: 1px solid var(--border-subtle);
+        z-index: 10;
       }
 
-      @keyframes slideDown {
-        from {
-          opacity: 0;
-          transform: translate(-50%, -18px);
-        }
-        to {
-          opacity: 1;
-          transform: translate(-50%, 0);
-        }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
       }
 
       .brand {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding-right: 4px;
+        font-family: var(--font-heading);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--text-primary);
       }
 
       .brand-icon {
-        width: 28px;
-        height: 28px;
-        border-radius: 8px;
-        background: var(--accent-gradient);
+        width: 20px;
+        height: 20px;
+        border-radius: var(--radius-xs);
+        background: var(--accent);
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 2px 8px var(--accent-glow);
-        color: #ffffff;
+        color: #0f172a;
       }
 
-      .brand-title {
+      /* Barra de Menú (Desplegables) */
+      .menu-bar {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        position: relative;
+      }
+
+      .menu-container {
+        position: relative;
+      }
+
+      .menu-trigger {
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 500;
+        font-family: var(--font-sans);
+        color: var(--text-secondary);
+        background: transparent;
+        border: none;
+        border-radius: var(--radius-xs);
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .menu-trigger:hover:not(:disabled),
+      .menu-trigger.is-open {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .menu-trigger:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .menu-trigger:disabled,
+      .menu-trigger[aria-disabled="true"] {
+        color: var(--text-muted);
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Menú Desplegable Minimalista */
+      .menu-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 220px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        padding: 4px 0;
+        display: flex;
+        flex-direction: column;
+        z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      }
+
+      .menu-dropdown[hidden] {
+        display: none !important;
+      }
+
+      .menu-dropdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 6px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 400;
+        text-align: left;
+        cursor: pointer;
+        outline: none;
+        transition: background var(--transition), color var(--transition);
+      }
+
+      .menu-dropdown-item:hover:not(:disabled),
+      .menu-dropdown-item:focus-visible:not(:disabled),
+      .menu-dropdown-item.is-focused:not(:disabled) {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .menu-dropdown-item:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .menu-dropdown-item:disabled,
+      .menu-dropdown-item[aria-disabled="true"] {
+        color: var(--text-muted);
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .menu-item-label {
+        flex: 1;
+        white-space: nowrap;
+      }
+
+      .menu-shortcut {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-left: 20px;
+        white-space: nowrap;
+      }
+
+      .menu-divider {
+        height: 1px;
+        background: var(--border-subtle);
+        margin: 4px 0;
+      }
+
+      /* Diálogo de Atajos de Teclado */
+      .shortcuts-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 18px 20px;
+        max-width: 520px;
+        width: 90vw;
+        max-height: 80vh;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+        margin: auto;
+      }
+
+      .shortcuts-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .shortcuts-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .shortcuts-dialog-title {
+        font-size: 15px;
+        font-weight: 600;
         font-family: var(--font-heading);
-        font-size: 14px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        background: linear-gradient(135deg, #ffffff 60%, #94a3b8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: var(--text-primary);
       }
 
-      .toolbar-group {
+      .dialog-close-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: var(--radius-xs);
+        transition: all var(--transition);
+      }
+
+      .dialog-close-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-subtle);
+      }
+
+      .dialog-close-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .shortcuts-dialog-body {
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+
+      .shortcuts-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .shortcuts-table tr {
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .shortcuts-table td {
+        padding: 7px 8px;
+      }
+
+      .shortcuts-table .shortcut-category {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        width: 110px;
+      }
+
+      .shortcuts-table .shortcut-desc {
+        color: var(--text-secondary);
+      }
+
+      .shortcuts-table .shortcut-key {
+        text-align: right;
+        font-family: monospace;
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      .header-actions {
         display: flex;
         align-items: center;
         gap: 6px;
       }
 
-      .toolbar-divider {
-        width: 1px;
+      .header-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         height: 24px;
-        background: var(--border-glass);
-        margin: 0 4px;
-      }
-
-      /* Buttons Common */
-      .ui-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        height: 36px;
-        padding: 0 12px;
-        border-radius: 9999px;
-        border: 1px solid transparent;
-        background: rgba(255, 255, 255, 0.04);
+        padding: 0 8px;
+        border-radius: var(--radius-xs);
+        border: 1px solid var(--border-subtle);
+        background: var(--bg-control);
         color: var(--text-secondary);
+        font-size: 11px;
         font-family: var(--font-sans);
-        font-size: 13px;
-        font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        outline: none;
+        transition: all var(--transition);
       }
 
-      .ui-btn svg {
-        flex-shrink: 0;
-        transition: transform 0.2s ease;
-      }
-
-      .ui-btn kbd {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: 18px;
-        padding: 0 5px;
-        border-radius: 4px;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: var(--text-muted);
-        font-family: var(--font-sans);
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-      }
-
-      /* Hover States */
-      .ui-btn:not(:disabled):not(.disabled):hover {
-        background: var(--bg-panel-hover);
-        border-color: var(--border-glass-hover);
+      .header-btn:hover:not(:disabled):not(.disabled) {
+        background: var(--bg-control-hover);
+        border-color: var(--border-default);
         color: var(--text-primary);
-        transform: translateY(-1px);
       }
 
-      .ui-btn:not(:disabled):not(.disabled):hover svg {
-        transform: scale(1.08);
-      }
-
-      /* Tool Active State (.active) */
-      .tool-btn.active {
-        background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(14, 165, 233, 0.45));
-        border-color: var(--accent);
-        color: #ffffff;
-        box-shadow: 0 0 16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-      }
-
-      .tool-btn.active kbd {
-        background: rgba(56, 189, 248, 0.3);
-        border-color: rgba(56, 189, 248, 0.5);
-        color: #e0f2fe;
-      }
-
-      /* History Buttons Disabled State (.disabled & :disabled) */
-      .action-btn.disabled,
-      .action-btn:disabled {
+      .header-btn:disabled,
+      .header-btn.disabled,
+      .header-btn.is-disabled {
         opacity: 0.35;
         cursor: not-allowed;
         pointer-events: none;
-        filter: grayscale(0.5);
-        transform: none !important;
-        box-shadow: none !important;
       }
 
-      /* Floating Bottom Status Pill */
-      .editor-footer {
-        position: absolute;
-        bottom: 18px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 7px 18px;
-        background: var(--bg-panel);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid var(--border-glass);
-        border-radius: 9999px;
-        font-size: 12px;
-        color: var(--text-secondary);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        pointer-events: none;
-        animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      .header-separator {
+        width: 1px;
+        height: 16px;
+        background: var(--border-subtle);
+        margin: 0 2px;
       }
 
-      @keyframes slideUp {
-        from {
-          opacity: 0;
-          transform: translate(-50%, 18px);
-        }
-        to {
-          opacity: 1;
-          transform: translate(-50%, 0);
-        }
-      }
-
-      .status-indicator {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 600;
-        color: var(--text-primary);
-      }
-
-      .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #10b981;
-        box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-      }
-
-      .status-hints {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--text-muted);
-      }
-
-      .status-hints .separator {
-        opacity: 0.4;
-      }
-
-      /* Panel lateral derecho de propiedades */
-      .editor-panel {
-        position: absolute;
-        right: 18px;
-        top: 80px;
-        width: 260px;
-        z-index: 10;
-        background: var(--bg-panel);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid var(--border-glass);
-        border-radius: 16px;
-        padding: 16px;
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.1);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
+      /* 2. Barra de Herramientas Izquierda (Vertical, solo iconos) */
+      .tools-sidebar {
+        grid-column: 1;
+        grid-row: 2;
         display: flex;
         flex-direction: column;
-        gap: 12px;
-        animation: fadeInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        align-items: center;
+        padding: 8px 0;
+        gap: 4px;
+        background: var(--bg-bar);
+        border-right: 1px solid var(--border-subtle);
+        z-index: 5;
       }
 
-      @keyframes fadeInRight {
-        from {
-          opacity: 0;
-          transform: translateX(12px);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(0);
-        }
+      .tool-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+      }
+
+      .tool-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .tool-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .tool-btn.active {
+        background: var(--accent-muted);
+        border-color: rgba(56, 189, 248, 0.4);
+        color: var(--accent);
+      }
+
+      .tool-separator {
+        width: 24px;
+        height: 1px;
+        background: var(--border-subtle);
+        margin: 4px 0;
+      }
+
+      /* 3. Contenedor del Lienzo Adaptable */
+      .canvas-viewport {
+        grid-column: 2;
+        grid-row: 2;
+        position: relative;
+        overflow: hidden;
+        background: var(--bg-canvas);
+        min-width: 0;
+        min-height: 0;
+      }
+
+      #viewport-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      /* 4. Panel Lateral Derecho de Propiedades */
+      .properties-sidebar {
+        grid-column: 3;
+        grid-row: 2;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-panel);
+        border-left: 1px solid var(--border-subtle);
+        padding: 12px;
+        gap: 10px;
+        overflow-y: auto;
+        z-index: 5;
       }
 
       .panel-header {
@@ -300,7 +466,7 @@
         align-items: center;
         justify-content: space-between;
         padding-bottom: 8px;
-        border-bottom: 1px solid var(--border-glass);
+        border-bottom: 1px solid var(--border-subtle);
       }
 
       .panel-title {
@@ -314,78 +480,168 @@
 
       #no-selection-state {
         color: var(--text-muted);
-        font-size: 13px;
+        font-size: 12px;
         text-align: center;
-        padding: 16px 8px;
+        padding: 24px 8px;
         line-height: 1.5;
+        border: 1px dashed var(--border-subtle);
+        border-radius: var(--radius-sm);
+        margin: 8px 0;
+        background: rgba(255, 255, 255, 0.015);
       }
 
       #selection-state {
         display: none;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
+      }
+
+      .collapsible-section {
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 8px;
+      }
+
+      .collapsible-section:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        padding: 4px 0;
+        user-select: none;
+        list-style: none;
+        outline: none;
+      }
+
+      .section-header::-webkit-details-marker {
+        display: none;
+      }
+
+      .section-header:focus-visible {
+        outline: 1px solid var(--border-focus);
+        border-radius: var(--radius-xs);
+      }
+
+      .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        transition: color var(--transition);
+      }
+
+      .section-header:hover .section-title {
+        color: var(--text-primary);
+      }
+
+      .chevron-icon {
+        color: var(--text-muted);
+        transition: transform 0.15s ease, color var(--transition);
+      }
+
+      .section-header:hover .chevron-icon {
+        color: var(--text-primary);
+      }
+
+      .collapsible-section[open] .chevron-icon {
+        transform: rotate(0deg);
+      }
+
+      .collapsible-section:not([open]) .chevron-icon {
+        transform: rotate(-90deg);
+      }
+
+      .section-content {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 6px;
       }
 
       .control-group {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
+        height: 28px;
       }
 
       .control-group label {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 500;
         color: var(--text-secondary);
         cursor: pointer;
+        user-select: none;
       }
 
       .control-group input[type="color"] {
         -webkit-appearance: none;
         appearance: none;
-        width: 34px;
-        height: 34px;
-        border: 1px solid var(--border-glass);
-        border-radius: 8px;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
         background: transparent;
         cursor: pointer;
-        padding: 2px;
-        outline: none;
-        transition: border-color 0.2s, transform 0.2s;
-      }
-
-      .control-group input[type="color"]::-webkit-color-swatch-wrapper {
         padding: 0;
-      }
-
-      .control-group input[type="color"]::-webkit-color-swatch {
-        border-radius: 6px;
-        border: none;
+        outline: none;
+        transition: border-color var(--transition);
       }
 
       .control-group input[type="color"]:hover {
-        border-color: var(--border-glass-hover);
-        transform: scale(1.05);
+        border-color: var(--border-hover);
+      }
+
+      .control-group input[type="color"]:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .control-group input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 2px;
+      }
+
+      .control-group input[type="color"]::-webkit-color-swatch {
+        border-radius: 2px;
+        border: none;
+      }
+
+      .input-number-wrapper {
+        display: inline-flex;
+        align-items: center;
+        position: relative;
       }
 
       .control-group input[type="number"] {
-        width: 68px;
-        height: 32px;
-        padding: 0 10px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid var(--border-glass);
-        border-radius: 8px;
+        width: 58px;
+        height: 24px;
+        padding: 0 16px 0 6px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
         color: var(--text-primary);
         font-family: var(--font-sans);
-        font-size: 13px;
+        font-size: 11px;
         text-align: right;
         outline: none;
-        transition: border-color 0.2s, box-shadow 0.2s;
+        transition: border-color var(--transition);
       }
 
-      .control-group input[type="number"]:focus {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 2px var(--accent-glow);
+      .control-group input[type="number"]:focus-visible {
+        border-color: var(--border-focus);
+        outline: 1px solid var(--border-focus);
+      }
+
+      .input-unit {
+        position: absolute;
+        right: 5px;
+        font-size: 10px;
+        color: var(--text-muted);
+        pointer-events: none;
       }
 
       .panel-btn-group {
@@ -394,54 +650,253 @@
       }
 
       .panel-btn {
-        height: 32px;
-        padding: 0 10px;
-        font-size: 12px;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid var(--border-glass);
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-default);
+        background: var(--bg-control);
+        color: var(--text-secondary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
       }
 
       .panel-btn:hover {
-        background: var(--bg-panel-hover);
-        border-color: var(--border-glass-hover);
+        background: var(--bg-control-hover);
         color: var(--text-primary);
+        border-color: var(--border-hover);
+      }
+
+      .panel-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .panel-btn-danger:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border-color: rgba(239, 68, 68, 0.4);
+      }
+
+      /* 5. Barra de Estado Inferior */
+      .editor-footer {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        background: var(--bg-bar);
+        border-top: 1px solid var(--border-subtle);
+        font-size: 11px;
+        color: var(--text-muted);
+        z-index: 10;
+      }
+
+      .status-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #10b981;
+      }
+
+      .status-shapes-count {
+        color: var(--text-secondary);
+      }
+
+      .status-selection-info {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      .status-hints {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+      }
+
+      .separator {
+        opacity: 0.35;
+      }
+
+      /* Responsive (< 900px) */
+      @media (max-width: 900px) {
+        body {
+          grid-template-columns: var(--toolbar-width) 1fr 0px;
+        }
+
+        .properties-sidebar {
+          position: fixed;
+          top: var(--topbar-height);
+          right: 0;
+          bottom: var(--statusbar-height);
+          width: var(--panel-width);
+          transform: translateX(100%);
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
+          z-index: 50;
+        }
+
+        body.panel-open .properties-sidebar {
+          transform: translateX(0);
+        }
+
+        .toggle-panel-btn {
+          display: inline-flex;
+        }
+
+        .status-hints {
+          display: none;
+        }
+      }
+
+      @media (min-width: 901px) {
+        .toggle-panel-btn {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
-    <!-- Canvas de pantalla completa para el motor Canvas 2D -->
-    <canvas id="viewport-canvas"></canvas>
-
-    <!-- Toolbar superior flotante con binding reactivo a herramientas e historial -->
-    <header class="editor-header" role="region" aria-label="Barra de herramientas del editor">
-      <div class="brand">
-        <div class="brand-icon" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-            <path d="M2 2l7.586 7.586"/>
-            <circle cx="11" cy="11" r="2"/>
-          </svg>
+    <!-- 1. Header con barra de menú y botones de acción rápida -->
+    <header class="editor-header" role="region" aria-label="Barra de menú del editor">
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+              <path d="M2 2l7.586 7.586"/>
+            </svg>
+          </div>
+          <span>Vector Editor</span>
         </div>
-        <span class="brand-title">Vector Engine</span>
+
+        <nav class="menu-bar" role="menubar" aria-label="Menú principal">
+          <!-- Menú Archivo -->
+          <div class="menu-container">
+            <button id="menu-btn-file" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="0">
+              Archivo
+            </button>
+            <div id="menu-dropdown-file" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-file" hidden>
+              <button id="menu-item-import" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Importar JSON…</span>
+              </button>
+              <button id="menu-item-export" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Exportar JSON</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Menú Edición -->
+          <div class="menu-container">
+            <button id="menu-btn-edit" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
+              Edición
+            </button>
+            <div id="menu-dropdown-edit" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-edit" hidden>
+              <button id="menu-item-undo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Deshacer</span>
+                <span class="menu-shortcut">Ctrl+Z</span>
+              </button>
+              <button id="menu-item-redo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Rehacer</span>
+                <span class="menu-shortcut">Ctrl+Shift+Z</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-copy" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Copiar</span>
+                <span class="menu-shortcut">Ctrl+C</span>
+              </button>
+              <button id="menu-item-paste" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Pegar</span>
+                <span class="menu-shortcut">Ctrl+V</span>
+              </button>
+              <button id="menu-item-duplicate" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Duplicar</span>
+                <span class="menu-shortcut">Ctrl+D</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-delete" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Eliminar</span>
+                <span class="menu-shortcut">Supr</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Menú Objeto -->
+          <div class="menu-container">
+            <button id="menu-btn-object" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+              Objeto
+            </button>
+            <div id="menu-dropdown-object" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-object" hidden>
+              <button id="menu-item-bring-to-front" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Traer al frente</span>
+                <span class="menu-shortcut">Ctrl+Shift+]</span>
+              </button>
+              <button id="menu-item-send-to-back" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Enviar al fondo</span>
+                <span class="menu-shortcut">Ctrl+Shift+[</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Menú Ayuda -->
+          <div class="menu-container">
+            <button id="menu-btn-help" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
+              Ayuda
+            </button>
+            <div id="menu-dropdown-help" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-help" hidden>
+              <button id="menu-item-shortcuts" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Atajos de teclado</span>
+              </button>
+            </div>
+          </div>
+        </nav>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
-
-      <!-- Grupo de Archivo (Exportar / Importar) -->
-      <div class="toolbar-group file-actions" role="toolbar" aria-label="Gestión de archivos">
-        <button id="btn-export" class="ui-btn" title="Exportar Scene Graph como archivo JSON" aria-label="Exportar JSON">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
+      <div class="header-actions" role="toolbar" aria-label="Acciones de archivo e historial">
+        <button id="btn-undo" class="header-btn action-btn disabled" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7v6h6"/>
+            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
           </svg>
-          <span>Exportar JSON</span>
+          <span>Deshacer</span>
         </button>
 
-        <button id="btn-import" class="ui-btn" title="Importar Scene Graph desde archivo JSON" aria-label="Importar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-redo" class="header-btn action-btn disabled" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 7v6h-6"/>
+            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
+          </svg>
+          <span>Rehacer</span>
+        </button>
+
+        <div class="header-separator" aria-hidden="true"></div>
+
+        <button id="btn-import" class="header-btn" title="Importar Scene Graph desde JSON" aria-label="Importar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
@@ -449,138 +904,180 @@
           <span>Importar</span>
           <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;" aria-hidden="true" />
         </button>
-      </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
-
-      <!-- Grupo de Herramientas (Modos de interacción) -->
-      <div class="toolbar-group tools" role="toolbar" aria-label="Herramientas de dibujo">
-        <button id="tool-select" class="ui-btn tool-btn active" title="Herramienta Selección (V)" aria-label="Herramienta Selección" aria-pressed="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 3l7 18 3-7 7-3L3 3z"/>
+        <button id="btn-export" class="header-btn" title="Exportar Scene Graph como archivo JSON" aria-label="Exportar JSON">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          <span>Selección</span>
-          <kbd>V</kbd>
+          <span>Exportar</span>
         </button>
 
-        <button id="tool-direct-select" class="ui-btn tool-btn" title="Herramienta Selección Directa (A)" aria-label="Herramienta Selección Directa" aria-pressed="false">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z"/>
-          </svg>
-          <span>Directa</span>
-          <kbd>A</kbd>
-        </button>
-
-        <button id="tool-pen" class="ui-btn tool-btn" title="Herramienta Pluma Bézier (P)" aria-label="Herramienta Pluma Bézier" aria-pressed="false">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-            <path d="M2 2l7.586 7.586"/>
-          </svg>
-          <span>Pluma</span>
-          <kbd>P</kbd>
-        </button>
-
-        <button id="tool-rectangle" class="ui-btn tool-btn" title="Herramienta Rectángulo (R)" aria-label="Herramienta Rectángulo" aria-pressed="false">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-toggle-panel" class="toggle-panel-btn" title="Alternar panel de propiedades" aria-label="Alternar panel de propiedades" aria-expanded="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="15" y1="3" x2="15" y2="21"/>
           </svg>
-          <span>Rectángulo</span>
-          <kbd>R</kbd>
-        </button>
-
-        <button id="tool-ellipse" class="ui-btn tool-btn" title="Herramienta Elipse (E)" aria-label="Herramienta Elipse" aria-pressed="false">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9"/>
-          </svg>
-          <span>Elipse</span>
-          <kbd>E</kbd>
-        </button>
-      </div>
-
-      <div class="toolbar-divider" aria-hidden="true"></div>
-
-      <!-- Grupo de Historial (Deshacer / Rehacer) -->
-      <div class="toolbar-group history" role="toolbar" aria-label="Historial de comandos">
-        <button id="btn-undo" class="ui-btn action-btn disabled" title="Deshacer última acción (Ctrl+Z)" aria-label="Deshacer" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7v6h6"/>
-            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
-          </svg>
-          <span>Deshacer</span>
-          <kbd>Ctrl+Z</kbd>
-        </button>
-
-        <button id="btn-redo" class="ui-btn action-btn disabled" title="Rehacer acción deshecha (Ctrl+Y)" aria-label="Rehacer" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 7v6h-6"/>
-            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
-          </svg>
-          <span>Rehacer</span>
-          <kbd>Ctrl+Y</kbd>
+          <span>Panel</span>
         </button>
       </div>
     </header>
 
-    <!-- Panel lateral derecho de propiedades de figura -->
-    <aside id="properties-panel" class="editor-panel" aria-label="Panel de propiedades">
-      <div id="no-selection-state">Ninguna figura seleccionada</div>
+    <!-- 2. Barra de Herramientas Izquierda (Vertical, solo iconos SVG con title y aria-label) -->
+    <aside class="tools-sidebar" role="toolbar" aria-label="Herramientas de dibujo">
+      <button id="tool-select" class="tool-btn active" title="Selección (V)" aria-label="Selección (V)" aria-pressed="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3l7 18 3-7 7-3L3 3z"/>
+        </svg>
+      </button>
+
+      <button id="tool-direct-select" class="tool-btn" title="Selección directa (A)" aria-label="Selección directa (A)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z"/>
+        </svg>
+      </button>
+
+      <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+      <button id="tool-pen" class="tool-btn" title="Pluma (P)" aria-label="Pluma (P)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+          <path d="M2 2l7.586 7.586"/>
+          <circle cx="11" cy="11" r="2"/>
+        </svg>
+      </button>
+
+      <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+      <button id="tool-rectangle" class="tool-btn" title="Rectángulo (R)" aria-label="Rectángulo (R)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        </svg>
+      </button>
+
+      <button id="tool-ellipse" class="tool-btn" title="Elipse (E)" aria-label="Elipse (E)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+        </svg>
+      </button>
+    </aside>
+
+    <!-- 3. Área Principal con Canvas Adaptable -->
+    <main class="canvas-viewport" id="canvas-container">
+      <canvas id="viewport-canvas"></canvas>
+    </main>
+
+    <!-- 4. Panel Lateral Derecho de Propiedades Reorganizado en Secciones Plegables -->
+    <aside id="properties-panel" class="properties-sidebar" aria-label="Panel de propiedades">
+      <div class="panel-header">
+        <span class="panel-title">PROPIEDADES</span>
+      </div>
+
+      <div id="no-selection-state" class="no-selection-state">Sin selección</div>
 
       <div id="selection-state" style="display: none;">
-        <div class="control-group">
-          <label for="input-fill">Relleno</label>
-          <input type="color" id="input-fill">
-        </div>
-        <div class="control-group">
-          <label for="input-stroke">Borde</label>
-          <input type="color" id="input-stroke">
-        </div>
-        <div class="control-group">
-          <label for="input-stroke-width">Grosor</label>
-          <input type="number" id="input-stroke-width" min="0" max="100">
-        </div>
-        <div class="control-group">
-          <label>Orden</label>
-          <div class="panel-btn-group">
-            <button id="btn-bring-to-front" class="ui-btn panel-btn" title="Traer al frente (Ctrl+Shift+])" aria-label="Traer al frente">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                <polyline points="2 17 12 22 22 17"/>
-                <polyline points="2 12 12 17 22 12"/>
-              </svg>
-              <span>Al frente</span>
-            </button>
-            <button id="btn-send-to-back" class="ui-btn panel-btn" title="Enviar al fondo (Ctrl+Shift+[)" aria-label="Enviar al fondo">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="2 12 12 17 22 12"/>
-                <polyline points="2 7 12 12 22 7"/>
-                <polygon points="12 22 2 17 12 12 22 17 12 22"/>
-              </svg>
-              <span>Al fondo</span>
-            </button>
+        <!-- Sección 1: Apariencia -->
+        <details class="collapsible-section" id="section-appearance" open>
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Apariencia</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="input-fill">Relleno</label>
+              <input type="color" id="input-fill">
+            </div>
+            <div class="control-group">
+              <label for="input-stroke">Borde</label>
+              <input type="color" id="input-stroke">
+            </div>
+            <div class="control-group">
+              <label for="input-stroke-width">Grosor</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-stroke-width" min="0" max="100" value="2">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="control-group">
-          <label>Acciones</label>
-          <div class="panel-btn-group">
-            <button id="btn-duplicate" class="ui-btn panel-btn" title="Duplicar (Ctrl+D)" aria-label="Duplicar">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              <span>Duplicar</span>
-            </button>
+        </details>
+
+        <!-- Sección 2: Orden -->
+        <details class="collapsible-section" id="section-order" open>
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Orden</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="panel-btn-group">
+              <button id="btn-bring-to-front" class="panel-btn" title="Traer al frente (Ctrl+Shift+])" aria-label="Traer al frente">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                  <polyline points="2 17 12 22 22 17"/>
+                  <polyline points="2 12 12 17 22 12"/>
+                </svg>
+                <span>Al frente</span>
+              </button>
+              <button id="btn-send-to-back" class="panel-btn" title="Enviar al fondo (Ctrl+Shift+[)" aria-label="Enviar al fondo">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="2 12 12 17 22 12"/>
+                  <polyline points="2 7 12 12 22 7"/>
+                  <polygon points="12 22 2 17 12 12 22 17 12 22"/>
+                </svg>
+                <span>Al fondo</span>
+              </button>
+            </div>
           </div>
-        </div>
+        </details>
+
+        <!-- Sección 3: Acciones -->
+        <details class="collapsible-section" id="section-actions" open>
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Acciones</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="panel-btn-group">
+              <button id="btn-duplicate" class="panel-btn" title="Duplicar (Ctrl+D)" aria-label="Duplicar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>Duplicar</span>
+              </button>
+              <button id="btn-delete-selection" class="panel-btn panel-btn-danger" title="Eliminar selección (Supr)" aria-label="Eliminar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6"/>
+                  <path d="M14 11v6"/>
+                </svg>
+                <span>Eliminar</span>
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </aside>
 
-
-    <!-- Footer flotante con estado reactivo -->
+    <!-- 5. Barra de Estado Inferior -->
     <footer class="editor-footer" role="status" aria-live="polite">
-      <div class="status-indicator">
-        <span class="status-dot" aria-hidden="true"></span>
-        <span id="status-tool-label">Modo: Selección</span>
+      <div class="status-left">
+        <div class="status-indicator">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-tool-label">Modo: Selección</span>
+        </div>
+        <span class="separator" aria-hidden="true">|</span>
+        <span id="status-shapes-count" class="status-shapes-count">0 figuras</span>
+        <span id="status-selection-separator" class="separator" aria-hidden="true" style="display: none;">|</span>
+        <span id="status-selection-info" class="status-selection-info" style="display: none;"></span>
       </div>
       <div class="status-hints">
         <span>Arrastra esquinas para redimensionar</span>
@@ -589,7 +1086,17 @@
       </div>
     </footer>
 
+    <!-- Diálogo modal de Atajos de Teclado -->
+    <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-dialog-title">
+      <div class="shortcuts-dialog-header">
+        <h3 id="shortcuts-dialog-title" class="shortcuts-dialog-title">Atajos de teclado</h3>
+        <button id="btn-close-shortcuts" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <div class="shortcuts-dialog-body" id="shortcuts-dialog-list">
+        <!-- Generado dinámicamente desde InputController.getShortcuts() -->
+      </div>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-
