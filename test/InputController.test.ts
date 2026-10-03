@@ -1085,6 +1085,132 @@ describe('InputController & Hit-testing AABB', () => {
 
     controller.destroy();
   });
+
+  it('atajos Ctrl/Cmd+Shift+] (traer al frente) y Ctrl/Cmd+Shift+[ (enviar al fondo) con selección y foco fuera de inputs', () => {
+    const commandManager = new CommandManager();
+    const stateManager = new StateManager(undefined, commandManager);
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    // Agregar 3 figuras
+    const s1: Rectangle = { id: 's1', type: 'rectangle', name: 'S1', x: 0, y: 0, width: 50, height: 50 };
+    const s2: Rectangle = { id: 's2', type: 'rectangle', name: 'S2', x: 50, y: 50, width: 50, height: 50 };
+    const s3: Rectangle = { id: 's3', type: 'rectangle', name: 'S3', x: 100, y: 100, width: 50, height: 50 };
+    stateManager.addShape(layerId, s1);
+    stateManager.addShape(layerId, s2);
+    stateManager.addShape(layerId, s3);
+
+    const getIds = () => stateManager.getState().children[0].children.map((s) => s.id);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+
+    // 1. Sin figura seleccionada -> atajo no hace nada y no previene defecto
+    let preventDefaultCalled = false;
+    controller.handleKeyDown({
+      ctrlKey: true,
+      shiftKey: true,
+      key: ']',
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.equal(preventDefaultCalled, false);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.undoCount, 0);
+
+    // 2. Seleccionar s1 (índice 0) y presionar Ctrl+Shift+] -> traer al frente
+    stateManager.selectNode('s1');
+    preventDefaultCalled = false;
+    controller.handleKeyDown({
+      ctrlKey: true,
+      shiftKey: true,
+      key: ']',
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.equal(preventDefaultCalled, true);
+    assert.deepEqual(getIds(), ['s2', 's3', 's1']);
+    assert.equal(commandManager.undoCount, 1);
+
+    // 3. s1 ya está al frente -> presionar de nuevo no altera orden ni agrega comando al historial
+    preventDefaultCalled = false;
+    controller.handleKeyDown({
+      ctrlKey: true,
+      shiftKey: true,
+      key: ']',
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.deepEqual(getIds(), ['s2', 's3', 's1']);
+    assert.equal(commandManager.undoCount, 1);
+
+    // 4. Presionar Cmd+Shift+[ (metaKey) sobre s1 (ahora al fondo)
+    preventDefaultCalled = false;
+    controller.handleKeyDown({
+      metaKey: true,
+      shiftKey: true,
+      key: '[',
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.equal(preventDefaultCalled, true);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.undoCount, 2);
+
+    // 5. s1 ya está al fondo -> presionar de nuevo no altera orden ni agrega comando al historial
+    controller.handleKeyDown({
+      metaKey: true,
+      shiftKey: true,
+      key: '[',
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.undoCount, 2);
+
+    // 6. Si el foco está en un campo de texto o de color (INPUT o TEXTAREA), el atajo se ignora
+    stateManager.selectNode('s2');
+    preventDefaultCalled = false;
+    controller.handleKeyDown({
+      ctrlKey: true,
+      shiftKey: true,
+      key: ']',
+      target: { tagName: 'INPUT' },
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.equal(preventDefaultCalled, false);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.undoCount, 2);
+
+    controller.handleKeyDown({
+      ctrlKey: true,
+      shiftKey: true,
+      key: '[',
+      target: { tagName: 'TEXTAREA' },
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    } as unknown as KeyboardEvent);
+    assert.equal(preventDefaultCalled, false);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.undoCount, 2);
+
+    // 7. Undo y Redo
+    assert.equal(commandManager.undo(), true);
+    assert.deepEqual(getIds(), ['s2', 's3', 's1']);
+    assert.equal(commandManager.undo(), true);
+    assert.deepEqual(getIds(), ['s1', 's2', 's3']);
+    assert.equal(commandManager.redo(), true);
+    assert.deepEqual(getIds(), ['s2', 's3', 's1']);
+
+    controller.destroy();
+  });
 });
 
 

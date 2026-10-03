@@ -5,6 +5,7 @@ import { InputController, type ToolMode } from './input/InputController.ts';
 import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
 import { StyleCommand } from './commands/StyleCommand.ts';
+import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import type { Path, Shape } from './types/scene-graph.ts';
 
@@ -103,6 +104,8 @@ export function setupUIBindings(
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
   const inputStroke = document.querySelector<HTMLInputElement>('#input-stroke');
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+  const btnBringToFront = document.querySelector<HTMLButtonElement>('#btn-bring-to-front');
+  const btnSendToBack = document.querySelector<HTMLButtonElement>('#btn-send-to-back');
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
   const syncToolButtons = (tool: ToolMode) => {
@@ -479,6 +482,18 @@ export function setupUIBindings(
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
 
+  // Botones de orden de apilado (Traer al frente / Enviar al fondo)
+  const onBringToFrontClick = () => {
+    inputController.bringToFront();
+  };
+
+  const onSendToBackClick = () => {
+    inputController.sendToBack();
+  };
+
+  btnBringToFront?.addEventListener('click', onBringToFrontClick);
+  btnSendToBack?.addEventListener('click', onSendToBackClick);
+
   // Sincronizar estado inicial del panel
   syncPropertiesPanel();
 
@@ -516,6 +531,9 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('focus', onInputStart);
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
+
+      btnBringToFront?.removeEventListener('click', onBringToFrontClick);
+      btnSendToBack?.removeEventListener('click', onSendToBackClick);
     },
   };
 }
@@ -576,6 +594,7 @@ const globals = {
   uiBindings,
   TranslateCommand,
   StyleCommand,
+  ReorderCommand,
   toValidHexColor,
   injectSampleShapes,
   setupUIBindings,

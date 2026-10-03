@@ -16,6 +16,7 @@ import { DeleteCommand } from '../commands/DeleteCommand.ts';
 import { RotateCommand } from '../commands/RotateCommand.ts';
 import { PointCommand } from '../commands/PointCommand.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
+import { ReorderCommand } from '../commands/ReorderCommand.ts';
 
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse';
 export type InputControllerEvent = 'toolChange';
@@ -1035,17 +1036,45 @@ export class InputController {
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
 
     if (isCtrlOrCmd) {
-      if (event.key.toLowerCase() === 'z') {
+      const key = event.key;
+      const keyLower = key ? key.toLowerCase() : '';
+
+      if (keyLower === 'z') {
         event.preventDefault?.();
         if (event.shiftKey) {
           this.commandManager.redo();
         } else {
           this.commandManager.undo();
         }
-      } else if (event.key.toLowerCase() === 'y') {
+        return;
+      } else if (keyLower === 'y') {
         event.preventDefault?.();
         this.commandManager.redo();
+        return;
       }
+
+      const isBringToFront = event.shiftKey && (key === ']' || key === '}' || event.code === 'BracketRight');
+      const isSendToBack = event.shiftKey && (key === '[' || key === '{' || event.code === 'BracketLeft');
+
+      if (isBringToFront || isSendToBack) {
+        const target = (event.target as HTMLElement | null) ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
+        const isInputFocused = Boolean(
+          target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        );
+
+        const selectedNode = this.stateManager.getSelectedNode();
+
+        if (!isInputFocused && selectedNode) {
+          event.preventDefault?.();
+          if (isBringToFront) {
+            this.bringToFront(selectedNode.id);
+          } else {
+            this.sendToBack(selectedNode.id);
+          }
+        }
+        return;
+      }
+
       return;
     }
 
@@ -1109,6 +1138,46 @@ export class InputController {
       this.updateShapePreview(false);
       this.stateManager.markDirty();
     }
+  }
+
+  /**
+   * Trae una figura (o la figura seleccionada) al frente de su capa contenedora,
+   * registrando un ReorderCommand en el CommandManager para soporte de Undo/Redo.
+   * Si la figura ya está al frente, no registra nada en el historial y retorna false.
+   */
+  public bringToFront(shapeId?: string): boolean {
+    const targetId = shapeId ?? this.stateManager.getSelectedNode()?.id;
+    if (!targetId) {
+      return false;
+    }
+
+    const command = new ReorderCommand(this.stateManager, targetId, 'bringToFront');
+    if (command.isAlreadyAtTarget) {
+      return false;
+    }
+
+    this.commandManager.executeCommand(command);
+    return true;
+  }
+
+  /**
+   * Envía una figura (o la figura seleccionada) al fondo de su capa contenedora,
+   * registrando un ReorderCommand en el CommandManager para soporte de Undo/Redo.
+   * Si la figura ya está en el fondo, no registra nada en el historial y retorna false.
+   */
+  public sendToBack(shapeId?: string): boolean {
+    const targetId = shapeId ?? this.stateManager.getSelectedNode()?.id;
+    if (!targetId) {
+      return false;
+    }
+
+    const command = new ReorderCommand(this.stateManager, targetId, 'sendToBack');
+    if (command.isAlreadyAtTarget) {
+      return false;
+    }
+
+    this.commandManager.executeCommand(command);
+    return true;
   }
 
   /**

@@ -27,6 +27,7 @@ export * from './commands/DeleteCommand.ts';
 export * from './commands/AddShapeCommand.ts';
 export * from './commands/RotateCommand.ts';
 export * from './commands/PointCommand.ts';
+export * from './commands/ReorderCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

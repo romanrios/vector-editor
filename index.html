@@ -387,6 +387,26 @@
         border-color: var(--accent);
         box-shadow: 0 0 0 2px var(--accent-glow);
       }
+
+      .panel-btn-group {
+        display: flex;
+        gap: 6px;
+      }
+
+      .panel-btn {
+        height: 32px;
+        padding: 0 10px;
+        font-size: 12px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-glass);
+      }
+
+      .panel-btn:hover {
+        background: var(--bg-panel-hover);
+        border-color: var(--border-glass-hover);
+        color: var(--text-primary);
+      }
     </style>
   </head>
   <body>
@@ -518,6 +538,27 @@
         <div class="control-group">
           <label for="input-stroke-width">Grosor</label>
           <input type="number" id="input-stroke-width" min="0" max="100">
+        </div>
+        <div class="control-group">
+          <label>Orden</label>
+          <div class="panel-btn-group">
+            <button id="btn-bring-to-front" class="ui-btn panel-btn" title="Traer al frente (Ctrl+Shift+])" aria-label="Traer al frente">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                <polyline points="2 17 12 22 22 17"/>
+                <polyline points="2 12 12 17 22 12"/>
+              </svg>
+              <span>Al frente</span>
+            </button>
+            <button id="btn-send-to-back" class="ui-btn panel-btn" title="Enviar al fondo (Ctrl+Shift+[)" aria-label="Enviar al fondo">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="2 12 12 17 22 12"/>
+                <polyline points="2 7 12 12 22 7"/>
+                <polygon points="12 22 2 17 12 12 22 17 12 22"/>
+              </svg>
+              <span>Al fondo</span>
+            </button>
+          </div>
         </div>
       </div>
     </aside>

@@ -22,6 +22,10 @@ export class CommandManager {
    * @param applyNow Si es true, invoca command.execute(). Si es false, asume que ya fue aplicado (ej: durante arrastre en vivo).
    */
   public executeCommand(command: Command, applyNow: boolean = true): void {
+    if ((command as any).isAlreadyAtTarget) {
+      return;
+    }
+
     if (applyNow) {
       command.execute();
     }

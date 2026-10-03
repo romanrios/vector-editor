@@ -538,5 +538,62 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     inputController.destroy();
     delete (globalThis as any).document;
   });
+
+  it('conecta botones #btn-bring-to-front y #btn-send-to-back en setupUIBindings y cleanup() remueve los listeners', () => {
+    const btnBringToFront = new MockElement('btn-bring-to-front');
+    const btnSendToBack = new MockElement('btn-send-to-back');
+
+    const domMap: Record<string, MockElement> = {
+      '#btn-bring-to-front': btnBringToFront,
+      '#btn-send-to-back': btnSendToBack,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 0, y: 0, width: 10, height: 10 };
+    const r2: Rectangle = { id: 'r2', type: 'rectangle', name: 'R2', x: 10, y: 10, width: 10, height: 10 };
+    const r3: Rectangle = { id: 'r3', type: 'rectangle', name: 'R3', x: 20, y: 20, width: 10, height: 10 };
+    stateManager.addShape(layerId, r1);
+    stateManager.addShape(layerId, r2);
+    stateManager.addShape(layerId, r3);
+
+    const getIds = () => stateManager.getState().children[0].children.map((s) => s.id);
+    assert.deepEqual(getIds(), ['r1', 'r2', 'r3']);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Seleccionar r1 y hacer clic en Traer al frente
+    stateManager.selectNode('r1');
+    btnBringToFront.click();
+    assert.deepEqual(getIds(), ['r2', 'r3', 'r1']);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Clic en Enviar al fondo sobre r1
+    btnSendToBack.click();
+    assert.deepEqual(getIds(), ['r1', 'r2', 'r3']);
+    assert.equal(commandManager.undoCount, 2);
+
+    // Ejecutar cleanup() y verificar que los listeners se removieron
+    cleanup();
+
+    btnBringToFront.click();
+    assert.deepEqual(getIds(), ['r1', 'r2', 'r3'], 'El orden no debe cambiar tras invocar cleanup()');
+    assert.equal(commandManager.undoCount, 2);
+
+    btnSendToBack.click();
+    assert.deepEqual(getIds(), ['r1', 'r2', 'r3'], 'El orden no debe cambiar tras invocar cleanup()');
+    assert.equal(commandManager.undoCount, 2);
+
+    inputController.destroy();
+    delete (globalThis as any).document;
+  });
 });
 
