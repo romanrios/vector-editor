@@ -741,6 +741,101 @@
         opacity: 0.35;
       }
 
+      .status-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .zoom-control-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .status-zoom-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 6px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .status-zoom-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-subtle);
+      }
+
+      .status-zoom-btn.is-open {
+        background: var(--bg-control-hover);
+        color: var(--accent);
+        border-color: var(--border-default);
+      }
+
+      .status-zoom-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .zoom-chevron {
+        transition: transform var(--transition);
+      }
+
+      .status-zoom-btn.is-open .zoom-chevron {
+        transform: rotate(180deg);
+      }
+
+      .zoom-dropdown {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        right: 0;
+        min-width: 105px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        padding: 4px 0;
+        display: flex;
+        flex-direction: column;
+        z-index: 1000;
+        box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
+      }
+
+      .zoom-dropdown[hidden] {
+        display: none !important;
+      }
+
+      .zoom-dropdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 5px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        text-align: left;
+        outline: none;
+        transition: background var(--transition), color var(--transition);
+      }
+
+      .zoom-dropdown-item:hover,
+      .zoom-dropdown-item:focus-visible,
+      .zoom-dropdown-item.is-focused {
+        background: var(--bg-control-hover);
+        color: var(--accent);
+      }
+
       /* Responsive (< 900px) */
       @media (max-width: 900px) {
         body {
@@ -862,6 +957,32 @@
             </div>
           </div>
 
+          <!-- Menú Vista -->
+          <div class="menu-container">
+            <button id="menu-btn-view" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
+              Vista
+            </button>
+            <div id="menu-dropdown-view" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-view" hidden>
+              <button id="menu-item-zoom-in" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Acercar</span>
+                <span class="menu-shortcut">Ctrl++</span>
+              </button>
+              <button id="menu-item-zoom-out" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Alejar</span>
+                <span class="menu-shortcut">Ctrl+-</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-zoom-fit" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Ajustar a la ventana</span>
+                <span class="menu-shortcut">Ctrl+0</span>
+              </button>
+              <button id="menu-item-zoom-100" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Tamaño real 100 %</span>
+                <span class="menu-shortcut">Ctrl+1</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Menú Ayuda -->
           <div class="menu-container">
             <button id="menu-btn-help" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
@@ -935,6 +1056,17 @@
       <button id="tool-direct-select" class="tool-btn" title="Selección directa (A)" aria-label="Selección directa (A)" aria-pressed="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z"/>
+        </svg>
+      </button>
+
+      <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+      <button id="tool-hand" class="tool-btn" title="Mano (H)" aria-label="Mano (H)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v4"/>
+          <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7"/>
+          <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/>
+          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
         </svg>
       </button>
 
@@ -1079,10 +1211,29 @@
         <span id="status-selection-separator" class="separator" aria-hidden="true" style="display: none;">|</span>
         <span id="status-selection-info" class="status-selection-info" style="display: none;"></span>
       </div>
-      <div class="status-hints">
-        <span>Arrastra esquinas para redimensionar</span>
-        <span class="separator" aria-hidden="true">•</span>
-        <span>Arrastra centro para mover</span>
+      <div class="status-right">
+        <div class="status-hints">
+          <span>Arrastra esquinas para redimensionar</span>
+          <span class="separator" aria-hidden="true">•</span>
+          <span>Arrastra centro para mover</span>
+        </div>
+        <div class="zoom-control-container">
+          <button id="status-zoom-btn" class="status-zoom-btn" title="Nivel de zoom actual. Haz clic para cambiar" aria-label="Nivel de zoom" aria-haspopup="true" aria-expanded="false">
+            <span id="status-zoom-label">100 %</span>
+            <svg class="zoom-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <div id="zoom-dropdown" class="zoom-dropdown" role="menu" aria-labelledby="status-zoom-btn" hidden>
+            <button class="zoom-dropdown-item" data-preset="0.25" role="menuitem" tabindex="-1">25 %</button>
+            <button class="zoom-dropdown-item" data-preset="0.5" role="menuitem" tabindex="-1">50 %</button>
+            <button class="zoom-dropdown-item" data-preset="1" role="menuitem" tabindex="-1">100 %</button>
+            <button class="zoom-dropdown-item" data-preset="2" role="menuitem" tabindex="-1">200 %</button>
+            <button class="zoom-dropdown-item" data-preset="4" role="menuitem" tabindex="-1">400 %</button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button class="zoom-dropdown-item" data-preset="fit" role="menuitem" tabindex="-1">Ajustar</button>
+          </div>
+        </div>
       </div>
     </footer>
 

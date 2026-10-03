@@ -18,8 +18,9 @@ import { RotateCommand } from '../commands/RotateCommand.ts';
 import { PointCommand } from '../commands/PointCommand.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
 import { ReorderCommand } from '../commands/ReorderCommand.ts';
+import { ViewportManager } from '../utils/viewport.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'hand';
 export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
 
@@ -41,6 +42,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
+  { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
   { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
   { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
   { key: 'Ctrl+C / Cmd+C', description: 'Copiar figura seleccionada', category: 'Edición' },
@@ -49,11 +51,17 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Supr / Backspace', description: 'Eliminar figura seleccionada', category: 'Edición' },
   { key: 'Ctrl+Shift+]', description: 'Traer figura al frente', category: 'Objeto' },
   { key: 'Ctrl+Shift+[', description: 'Enviar figura al fondo', category: 'Objeto' },
+  { key: 'Ctrl++ / Cmd++', description: 'Acercar zoom', category: 'Navegación' },
+  { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
+  { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
+  { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
   { key: 'Flechas', description: 'Mover figura seleccionada (1 px)', category: 'Transformación' },
   { key: 'Shift + Flechas', description: 'Mover figura seleccionada (10 px)', category: 'Transformación' },
   { key: 'Shift (al arrastrar)', description: 'Restringir proporción 1:1', category: 'Dibujo' },
   { key: 'Escape', description: 'Cancelar creación/rotación o terminar trazado', category: 'Navegación' },
   { key: 'Enter', description: 'Finalizar trazado Bézier activo', category: 'Dibujo' },
+  { key: 'Espacio + Arrastrar', description: 'Desplazar lienzo (Pan)', category: 'Navegación' },
+  { key: 'Ctrl + Rueda', description: 'Acercar / Alejar zoom', category: 'Navegación' },
 ];
 
 /**
@@ -97,6 +105,10 @@ export interface InputControllerOptions {
    * Por defecto true.
    */
   enableKeyboardShortcuts?: boolean;
+  /**
+   * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
+   */
+  viewportManager?: ViewportManager;
 }
 
 /**
@@ -109,6 +121,7 @@ export class InputController {
   private readonly stateManager: StateManager;
   public readonly commandManager: CommandManager;
   private readonly options: InputControllerOptions;
+  public readonly viewportManager: ViewportManager;
 
   private _currentTool: ToolMode = 'select';
 
@@ -116,8 +129,14 @@ export class InputController {
   private onMouseDownHandler: (e: MouseEvent) => void;
   private onMouseMoveHandler: (e: MouseEvent) => void;
   private onMouseUpHandler: (e: MouseEvent) => void;
+  private onWheelHandler: (e: WheelEvent) => void;
   private onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
   private onKeyUpHandler: ((e: KeyboardEvent) => void) | null = null;
+
+  // Estado de navegación de vista (Pan y Zoom)
+  private _isPanning: boolean = false;
+  private _isSpacePressed: boolean = false;
+  private _panStartScreen: { x: number; y: number } | null = null;
 
   // Estado de creación interactiva de figuras (modos 'rectangle' y 'ellipse')
   private _isCreatingShape: boolean = false;
@@ -187,14 +206,24 @@ export class InputController {
       enableKeyboardShortcuts: true,
       ...options,
     };
+    this.viewportManager = options.viewportManager ?? new ViewportManager();
 
     (this.canvas as any).__inputController = this;
 
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
     this.onMouseUpHandler = (e: MouseEvent) => this.handleMouseUp(e);
+    this.onWheelHandler = (e: WheelEvent) => this.handleWheel(e);
 
     this.attachEventListeners();
+  }
+
+  public get isPanning(): boolean {
+    return this._isPanning;
+  }
+
+  public get isSpacePressed(): boolean {
+    return this._isSpacePressed;
   }
 
   public get currentTool(): ToolMode {
@@ -225,10 +254,13 @@ export class InputController {
     }
 
     this._currentTool = tool;
-    this.canvas.style.cursor =
-      tool === 'pen' || tool === 'rectangle' || tool === 'ellipse'
-        ? 'crosshair'
-        : 'default';
+    if (tool === 'hand') {
+      this.canvas.style.cursor = 'grab';
+    } else if (tool === 'pen' || tool === 'rectangle' || tool === 'ellipse') {
+      this.canvas.style.cursor = 'crosshair';
+    } else {
+      this.canvas.style.cursor = 'default';
+    }
     this.emit('toolChange', tool);
   }
 
@@ -373,6 +405,7 @@ export class InputController {
   private attachEventListeners(): void {
     this.canvas.addEventListener('mousedown', this.onMouseDownHandler);
     this.canvas.addEventListener('mousemove', this.onMouseMoveHandler);
+    this.canvas.addEventListener('wheel', this.onWheelHandler, { passive: false });
 
     if (typeof window !== 'undefined') {
       window.addEventListener('mouseup', this.onMouseUpHandler);
@@ -400,6 +433,7 @@ export class InputController {
   public destroy(): void {
     this.canvas.removeEventListener('mousedown', this.onMouseDownHandler);
     this.canvas.removeEventListener('mousemove', this.onMouseMoveHandler);
+    this.canvas.removeEventListener('wheel', this.onWheelHandler);
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('mouseup', this.onMouseUpHandler);
@@ -427,6 +461,10 @@ export class InputController {
       delete (this.canvas as any).__inputController;
     }
 
+    this._isPanning = false;
+    this._isSpacePressed = false;
+    this._panStartScreen = null;
+
     this.cancelCreation();
     this.resetDrag();
     this.resetResize();
@@ -436,9 +474,20 @@ export class InputController {
   }
 
   /**
-   * Calcula las coordenadas locales del cursor relativas al lienzo (espacio lógico del Scene Graph).
+   * Calcula las coordenadas locales del cursor relativas al documento (espacio del Scene Graph).
+   * Transforma las coordenadas de pantalla mediante screenToWorld de viewport.
    */
   public getLocalCoordinates(event: MouseEvent): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    return this.viewportManager.screenToWorld({ x: screenX, y: screenY });
+  }
+
+  /**
+   * Obtiene las coordenadas del cursor en píxeles de pantalla (CSS) relativas al canvas.
+   */
+  public getScreenCoordinates(event: MouseEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
     return {
       x: event.clientX - rect.left,
@@ -447,16 +496,147 @@ export class InputController {
   }
 
   /**
+   * Maneja el evento de rueda (wheel) para zoom y pan:
+   * - Ctrl/Cmd + Rueda (y pellizco de trackpad con ctrlKey): zoom hacia el cursor con factor exponencial.
+   * - Rueda estándar: desplazamiento (pan) horizontal y vertical.
+   */
+  public handleWheel(event: WheelEvent): void {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      const screenPoint = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+      const factor = Math.exp(-event.deltaY * 0.0025);
+      this.viewportManager.zoomAt(screenPoint, factor);
+    } else {
+      event.preventDefault();
+      this.viewportManager.panBy(-event.deltaX, -event.deltaY);
+    }
+  }
+
+  /**
+   * Restaura el cursor por defecto asociado a la herramienta activa.
+   */
+  private restoreToolCursor(): void {
+    if (this._currentTool === 'hand') {
+      this.canvas.style.cursor = 'grab';
+    } else if (this._currentTool === 'pen' || this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+      this.canvas.style.cursor = 'crosshair';
+    } else {
+      this.canvas.style.cursor = 'default';
+    }
+  }
+
+  /**
+   * Obtiene el centro del lienzo en coordenadas de pantalla (píxeles CSS).
+   */
+  public getCanvasCenter(): Vector2D {
+    const rect = typeof this.canvas.getBoundingClientRect === 'function'
+      ? this.canvas.getBoundingClientRect()
+      : null;
+    const width = rect?.width || this.canvas.width || 800;
+    const height = rect?.height || this.canvas.height || 600;
+    return { x: width / 2, y: height / 2 };
+  }
+
+  /**
+   * Obtiene las dimensiones del contenedor del lienzo en píxeles CSS.
+   */
+  public getCanvasSize(): { width: number; height: number } {
+    const rect = typeof this.canvas.getBoundingClientRect === 'function'
+      ? this.canvas.getBoundingClientRect()
+      : null;
+    const width = rect?.width || this.canvas.width || 800;
+    const height = rect?.height || this.canvas.height || 600;
+    return { width, height };
+  }
+
+  /**
+   * Calcula la envolvente (AABB) conjunta de todas las figuras visibles de todas las capas visibles.
+   * Retorna null si el documento está vacío o no contiene figuras visibles.
+   */
+  public getVisibleWorldBounds(): AABB | null {
+    const documentState = this.stateManager.getState();
+    const layers = documentState.children;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let count = 0;
+
+    for (const layer of layers) {
+      if (layer.visible === false) continue;
+      for (const shape of layer.children) {
+        if (shape.visible === false) continue;
+        const aabb = getShapeAABB(shape);
+        if (aabb.minX < minX) minX = aabb.minX;
+        if (aabb.minY < minY) minY = aabb.minY;
+        if (aabb.maxX > maxX) maxX = aabb.maxX;
+        if (aabb.maxY > maxY) maxY = aabb.maxY;
+        count++;
+      }
+    }
+
+    if (count === 0 || !Number.isFinite(minX)) {
+      return null;
+    }
+
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  /**
+   * Incrementa el zoom por un factor fijo de 1.25 centrado en el medio del lienzo.
+   */
+  public zoomIn(): void {
+    this.viewportManager.zoomAt(this.getCanvasCenter(), 1.25);
+  }
+
+  /**
+   * Reduce el zoom por un factor fijo de 1 / 1.25 (0.8) centrado en el medio del lienzo.
+   */
+  public zoomOut(): void {
+    this.viewportManager.zoomAt(this.getCanvasCenter(), 1 / 1.25);
+  }
+
+  /**
+   * Restablece el zoom al 100% (escala 1.0) manteniendo centrado el centro del lienzo.
+   */
+  public zoomReset(): void {
+    this.viewportManager.resetZoom(this.getCanvasCenter());
+  }
+
+  /**
+   * Ajusta la vista para encajar todo el contenido visible de las capas con un margen confortable.
+   * Si no hay figuras visibles o el documento está vacío, restablece la vista al estado por defecto.
+   */
+  public zoomFit(): void {
+    const canvasSize = this.getCanvasSize();
+    const bounds = this.getVisibleWorldBounds();
+    this.viewportManager.fitToBounds(canvasSize, bounds, 40);
+  }
+
+  /**
    * Realiza hit-testing matemático recorriendo el Scene Graph en orden inverso
    * (desde el elemento superior visualmente con mayor Z-index hacia el fondo).
    *
    * Utiliza ctx.isPointInPath() o ray-casting poligonal para figuras de tipo Path,
    * y colisión AABB para rectángulos y elipses.
+   * Aplica tolerancia constante en píxeles de pantalla dividida por el zoom.
    */
   public hitTest(x: number, y: number): Shape | null {
     const documentState = this.stateManager.getState();
     const layers = documentState.children;
     const ctx = typeof this.canvas.getContext === 'function' ? this.canvas.getContext('2d') : null;
+    const zoom = this.viewportManager.zoom;
 
     for (let l = layers.length - 1; l >= 0; l--) {
       const layer = layers[l];
@@ -473,13 +653,19 @@ export class InputController {
 
         if (shape.type === 'path') {
           // Hit-testing no rectangular para trazados Bézier (isPointInPath / ray-casting)
-          if (isPointInPath(x, y, shape, ctx)) {
+          if (isPointInPath(x, y, shape, ctx, 8 / zoom)) {
             return shape;
           }
         } else {
-          // Hit-testing AABB para rectángulos y elipses
+          // Hit-testing AABB para rectángulos y elipses con tolerancia en pantalla
           const aabb = getShapeAABB(shape);
-          if (isPointInAABB(x, y, aabb)) {
+          const tolerance = 4 / zoom;
+          if (
+            x >= aabb.minX - tolerance &&
+            x <= aabb.maxX + tolerance &&
+            y >= aabb.minY - tolerance &&
+            y <= aabb.maxY + tolerance
+          ) {
             return shape;
           }
         }
@@ -511,6 +697,20 @@ export class InputController {
    * Maneja el evento mousedown según la herramienta activa ('select' o 'pen').
    */
   public handleMouseDown(event: MouseEvent): void {
+    // 0. Gestos de navegación de vista: Paneo con botón central (1), Espacio + botón principal (0), o herramienta Mano con botón principal (0)
+    const isHandPan = this._currentTool === 'hand' && (event.button === 0 || event.button === undefined);
+    if (event.button === 1 || (this._isSpacePressed && (event.button === 0 || event.button === undefined)) || isHandPan) {
+      event.preventDefault?.();
+      this._isPanning = true;
+      this._panStartScreen = { x: event.clientX, y: event.clientY };
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    if (event.button !== 0 && event.button !== undefined) {
+      return;
+    }
+
     const { x, y } = this.getLocalCoordinates(event);
 
     if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
@@ -538,7 +738,8 @@ export class InputController {
     // verifica si ya existe un nodo seleccionado y si el cursor colisiona con uno de sus manejadores utilizando isPointInAABB
     const selectedNode = this.stateManager.getSelectedNode();
     if (selectedNode) {
-      const handles = getSelectionHandles(selectedNode);
+      const zoom = this.viewportManager.zoom;
+      const handles = getSelectionHandles(selectedNode, 8 / zoom, 30 / zoom);
       const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
       if (hitHandle) {
@@ -676,7 +877,8 @@ export class InputController {
 
       // Comprobar si el clic está muy cerca del primer punto para cerrar el trazado
       const firstPoint = activePath.points[0];
-      const closeRadius = 12;
+      const zoom = this.viewportManager.zoom;
+      const closeRadius = 12 / zoom;
       const distToFirst = Math.hypot(x - firstPoint.x, y - firstPoint.y);
 
       if (distToFirst <= closeRadius && activePath.points.length >= 3) {
@@ -708,6 +910,21 @@ export class InputController {
    * Maneja el evento mousemove según la herramienta activa.
    */
   public handleMouseMove(event: MouseEvent): void {
+    // 0. Paneo activo
+    if (this._isPanning && this._panStartScreen) {
+      const dx = event.clientX - this._panStartScreen.x;
+      const dy = event.clientY - this._panStartScreen.y;
+      this._panStartScreen = { x: event.clientX, y: event.clientY };
+      this.viewportManager.panBy(dx, dy);
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    if (this._isSpacePressed || this._currentTool === 'hand') {
+      this.canvas.style.cursor = 'grab';
+      return;
+    }
+
     const { x, y } = this.getLocalCoordinates(event);
 
     if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
@@ -801,7 +1018,8 @@ export class InputController {
     // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado
     const selectedShape = this.stateManager.getSelectedNode();
     if (selectedShape) {
-      const handles = getSelectionHandles(selectedShape);
+      const zoom = this.viewportManager.zoom;
+      const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
       const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
       if (hoveredHandle) {
         if (hoveredHandle.type === 'rotation-handle') {
@@ -866,6 +1084,18 @@ export class InputController {
    * Maneja el evento mouseup según la herramienta activa.
    */
   public handleMouseUp(event: MouseEvent): void {
+    // 0. Finalizar paneo si estaba activo
+    if (this._isPanning) {
+      this._isPanning = false;
+      this._panStartScreen = null;
+      if (this._isSpacePressed || this._currentTool === 'hand') {
+        this.canvas.style.cursor = 'grab';
+      } else {
+        this.restoreToolCursor();
+      }
+      return;
+    }
+
     if (
       this._isCreatingShape &&
       (this._currentTool === 'rectangle' || this._currentTool === 'ellipse')
@@ -875,8 +1105,9 @@ export class InputController {
       const dx = x - start.x;
       const dy = y - start.y;
       const distance = Math.hypot(dx, dy);
+      const zoom = this.viewportManager.zoom;
 
-      if (distance < 3) {
+      if (distance < 3 / zoom) {
         this.cancelCreation();
         return;
       }
@@ -1152,10 +1383,59 @@ export class InputController {
         return;
       }
 
+      // Atajos de navegación con Ctrl / Cmd (con preventDefault y sin foco en inputs)
+      const isZoomIn = key === '+' || key === '=' || event.code === 'Equal' || event.code === 'NumpadAdd';
+      const isZoomOut = key === '-' || key === '_' || event.code === 'Minus' || event.code === 'NumpadSubtract';
+      const isZoomFit = key === '0' || event.code === 'Digit0' || event.code === 'Numpad0';
+      const isZoomReset = key === '1' || event.code === 'Digit1' || event.code === 'Numpad1';
+
+      if (isZoomIn) {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.zoomIn();
+        }
+        return;
+      }
+
+      if (isZoomOut) {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.zoomOut();
+        }
+        return;
+      }
+
+      if (isZoomFit) {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.zoomFit();
+        }
+        return;
+      }
+
+      if (isZoomReset) {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.zoomReset();
+        }
+        return;
+      }
+
       return;
     }
 
     if (this.isInputFocused(event)) {
+      return;
+    }
+
+    if (event.code === 'Space' || event.key === ' ') {
+      event.preventDefault?.();
+      if (!this._isSpacePressed) {
+        this._isSpacePressed = true;
+        if (!this._isPanning) {
+          this.canvas.style.cursor = 'grab';
+        }
+      }
       return;
     }
 
@@ -1214,6 +1494,8 @@ export class InputController {
       this.setTool('rectangle');
     } else if (keyLower === 'e') {
       this.setTool('ellipse');
+    } else if (keyLower === 'h') {
+      this.setTool('hand');
     } else if (keyLower === 'escape') {
       if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
@@ -1235,6 +1517,13 @@ export class InputController {
       this._creationShiftKey = false;
       this.updateShapePreview(false);
       this.stateManager.markDirty();
+    }
+
+    if (event.code === 'Space' || event.key === ' ') {
+      this._isSpacePressed = false;
+      if (!this._isPanning) {
+        this.restoreToolCursor();
+      }
     }
   }
 
@@ -1663,9 +1952,13 @@ export class InputController {
   public findPathPointHit(
     path: Path,
     x: number,
-    y: number
+    y: number,
+    customHandleSize?: number
   ): { index: number; type: DirectSelectTargetType } | null {
     if (!path.points || path.points.length === 0) return null;
+
+    const zoom = this.viewportManager.zoom;
+    const handleSize = customHandleSize ?? (10 / zoom);
 
     let testX = x;
     let testY = y;
@@ -1686,14 +1979,14 @@ export class InputController {
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
       if (pt.handleIn && (pt.handleIn.x !== pt.x || pt.handleIn.y !== pt.y)) {
-        const handleInAABB = this.createHandleAABB(pt.handleIn.x, pt.handleIn.y, 10);
+        const handleInAABB = this.createHandleAABB(pt.handleIn.x, pt.handleIn.y, handleSize);
         if (isPointInAABB(testX, testY, handleInAABB)) {
           return { index: i, type: 'handleIn' };
         }
       }
 
       if (pt.handleOut && (pt.handleOut.x !== pt.x || pt.handleOut.y !== pt.y)) {
-        const handleOutAABB = this.createHandleAABB(pt.handleOut.x, pt.handleOut.y, 10);
+        const handleOutAABB = this.createHandleAABB(pt.handleOut.x, pt.handleOut.y, handleSize);
         if (isPointInAABB(testX, testY, handleOutAABB)) {
           return { index: i, type: 'handleOut' };
         }
@@ -1703,7 +1996,7 @@ export class InputController {
     // 2. Evaluar colisiones con los vértices / puntos de ancla principales
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
-      const anchorAABB = this.createHandleAABB(pt.x, pt.y, 10);
+      const anchorAABB = this.createHandleAABB(pt.x, pt.y, handleSize);
       if (isPointInAABB(testX, testY, anchorAABB)) {
         return { index: i, type: 'anchor' };
       }

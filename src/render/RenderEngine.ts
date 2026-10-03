@@ -2,6 +2,7 @@ import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/
 import type { StateManager } from '../state/StateManager.ts';
 import { getPathBaseAABB, getShapeAABB } from '../utils/geometry.ts';
 import type { InputController, ShapePreview } from '../input/InputController.ts';
+import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 
 export interface RenderEngineOptions {
   /**
@@ -22,6 +23,10 @@ export interface RenderEngineOptions {
    * Proveedor funcional opcional de la vista previa de figuras en creación.
    */
   previewProvider?: () => ShapePreview | null;
+  /**
+   * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
+   */
+  viewportManager?: ViewportManager;
 }
 
 /**
@@ -34,6 +39,8 @@ export class RenderEngine {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly stateManager: StateManager;
   private readonly options: RenderEngineOptions;
+  public readonly viewportManager: ViewportManager;
+  private unsubscribeViewport: (() => void) | null = null;
 
   private animationFrameId: number | null = null;
   private isRunning: boolean = false;
@@ -55,12 +62,17 @@ export class RenderEngine {
       backgroundColor: '#0f172a', // Fondo pizarra oscuro elegante
       ...options,
     };
+    this.viewportManager = options.viewportManager ?? new ViewportManager();
 
     const context = this.canvas.getContext('2d');
     if (!context) {
       throw new Error('[RenderEngine] No se pudo obtener el contexto CanvasRenderingContext2D.');
     }
     this.ctx = context;
+
+    this.unsubscribeViewport = this.viewportManager.subscribe(() => {
+      this.stateManager.markDirty();
+    });
 
     this.setupResizeListener();
     this.resizeToDisplaySize();
@@ -176,6 +188,10 @@ export class RenderEngine {
    */
   public destroy(): void {
     this.stop();
+    if (this.unsubscribeViewport) {
+      this.unsubscribeViewport();
+      this.unsubscribeViewport = null;
+    }
     if (typeof window !== 'undefined' && this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
@@ -192,8 +208,12 @@ export class RenderEngine {
   public render(): void {
     const documentState = this.stateManager.getState();
     const dpr = this.options.highDpi && typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const viewport = this.viewportManager.getViewport();
+    const zoom = viewport.zoom || 1;
+    const panX = viewport.panX || 0;
+    const panY = viewport.panY || 0;
 
-    // Normalizar escala según DPI
+    // Normalizar escala según DPI para limpiar toda la superficie física
     this.ctx.save();
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -208,14 +228,19 @@ export class RenderEngine {
       this.ctx.clearRect(0, 0, logicalWidth, logicalHeight);
     }
 
-    // Dibujar cuadrícula tenue de fondo para referencia visual
-    this.renderGrid(logicalWidth, logicalHeight);
+    // Aplicar matriz de vista combinada con DPR:
+    // pantalla = mundo * zoom + pan
+    // canvas_pixel = dpr * (mundo * zoom + pan) = (dpr * zoom) * mundo + (dpr * pan)
+    this.ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * panX, dpr * panY);
+
+    // Dibujar cuadrícula tenue adaptativa alineada con el mundo
+    this.renderGrid(logicalWidth, logicalHeight, viewport);
 
     // Iterar sobre el array de nodos (Document -> Layers -> Shapes)
-    this.renderDocument(documentState);
+    this.renderDocument(documentState, zoom);
 
-    // Dibujar caja delimitadora (bounding box) azul con manejadores para nodos seleccionados
-    this.renderSelectionOverlay(documentState);
+    // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
+    this.renderSelectionOverlay(documentState, zoom);
 
     // Dibujar vista previa de creación de figura (trazo punteado y semitransparente)
     const activePreview =
@@ -227,7 +252,7 @@ export class RenderEngine {
       null;
 
     if (activePreview) {
-      this.renderShapePreview(activePreview);
+      this.renderShapePreview(activePreview, zoom);
     }
 
     this.ctx.restore();
@@ -235,22 +260,45 @@ export class RenderEngine {
   }
 
   /**
-   * Dibuja una cuadrícula sutil de fondo
+   * Dibuja una cuadrícula sutil de fondo alineada con el espacio del documento.
+   * Ajusta el espaciado dinámicamente según el nivel de zoom para mantener
+   * una densidad visual agradable (~25px a 80px en pantalla) y un grosor constante de 1px.
    */
-  private renderGrid(width: number, height: number): void {
-    const gridSize = 40;
+  private renderGrid(logicalWidth: number, logicalHeight: number, viewport: Viewport): void {
+    const zoom = viewport.zoom;
+    const topLeft = screenToWorld(viewport, { x: 0, y: 0 });
+    const bottomRight = screenToWorld(viewport, { x: logicalWidth, y: logicalHeight });
+
+    let step = 40;
+    while (step * zoom < 25) {
+      step *= 2;
+    }
+    while (step * zoom > 80) {
+      step /= 2;
+    }
+
+    const minX = Math.min(topLeft.x, bottomRight.x);
+    const maxX = Math.max(topLeft.x, bottomRight.x);
+    const minY = Math.min(topLeft.y, bottomRight.y);
+    const maxY = Math.max(topLeft.y, bottomRight.y);
+
+    const startX = Math.floor(minX / step) * step;
+    const endX = Math.ceil(maxX / step) * step;
+    const startY = Math.floor(minY / step) * step;
+    const endY = Math.ceil(maxY / step) * step;
+
     this.ctx.save();
     this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
-    this.ctx.lineWidth = 1;
+    this.ctx.lineWidth = 1 / zoom;
 
     this.ctx.beginPath();
-    for (let x = 0; x < width; x += gridSize) {
-      this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, height);
+    for (let x = startX; x <= endX; x += step) {
+      this.ctx.moveTo(x, startY);
+      this.ctx.lineTo(x, endY);
     }
-    for (let y = 0; y < height; y += gridSize) {
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(width, y);
+    for (let y = startY; y <= endY; y += step) {
+      this.ctx.moveTo(startX, y);
+      this.ctx.lineTo(endX, y);
     }
     this.ctx.stroke();
     this.ctx.restore();
@@ -259,19 +307,19 @@ export class RenderEngine {
   /**
    * Itera sobre las capas (Layer) del Documento
    */
-  private renderDocument(document: Document): void {
+  private renderDocument(document: Document, zoom: number): void {
     for (const layer of document.children) {
       if (layer.visible === false) {
         continue;
       }
-      this.renderLayer(layer);
+      this.renderLayer(layer, zoom);
     }
   }
 
   /**
    * Itera sobre las figuras (Shape) dentro de una capa
    */
-  private renderLayer(layer: Layer): void {
+  private renderLayer(layer: Layer, zoom: number): void {
     this.ctx.save();
 
     if (typeof layer.opacity === 'number') {
@@ -282,7 +330,7 @@ export class RenderEngine {
       if (shape.visible === false) {
         continue;
       }
-      this.renderShape(shape);
+      this.renderShape(shape, zoom);
     }
 
     this.ctx.restore();
@@ -291,7 +339,7 @@ export class RenderEngine {
   /**
    * Renderiza una figura según su tipo discriminado (Rectangle o Ellipse)
    */
-  private renderShape(shape: Shape): void {
+  private renderShape(shape: Shape, zoom: number): void {
     this.ctx.save();
 
     if (typeof shape.opacity === 'number') {
@@ -303,7 +351,7 @@ export class RenderEngine {
     } else if (shape.type === 'ellipse') {
       this.renderEllipse(shape);
     } else if (shape.type === 'path') {
-      this.renderPath(shape);
+      this.renderPath(shape, zoom);
     }
 
     this.ctx.restore();
@@ -381,8 +429,13 @@ export class RenderEngine {
   /**
    * Dibuja la caja delimitadora (bounding box) azul y los manejadores cuadrados en las 4 esquinas
    * para todos los nodos que tengan el flag selected activo.
+   * Mantiene un tamaño constante en pantalla dividiendo las medidas entre el factor de zoom.
    */
-  private renderSelectionOverlay(document: Document): void {
+  private renderSelectionOverlay(document: Document, zoom: number): void {
+    const handleSize = 8 / zoom;
+    const halfHandle = handleSize / 2;
+    const rotationDistance = 30 / zoom;
+
     for (const layer of document.children) {
       if (layer.visible === false) {
         continue;
@@ -393,8 +446,6 @@ export class RenderEngine {
           continue;
         }
 
-        const handleSize = 8;
-        const halfHandle = handleSize / 2;
         const rotation = shape.rotation ?? 0;
 
         let baseX = 0;
@@ -437,7 +488,7 @@ export class RenderEngine {
         }
 
         const midX = baseX + baseWidth / 2;
-        const rotY = baseY - 30;
+        const rotY = baseY - rotationDistance;
 
         this.ctx.save();
 
@@ -449,14 +500,14 @@ export class RenderEngine {
 
         // 1. Caja delimitadora (Bounding Box) azul
         this.ctx.strokeStyle = '#2563eb'; // Azul primario vibrante
-        this.ctx.lineWidth = 1.5;
+        this.ctx.lineWidth = 1.5 / zoom;
         this.ctx.setLineDash([]);
         this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
 
         // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
         this.ctx.beginPath();
         this.ctx.strokeStyle = '#2563eb';
-        this.ctx.lineWidth = 1;
+        this.ctx.lineWidth = 1 / zoom;
         this.ctx.moveTo(midX, baseY);
         this.ctx.lineTo(midX, rotY);
         this.ctx.stroke();
@@ -481,7 +532,7 @@ export class RenderEngine {
 
           // Borde azul de contraste
           this.ctx.strokeStyle = '#2563eb';
-          this.ctx.lineWidth = 1.5;
+          this.ctx.lineWidth = 1.5 / zoom;
           this.ctx.strokeRect(
             corner.x - halfHandle,
             corner.y - halfHandle,
@@ -500,7 +551,7 @@ export class RenderEngine {
         this.ctx.fillStyle = '#10b981'; // Verde para diferenciarlo visualmente de las esquinas azules
         this.ctx.fill();
         this.ctx.strokeStyle = '#059669'; // Borde verde de definición
-        this.ctx.lineWidth = 1.5;
+        this.ctx.lineWidth = 1.5 / zoom;
         this.ctx.stroke();
 
         this.ctx.restore();
@@ -511,7 +562,7 @@ export class RenderEngine {
   /**
    * Dibuja un nodo Path utilizando curvas de Bézier cúbicas (bezierCurveTo) en Canvas 2D.
    */
-  private renderPath(path: Path): void {
+  private renderPath(path: Path, zoom: number): void {
     if (!path.points || path.points.length === 0) {
       return;
     }
@@ -571,7 +622,7 @@ export class RenderEngine {
 
     // Si el trazado está seleccionado, dibujar sus puntos de ancla y manejadores de control Bézier
     if (path.selected) {
-      this.renderPathControls(path);
+      this.renderPathControls(path, zoom);
     }
 
     this.ctx.restore();
@@ -579,14 +630,15 @@ export class RenderEngine {
 
   /**
    * Dibuja los puntos de ancla y manejadores de control Bézier para un Path seleccionado
+   * con tamaño constante en pantalla.
    */
-  private renderPathControls(path: Path): void {
-    const handleRadius = 3.5;
-    const anchorSize = 6;
+  private renderPathControls(path: Path, zoom: number): void {
+    const handleRadius = 3.5 / zoom;
+    const anchorSize = 6 / zoom;
 
     for (const pt of path.points) {
       this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)'; // Celeste suave
-      this.ctx.lineWidth = 1;
+      this.ctx.lineWidth = 1 / zoom;
 
       // Línea y círculo para handleIn
       if (pt.handleIn) {
@@ -617,7 +669,7 @@ export class RenderEngine {
       // Punto de ancla (cuadrado con borde azul)
       this.ctx.fillStyle = '#ffffff';
       this.ctx.strokeStyle = '#0284c7';
-      this.ctx.lineWidth = 1.5;
+      this.ctx.lineWidth = 1.5 / zoom;
       this.ctx.fillRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
       this.ctx.strokeRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
     }
@@ -625,18 +677,18 @@ export class RenderEngine {
 
   /**
    * Dibuja la vista previa de una figura en proceso de creación interactiva por arrastre
-   * utilizando trazo punteado y relleno semitransparente.
+   * utilizando trazo punteado y relleno semitransparente, manteniendo grosor de trazo constante.
    */
-  private renderShapePreview(preview: ShapePreview): void {
+  private renderShapePreview(preview: ShapePreview, zoom: number): void {
     if (preview.width < 1 && preview.height < 1) {
       return;
     }
 
     this.ctx.save();
     if (typeof this.ctx.setLineDash === 'function') {
-      this.ctx.setLineDash([6, 4]);
+      this.ctx.setLineDash([6 / zoom, 4 / zoom]);
     }
-    this.ctx.lineWidth = 2;
+    this.ctx.lineWidth = 2 / zoom;
     this.ctx.strokeStyle = '#38bdf8';
     this.ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
 

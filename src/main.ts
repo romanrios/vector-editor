@@ -7,13 +7,15 @@ import { TranslateCommand } from './commands/TranslateCommand.ts';
 import { StyleCommand } from './commands/StyleCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { Serializer } from './state/Serializer.ts';
+import { ViewportManager } from './utils/viewport.ts';
 import type { Path, Shape } from './types/scene-graph.ts';
 
 console.log('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
-// 1. Inicializar el StateManager inmutable y el CommandManager
+// 1. Inicializar el StateManager inmutable, el CommandManager y el ViewportManager
 const commandManager = new CommandManager();
 const stateManager = new StateManager(undefined, commandManager);
+const viewportManager = new ViewportManager();
 const moduleStateManager = stateManager;
 
 // 2. Inyectar las 3 figuras de prueba hardcodeadas iniciales
@@ -88,6 +90,7 @@ export function setupUIBindings(
 
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
   const btnDirectSelect = document.querySelector<HTMLButtonElement>('#tool-direct-select');
+  const btnHand = document.querySelector<HTMLButtonElement>('#tool-hand');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
   const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
@@ -100,6 +103,17 @@ export function setupUIBindings(
   const statusShapesCount = document.querySelector<HTMLElement>('#status-shapes-count');
   const statusSelectionInfo = document.querySelector<HTMLElement>('#status-selection-info');
   const statusSelectionSeparator = document.querySelector<HTMLElement>('#status-selection-separator');
+
+  // Controles de Navegación y Zoom en la Barra de Estado
+  const statusZoomBtn = document.querySelector<HTMLButtonElement>('#status-zoom-btn');
+  const statusZoomLabel = document.querySelector<HTMLElement>('#status-zoom-label');
+  const zoomDropdown = document.querySelector<HTMLElement>('#zoom-dropdown');
+  const zoomPresetItems = (typeof document.querySelectorAll === 'function'
+    ? Array.from(document.querySelectorAll<HTMLButtonElement>('.zoom-dropdown-item'))
+    : []) as HTMLButtonElement[];
+
+  // Gestor de Vista
+  const viewportManager = inputController.viewportManager ?? new ViewportManager();
 
   // Controles del Panel de Propiedades
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
@@ -121,11 +135,13 @@ export function setupUIBindings(
   const menuBtnFile = document.querySelector<HTMLButtonElement>('#menu-btn-file');
   const menuBtnEdit = document.querySelector<HTMLButtonElement>('#menu-btn-edit');
   const menuBtnObject = document.querySelector<HTMLButtonElement>('#menu-btn-object');
+  const menuBtnView = document.querySelector<HTMLButtonElement>('#menu-btn-view');
   const menuBtnHelp = document.querySelector<HTMLButtonElement>('#menu-btn-help');
 
   const menuDropdownFile = document.querySelector<HTMLElement>('#menu-dropdown-file');
   const menuDropdownEdit = document.querySelector<HTMLElement>('#menu-dropdown-edit');
   const menuDropdownObject = document.querySelector<HTMLElement>('#menu-dropdown-object');
+  const menuDropdownView = document.querySelector<HTMLElement>('#menu-dropdown-view');
   const menuDropdownHelp = document.querySelector<HTMLElement>('#menu-dropdown-help');
 
   const menuItemImport = document.querySelector<HTMLButtonElement>('#menu-item-import');
@@ -138,6 +154,10 @@ export function setupUIBindings(
   const menuItemDelete = document.querySelector<HTMLButtonElement>('#menu-item-delete');
   const menuItemBringToFront = document.querySelector<HTMLButtonElement>('#menu-item-bring-to-front');
   const menuItemSendToBack = document.querySelector<HTMLButtonElement>('#menu-item-send-to-back');
+  const menuItemZoomIn = document.querySelector<HTMLButtonElement>('#menu-item-zoom-in');
+  const menuItemZoomOut = document.querySelector<HTMLButtonElement>('#menu-item-zoom-out');
+  const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
+  const menuItemZoom100 = document.querySelector<HTMLButtonElement>('#menu-item-zoom-100');
   const menuItemShortcuts = document.querySelector<HTMLButtonElement>('#menu-item-shortcuts');
 
   const shortcutsDialog = document.querySelector<HTMLDialogElement>('#shortcuts-dialog');
@@ -156,6 +176,12 @@ export function setupUIBindings(
       const isDirectSelect = tool === 'direct-select';
       btnDirectSelect.classList.toggle('active', isDirectSelect);
       btnDirectSelect.setAttribute('aria-pressed', String(isDirectSelect));
+    }
+
+    if (btnHand) {
+      const isHand = tool === 'hand';
+      btnHand.classList.toggle('active', isHand);
+      btnHand.setAttribute('aria-pressed', String(isHand));
     }
 
     if (btnPen) {
@@ -186,7 +212,9 @@ export function setupUIBindings(
               ? 'Rectángulo'
               : tool === 'ellipse'
                 ? 'Elipse'
-                : 'Selección'
+                : tool === 'hand'
+                  ? 'Mano'
+                  : 'Selección'
       }`;
     }
     syncStatusBar();
@@ -242,12 +270,14 @@ export function setupUIBindings(
   // Clic en botones de herramientas -> InputController
   const onSelectClick = () => inputController.setTool('select');
   const onDirectSelectClick = () => inputController.setTool('direct-select');
+  const onHandClick = () => inputController.setTool('hand');
   const onPenClick = () => inputController.setTool('pen');
   const onRectangleClick = () => inputController.setTool('rectangle');
   const onEllipseClick = () => inputController.setTool('ellipse');
 
   btnSelect?.addEventListener('click', onSelectClick);
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
+  btnHand?.addEventListener('click', onHandClick);
   btnPen?.addEventListener('click', onPenClick);
   btnRectangle?.addEventListener('click', onRectangleClick);
   btnEllipse?.addEventListener('click', onEllipseClick);
@@ -302,6 +332,20 @@ export function setupUIBindings(
     if (menuItemPaste) {
       menuItemPaste.disabled = !hasClipboard;
       menuItemPaste.setAttribute('aria-disabled', String(!hasClipboard));
+    }
+
+    // Deshabilitación de zoom en límites [0.1, 32]
+    const currentZoom = viewportManager.zoom;
+    const isAtMaxZoom = currentZoom >= 32 - 1e-4;
+    const isAtMinZoom = currentZoom <= 0.1 + 1e-4;
+
+    if (menuItemZoomIn) {
+      menuItemZoomIn.disabled = isAtMaxZoom;
+      menuItemZoomIn.setAttribute('aria-disabled', String(isAtMaxZoom));
+    }
+    if (menuItemZoomOut) {
+      menuItemZoomOut.disabled = isAtMinZoom;
+      menuItemZoomOut.setAttribute('aria-disabled', String(isAtMinZoom));
     }
   }
 
@@ -376,6 +420,7 @@ export function setupUIBindings(
           const doc = await Serializer.parseDocument(text);
           stateManager.loadState(doc);
           commandManager.clear();
+          inputController.zoomFit();
           console.log('📂 [Serializer] Documento importado y cargado con éxito:', doc);
         } catch (error) {
           console.error('❌ Error al importar documento JSON:', error);
@@ -404,6 +449,7 @@ export function setupUIBindings(
           const doc = await Serializer.parseDocument(text);
           stateManager.loadState(doc);
           commandManager.clear();
+          inputController.zoomFit();
         } catch (error) {
           console.error('❌ Error al importar documento JSON:', error);
         } finally {
@@ -716,6 +762,16 @@ export function setupUIBindings(
       items: [menuItemBringToFront, menuItemSendToBack],
     },
     {
+      trigger: menuBtnView,
+      dropdown: menuDropdownView,
+      items: [
+        menuItemZoomIn,
+        menuItemZoomOut,
+        menuItemZoomFit,
+        menuItemZoom100,
+      ],
+    },
+    {
       trigger: menuBtnHelp,
       dropdown: menuDropdownHelp,
       items: [menuItemShortcuts],
@@ -870,8 +926,16 @@ export function setupUIBindings(
   });
 
   const onDocumentClick = (e: MouseEvent) => {
-    if (activeMenuIndex === -1) return;
     const target = e.target as any;
+    if (isZoomMenuOpen) {
+      const isInsideZoom = (statusZoomBtn && (statusZoomBtn === target || statusZoomBtn.contains?.(target))) ||
+                           (zoomDropdown && (zoomDropdown === target || zoomDropdown.contains?.(target)));
+      if (!isInsideZoom) {
+        closeZoomMenu();
+      }
+    }
+
+    if (activeMenuIndex === -1) return;
     if (menuBar && typeof menuBar.contains === 'function') {
       if (!menuBar.contains(target)) {
         closeAllMenus();
@@ -895,6 +959,13 @@ export function setupUIBindings(
   };
 
   const onDocumentKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && isZoomMenuOpen) {
+      e.preventDefault?.();
+      closeZoomMenu();
+      statusZoomBtn?.focus?.();
+      return;
+    }
+
     if (e.key === 'Escape' && activeMenuIndex !== -1) {
       e.preventDefault?.();
       const trigger = menuEntries[activeMenuIndex]?.trigger;
@@ -987,6 +1058,30 @@ export function setupUIBindings(
     }
   };
 
+  const onMenuZoomInClick = () => {
+    closeAllMenus();
+    inputController.zoomIn();
+    canvas?.focus?.();
+  };
+
+  const onMenuZoomOutClick = () => {
+    closeAllMenus();
+    inputController.zoomOut();
+    canvas?.focus?.();
+  };
+
+  const onMenuZoomFitClick = () => {
+    closeAllMenus();
+    inputController.zoomFit();
+    canvas?.focus?.();
+  };
+
+  const onMenuZoom100Click = () => {
+    closeAllMenus();
+    inputController.zoomReset();
+    canvas?.focus?.();
+  };
+
   const populateShortcutsDialog = () => {
     if (!shortcutsDialogList) return;
     const shortcuts = typeof inputController.getShortcuts === 'function'
@@ -1064,11 +1159,126 @@ export function setupUIBindings(
   menuItemDelete?.addEventListener('click', onMenuDeleteClick);
   menuItemBringToFront?.addEventListener('click', onMenuBringToFrontClick);
   menuItemSendToBack?.addEventListener('click', onMenuSendToBackClick);
+  menuItemZoomIn?.addEventListener('click', onMenuZoomInClick);
+  menuItemZoomOut?.addEventListener('click', onMenuZoomOutClick);
+  menuItemZoomFit?.addEventListener('click', onMenuZoomFitClick);
+  menuItemZoom100?.addEventListener('click', onMenuZoom100Click);
   menuItemShortcuts?.addEventListener('click', onMenuShortcutsClick);
   btnCloseShortcuts?.addEventListener('click', closeShortcutsDialog);
 
   // Inicializar atajos en el diálogo
   populateShortcutsDialog();
+
+  // Control interactivo de Zoom en la Barra de Estado
+  const updateZoomIndicator = (zoom: number) => {
+    if (statusZoomLabel) {
+      statusZoomLabel.textContent = `${Math.round(zoom * 100)} %`;
+    }
+  };
+  updateZoomIndicator(viewportManager.zoom);
+
+  const unsubscribeViewport = viewportManager.subscribe((vp) => {
+    updateZoomIndicator(vp.zoom);
+    syncMenuItems();
+  });
+
+  let isZoomMenuOpen = false;
+
+  const openZoomMenu = () => {
+    if (!zoomDropdown || !statusZoomBtn) return;
+    isZoomMenuOpen = true;
+    zoomDropdown.hidden = false;
+    statusZoomBtn.setAttribute('aria-expanded', 'true');
+    statusZoomBtn.classList.add('is-open');
+  };
+
+  const closeZoomMenu = () => {
+    if (!zoomDropdown || !statusZoomBtn) return;
+    isZoomMenuOpen = false;
+    zoomDropdown.hidden = true;
+    statusZoomBtn.setAttribute('aria-expanded', 'false');
+    statusZoomBtn.classList.remove('is-open');
+  };
+
+  const onZoomBtnClick = (e: MouseEvent) => {
+    e.stopPropagation?.();
+    if (isZoomMenuOpen) {
+      closeZoomMenu();
+    } else {
+      closeAllMenus();
+      openZoomMenu();
+    }
+  };
+
+  const onZoomBtnKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault?.();
+      openZoomMenu();
+      const firstItem = typeof zoomDropdown?.querySelector === 'function'
+        ? zoomDropdown.querySelector<HTMLButtonElement>('.zoom-dropdown-item')
+        : null;
+      firstItem?.focus?.();
+    } else if (e.key === 'Escape') {
+      if (isZoomMenuOpen) {
+        e.preventDefault?.();
+        closeZoomMenu();
+      }
+    }
+  };
+
+  statusZoomBtn?.addEventListener('click', onZoomBtnClick);
+  statusZoomBtn?.addEventListener('keydown', onZoomBtnKeyDown);
+
+  const onPresetClick = (e: MouseEvent) => {
+    const target = e.currentTarget as HTMLButtonElement;
+    const preset = target.getAttribute('data-preset');
+    closeZoomMenu();
+
+    if (preset === 'fit') {
+      inputController.zoomFit();
+    } else if (preset) {
+      const targetZoom = parseFloat(preset);
+      if (!isNaN(targetZoom)) {
+        const center = inputController.getCanvasCenter();
+        const currentZoom = viewportManager.zoom;
+        const factor = targetZoom / currentZoom;
+        viewportManager.zoomAt(center, factor);
+      }
+    }
+    canvas?.focus?.();
+  };
+
+  const presetElements = Array.from(zoomPresetItems);
+  presetElements.forEach((item) => {
+    item.addEventListener('click', onPresetClick);
+  });
+
+  const onZoomDropdownKeyDown = (e: KeyboardEvent) => {
+    const key = e.key;
+    const items = Array.from(zoomPresetItems).filter((it) => !it.disabled);
+    const focused = typeof document !== 'undefined' ? (document.activeElement as HTMLButtonElement) : null;
+    const idx = focused ? items.indexOf(focused) : -1;
+
+    if (key === 'ArrowDown') {
+      e.preventDefault?.();
+      if (items.length === 0) return;
+      const next = idx >= 0 ? (idx + 1) % items.length : 0;
+      items[next].focus?.();
+    } else if (key === 'ArrowUp') {
+      e.preventDefault?.();
+      if (items.length === 0) return;
+      const prev = idx >= 0 ? (idx - 1 + items.length) % items.length : items.length - 1;
+      items[prev].focus?.();
+    } else if (key === 'Escape') {
+      e.preventDefault?.();
+      closeZoomMenu();
+      statusZoomBtn?.focus?.();
+    } else if (key === 'Tab') {
+      closeZoomMenu();
+    }
+  };
+
+  zoomDropdown?.addEventListener('keydown', onZoomDropdownKeyDown);
 
   // 7. Observabilidad de dimensiones del contenedor del lienzo (ResizeObserver)
   const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
@@ -1080,10 +1290,33 @@ export function setupUIBindings(
       if (canvas) {
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
         const rect = canvas.getBoundingClientRect();
-        const width = Math.max(1, Math.floor((rect.width || (typeof window !== 'undefined' ? window.innerWidth : 800)) * dpr));
-        const height = Math.max(1, Math.floor((rect.height || (typeof window !== 'undefined' ? window.innerHeight : 600)) * dpr));
+        const prevCssWidth = canvas.width / dpr;
+        const prevCssHeight = canvas.height / dpr;
+
+        const newCssWidth = Math.max(1, Math.floor(rect.width || (typeof window !== 'undefined' ? window.innerWidth : 800)));
+        const newCssHeight = Math.max(1, Math.floor(rect.height || (typeof window !== 'undefined' ? window.innerHeight : 600)));
+        const width = Math.max(1, Math.floor(newCssWidth * dpr));
+        const height = Math.max(1, Math.floor(newCssHeight * dpr));
 
         if (canvas.width !== width || canvas.height !== height) {
+          if (prevCssWidth > 0 && prevCssHeight > 0 && (newCssWidth !== prevCssWidth || newCssHeight !== prevCssHeight)) {
+            const oldCenterWorld = viewportManager.screenToWorld({
+              x: prevCssWidth / 2,
+              y: prevCssHeight / 2,
+            });
+            const newCenterScreen = {
+              x: newCssWidth / 2,
+              y: newCssHeight / 2,
+            };
+            const newPanX = newCenterScreen.x - oldCenterWorld.x * viewportManager.zoom;
+            const newPanY = newCenterScreen.y - oldCenterWorld.y * viewportManager.zoom;
+            viewportManager.setViewport({
+              zoom: viewportManager.zoom,
+              panX: newPanX,
+              panY: newPanY,
+            });
+          }
+
           canvas.width = width;
           canvas.height = height;
         }
@@ -1106,8 +1339,10 @@ export function setupUIBindings(
       unsubscribeToolChange();
       unsubscribeHistory();
       unsubscribeState();
+      unsubscribeViewport();
       btnSelect?.removeEventListener('click', onSelectClick);
       btnDirectSelect?.removeEventListener('click', onDirectSelectClick);
+      btnHand?.removeEventListener('click', onHandClick);
       btnPen?.removeEventListener('click', onPenClick);
       btnRectangle?.removeEventListener('click', onRectangleClick);
       btnEllipse?.removeEventListener('click', onEllipseClick);
@@ -1163,8 +1398,19 @@ export function setupUIBindings(
       menuItemDelete?.removeEventListener('click', onMenuDeleteClick);
       menuItemBringToFront?.removeEventListener('click', onMenuBringToFrontClick);
       menuItemSendToBack?.removeEventListener('click', onMenuSendToBackClick);
+      menuItemZoomIn?.removeEventListener('click', onMenuZoomInClick);
+      menuItemZoomOut?.removeEventListener('click', onMenuZoomOutClick);
+      menuItemZoomFit?.removeEventListener('click', onMenuZoomFitClick);
+      menuItemZoom100?.removeEventListener('click', onMenuZoom100Click);
       menuItemShortcuts?.removeEventListener('click', onMenuShortcutsClick);
       btnCloseShortcuts?.removeEventListener('click', closeShortcutsDialog);
+
+      statusZoomBtn?.removeEventListener('click', onZoomBtnClick);
+      statusZoomBtn?.removeEventListener('keydown', onZoomBtnKeyDown);
+      presetElements.forEach((item) => {
+        item.removeEventListener('click', onPresetClick);
+      });
+      zoomDropdown?.removeEventListener('keydown', onZoomDropdownKeyDown);
 
       if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
         document.removeEventListener('click', onDocumentClick);
@@ -1188,16 +1434,19 @@ if (typeof document !== 'undefined') {
     renderEngine = new RenderEngine(canvas, stateManager, {
       highDpi: true,
       backgroundColor: '#141416',
+      viewportManager,
     });
     renderEngine.start();
 
     // Controlador de Entrada con herramientas de Selección y Pluma
-    inputController = new InputController(canvas, stateManager, commandManager);
+    inputController = new InputController(canvas, stateManager, commandManager, {
+      viewportManager,
+    });
 
     // Sistema de observabilidad DOM <-> Estado
     uiBindings = setupUIBindings(inputController, commandManager, stateManager);
 
-    console.log('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo).');
+    console.log('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo) y Viewport (Zoom/Pan).');
     console.log('✒️  Herramienta Pluma:');
     console.log('   - Presiona "P" o haz clic en la toolbar para activar la Pluma.');
     console.log('   - Clic para crear un punto de ancla.');
@@ -1224,6 +1473,7 @@ commandManager.subscribe((undoCount, redoCount) => {
 // 7. Exponer las instancias en el objeto global para inspección interactiva
 const globals = {
   stateManager,
+  viewportManager,
   renderEngine,
   inputController,
   commandManager,

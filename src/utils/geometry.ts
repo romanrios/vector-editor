@@ -230,14 +230,18 @@ export interface SelectionHandle extends AABB {
  * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
  * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
  */
-export function getSelectionHandles(shape: Shape, handleSize: number = 8): SelectionHandle[] {
+export function getSelectionHandles(
+  shape: Shape,
+  handleSize: number = 8,
+  rotationDistance: number = 30
+): SelectionHandle[] {
   const half = handleSize / 2;
   const rotation = shape.rotation ?? 0;
 
   if (!rotation) {
     const aabb = getShapeAABB(shape);
     const midX = (aabb.minX + aabb.maxX) / 2;
-    const rotY = aabb.minY - 30;
+    const rotY = aabb.minY - rotationDistance;
 
     return [
       {
@@ -325,7 +329,7 @@ export function getSelectionHandles(shape: Shape, handleSize: number = 8): Selec
   const tr = rotatePoint(hw, -hh);
   const br = rotatePoint(hw, hh);
   const bl = rotatePoint(-hw, hh);
-  const rot = rotatePoint(0, -hh - 30);
+  const rot = rotatePoint(0, -hh - rotationDistance);
 
   const createHandle = (pt: { x: number; y: number }, type: HandleType): SelectionHandle => ({
     type,
@@ -457,7 +461,8 @@ export function isPointInPath(
   px: number,
   py: number,
   path: Path,
-  ctx?: CanvasRenderingContext2D | null
+  ctx?: CanvasRenderingContext2D | null,
+  customTolerance?: number
 ): boolean {
   if (!path.points || path.points.length === 0) {
     return false;
@@ -465,7 +470,7 @@ export function isPointInPath(
 
   // 1. Broad-phase: AABB con margen de tolerancia
   const strokeWidth = path.strokeWidth ?? 2;
-  const tolerance = Math.max(strokeWidth / 2 + 5, 8);
+  const tolerance = customTolerance !== undefined ? customTolerance : Math.max(strokeWidth / 2 + 5, 8);
   const aabb = getPathAABB(path);
 
   const paddedAABB: AABB = {
@@ -511,7 +516,7 @@ export function isPointInPath(
       // Si el trazado tiene trazo (stroke)
       if (ctx.isPointInStroke) {
         ctx.save();
-        ctx.lineWidth = Math.max(strokeWidth, 8);
+        ctx.lineWidth = customTolerance !== undefined ? Math.max(strokeWidth, customTolerance * 2) : Math.max(strokeWidth, 8);
         const inStroke = ctx.isPointInStroke(path2d, testX, testY);
         ctx.restore();
         if (inStroke) {

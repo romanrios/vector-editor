@@ -5,6 +5,7 @@ export * from './types/scene-graph.ts';
 export * from './utils/immutable.ts';
 export * from './utils/geometry.ts';
 export * from './utils/cloneShape.ts';
+export * from './utils/viewport.ts';
 
 // Gestor de Estado Inmutable
 export * from './state/StateManager.ts';
