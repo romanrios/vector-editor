@@ -12,15 +12,18 @@ export class AddShapeCommand implements Command {
   private readonly stateManager: StateManager;
   public readonly shape: Shape;
   public readonly layerId: string;
+  public readonly index?: number;
 
-  constructor(stateManager: StateManager, shape: Shape, layerId: string);
-  constructor(stateManager: StateManager, layerId: string, shape: Shape);
+  constructor(stateManager: StateManager, shape: Shape, layerId: string, index?: number);
+  constructor(stateManager: StateManager, layerId: string, shape: Shape, index?: number);
   constructor(
     stateManager: StateManager,
     arg2: Shape | string,
-    arg3: string | Shape
+    arg3: string | Shape,
+    index?: number
   ) {
     this.stateManager = stateManager;
+    this.index = index;
     if (typeof arg2 === 'string') {
       this.layerId = arg2;
       this.shape = arg3 as Shape;
@@ -35,7 +38,7 @@ export class AddShapeCommand implements Command {
    */
   public execute(): void {
     if (!this.stateManager.findNode(this.shape.id)) {
-      this.stateManager.addShape(this.layerId, this.shape);
+      this.stateManager.addShape(this.layerId, this.shape, this.index);
     }
   }
 

@@ -1,5 +1,6 @@
 import type { StateManager } from '../state/StateManager.ts';
-import type { AABB, Ellipse, Path, PathPoint, Rectangle, Shape, Vector2D } from '../types/scene-graph.ts';
+import { isLayer, isShape, type AABB, type Ellipse, type Path, type PathPoint, type Rectangle, type Shape, type Vector2D } from '../types/scene-graph.ts';
+import { cloneShape } from '../utils/cloneShape.ts';
 import {
   getPathBaseAABB,
   getSelectionHandles,
@@ -113,6 +114,11 @@ export class InputController {
   private initialRotation: number | null = null;
   private rotationAngleOffset: number = 0;
   private rotationCentroid: { x: number; y: number } | null = null;
+
+  // Portapapeles interno en memoria
+  private _clipboard: Shape | null = null;
+  private _clipboardLayerId: string | null = null;
+  private _pasteCount: number = 0;
 
   // Estado de la herramienta Selección Directa (modo 'direct-select')
   private _draggedPointIndex: number | null = null;
@@ -309,6 +315,14 @@ export class InputController {
 
   public get activePenPathId(): string | null {
     return this.activePathId;
+  }
+
+  public get clipboard(): Shape | null {
+    return this._clipboard;
+  }
+
+  public get pasteCount(): number {
+    return this._pasteCount;
   }
 
   /**
@@ -1058,20 +1072,40 @@ export class InputController {
       const isSendToBack = event.shiftKey && (key === '[' || key === '{' || event.code === 'BracketLeft');
 
       if (isBringToFront || isSendToBack) {
-        const target = (event.target as HTMLElement | null) ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
-        const isInputFocused = Boolean(
-          target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-        );
-
-        const selectedNode = this.stateManager.getSelectedNode();
-
-        if (!isInputFocused && selectedNode) {
-          event.preventDefault?.();
-          if (isBringToFront) {
-            this.bringToFront(selectedNode.id);
-          } else {
-            this.sendToBack(selectedNode.id);
+        if (!this.isInputFocused(event)) {
+          const selectedNode = this.stateManager.getSelectedNode();
+          if (selectedNode) {
+            event.preventDefault?.();
+            if (isBringToFront) {
+              this.bringToFront(selectedNode.id);
+            } else {
+              this.sendToBack(selectedNode.id);
+            }
           }
+        }
+        return;
+      }
+
+      if (keyLower === 'c') {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.copy();
+        }
+        return;
+      }
+
+      if (keyLower === 'v') {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.paste();
+        }
+        return;
+      }
+
+      if (keyLower === 'd') {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.duplicate();
         }
         return;
       }
@@ -1079,8 +1113,7 @@ export class InputController {
       return;
     }
 
-    const target = (event.target as HTMLElement | null) ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).tagName === 'SELECT' || target.isContentEditable)) {
+    if (this.isInputFocused(event)) {
       return;
     }
 
@@ -1209,6 +1242,115 @@ export class InputController {
 
     this.commandManager.executeCommand(command);
     return true;
+  }
+
+  /**
+   * Determina si el evento de teclado se originó en un elemento de entrada interactivo
+   * (input de texto, número, color, textarea o select) o si actualmente un campo tiene el foco.
+   */
+  private isInputFocused(event: KeyboardEvent): boolean {
+    const target = (event.target as HTMLElement | null) ??
+      (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
+    if (!target) {
+      return false;
+    }
+    const tagName = target.tagName;
+    return (
+      tagName === 'INPUT' ||
+      tagName === 'TEXTAREA' ||
+      (tagName as string) === 'SELECT' ||
+      Boolean(target.isContentEditable)
+    );
+  }
+
+  /**
+   * Helper común para clonar e insertar una figura en el Scene Graph,
+   * registrando la acción en el CommandManager y seleccionando la nueva figura.
+   * Evita duplicación de código entre Duplicar y Pegar.
+   */
+  private insertClonedShape(
+    sourceShape: Shape,
+    targetLayerId: string,
+    dx: number,
+    dy: number,
+    targetIndex?: number
+  ): Shape {
+    const cloned = cloneShape(sourceShape, { dx, dy });
+    const command = new AddShapeCommand(this.stateManager, targetLayerId, cloned, targetIndex);
+    this.commandManager.executeCommand(command);
+    this.stateManager.selectNode(cloned.id);
+    return cloned;
+  }
+
+  /**
+   * Duplica directamente la figura seleccionada con un desplazamiento de 10 px,
+   * sin modificar el portapapeles en memoria ni alterar el contador de pegados.
+   * La nueva figura queda seleccionada y se añade en la misma capa, justo por encima
+   * de la original (targetIndex = originalIndex + 1).
+   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand).
+   */
+  public duplicate(): Shape | null {
+    const selected = this.stateManager.getSelectedNode();
+    if (!selected || !isShape(selected)) {
+      return null;
+    }
+
+    const parent = this.stateManager.findParent(selected.id);
+    if (!parent || !isLayer(parent)) {
+      return null;
+    }
+
+    const originalIndex = parent.children.findIndex((s) => s.id === selected.id);
+    const targetIndex = originalIndex >= 0 ? originalIndex + 1 : undefined;
+
+    return this.insertClonedShape(selected, parent.id, 10, 10, targetIndex);
+  }
+
+  /**
+   * Guarda una copia de la figura seleccionada en el portapapeles interno en memoria.
+   * Reinicia el contador de desplazamientos de pegados consecutivos.
+   * Retorna true si se copió con éxito o false si no había figura seleccionada.
+   */
+  public copy(): boolean {
+    const selected = this.stateManager.getSelectedNode();
+    if (!selected || !isShape(selected)) {
+      return false;
+    }
+
+    const parent = this.stateManager.findParent(selected.id);
+    this._clipboard = selected;
+    this._clipboardLayerId = parent ? parent.id : null;
+    this._pasteCount = 0;
+    return true;
+  }
+
+  /**
+   * Crea una figura nueva a partir de la guardada en el portapapeles interno,
+   * con un desplazamiento de 10 px que se acumula en pegados consecutivos (10, 20, 30...).
+   * La figura se añade al frente de la capa (última posición visual) y queda seleccionada.
+   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand).
+   * Si el portapapeles está vacío, no hace nada y retorna null.
+   */
+  public paste(): Shape | null {
+    if (!this._clipboard) {
+      return null;
+    }
+
+    let targetLayerId = this._clipboardLayerId;
+    if (!targetLayerId || !this.stateManager.findNode(targetLayerId)) {
+      const selected = this.stateManager.getSelectedNode();
+      const parent = selected ? this.stateManager.findParent(selected.id) : null;
+      targetLayerId = parent ? parent.id : this.stateManager.getState().children[0]?.id;
+    }
+
+    if (!targetLayerId) {
+      return null;
+    }
+
+    this._pasteCount++;
+    const offset = this._pasteCount * 10;
+
+    return this.insertClonedShape(this._clipboard, targetLayerId, offset, offset, undefined);
   }
 
   /**

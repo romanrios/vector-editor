@@ -4,6 +4,7 @@ export * from './types/scene-graph.ts';
 // Utilidades de Inmutabilidad, Geometría y Traversal
 export * from './utils/immutable.ts';
 export * from './utils/geometry.ts';
+export * from './utils/cloneShape.ts';
 
 // Gestor de Estado Inmutable
 export * from './state/StateManager.ts';

@@ -106,6 +106,7 @@ export function setupUIBindings(
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
   const btnBringToFront = document.querySelector<HTMLButtonElement>('#btn-bring-to-front');
   const btnSendToBack = document.querySelector<HTMLButtonElement>('#btn-send-to-back');
+  const btnDuplicate = document.querySelector<HTMLButtonElement>('#btn-duplicate');
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
   const syncToolButtons = (tool: ToolMode) => {
@@ -494,6 +495,13 @@ export function setupUIBindings(
   btnBringToFront?.addEventListener('click', onBringToFrontClick);
   btnSendToBack?.addEventListener('click', onSendToBackClick);
 
+  // Botón de duplicar figura seleccionada
+  const onDuplicateClick = () => {
+    inputController.duplicate();
+  };
+
+  btnDuplicate?.addEventListener('click', onDuplicateClick);
+
   // Sincronizar estado inicial del panel
   syncPropertiesPanel();
 
@@ -534,6 +542,7 @@ export function setupUIBindings(
 
       btnBringToFront?.removeEventListener('click', onBringToFrontClick);
       btnSendToBack?.removeEventListener('click', onSendToBackClick);
+      btnDuplicate?.removeEventListener('click', onDuplicateClick);
     },
   };
 }
