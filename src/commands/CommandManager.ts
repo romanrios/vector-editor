@@ -30,6 +30,15 @@ export class CommandManager {
       command.execute();
     }
 
+    if (this.undoStack.length > 0) {
+      const lastCommand = this.undoStack[this.undoStack.length - 1];
+      if (typeof lastCommand.mergeWith === 'function' && lastCommand.mergeWith(command)) {
+        this.redoStack = [];
+        this.notify();
+        return;
+      }
+    }
+
     this.undoStack.push(command);
     if (this.undoStack.length > this.maxHistorySize) {
       this.undoStack.shift();

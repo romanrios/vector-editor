@@ -1010,7 +1010,8 @@ export class InputController {
         this.initialShapePosition.x,
         this.initialShapePosition.y,
         finalX,
-        finalY
+        finalY,
+        { mergeTimeout: 0 }
       );
 
       this.commandManager.recordCommand(command);
@@ -1078,8 +1079,8 @@ export class InputController {
       return;
     }
 
-    const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+    const target = (event.target as HTMLElement | null) ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).tagName === 'SELECT' || target.isContentEditable)) {
       return;
     }
 
@@ -1090,8 +1091,38 @@ export class InputController {
       return;
     }
 
-    const key = event.key.toLowerCase();
-    if (key === 'delete' || key === 'backspace') {
+    const key = event.key;
+    const isArrowKey = key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight'
+      || key === 'Up' || key === 'Down' || key === 'Left' || key === 'Right';
+
+    if (isArrowKey) {
+      if (this._currentTool !== 'select') {
+        return;
+      }
+
+      const selectedShape = this.stateManager.getSelectedNode();
+      if (!selectedShape || selectedShape.locked === true) {
+        return;
+      }
+
+      event.preventDefault?.();
+
+      const step = event.shiftKey ? 10 : 1;
+      let dx = 0;
+      let dy = 0;
+
+      if (key === 'ArrowUp' || key === 'Up') dy = -step;
+      else if (key === 'ArrowDown' || key === 'Down') dy = step;
+      else if (key === 'ArrowLeft' || key === 'Left') dx = -step;
+      else if (key === 'ArrowRight' || key === 'Right') dx = step;
+
+      const customTimestamp = (event as any).customTimestamp ?? (event as any).time;
+      this.moveSelection(dx, dy, customTimestamp);
+      return;
+    }
+
+    const keyLower = key ? key.toLowerCase() : '';
+    if (keyLower === 'delete' || keyLower === 'backspace') {
       const selectedNode = this.stateManager.getSelectedNode();
       if (selectedNode) {
         event.preventDefault?.();
@@ -1106,17 +1137,17 @@ export class InputController {
       return;
     }
 
-    if (key === 'p') {
+    if (keyLower === 'p') {
       this.setTool('pen');
-    } else if (key === 'v') {
+    } else if (keyLower === 'v') {
       this.setTool('select');
-    } else if (key === 'a') {
+    } else if (keyLower === 'a') {
       this.setTool('direct-select');
-    } else if (key === 'r') {
+    } else if (keyLower === 'r') {
       this.setTool('rectangle');
-    } else if (key === 'e') {
+    } else if (keyLower === 'e') {
       this.setTool('ellipse');
-    } else if (key === 'escape') {
+    } else if (keyLower === 'escape') {
       if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
         this.resetRotate();
@@ -1125,7 +1156,7 @@ export class InputController {
       } else if (this._currentTool === 'pen') {
         this.finishActivePath();
       }
-    } else if (key === 'enter') {
+    } else if (keyLower === 'enter') {
       if (this._currentTool === 'pen') {
         this.finishActivePath();
       }
@@ -1175,6 +1206,52 @@ export class InputController {
     if (command.isAlreadyAtTarget) {
       return false;
     }
+
+    this.commandManager.executeCommand(command);
+    return true;
+  }
+
+  /**
+   * Mueve la figura actualmente seleccionada por un desplazamiento relativo (dx, dy).
+   * Solo opera si la herramienta activa es 'select' y la figura no está bloqueada (locked).
+   * Fusiona comandos consecutivos en el CommandManager si ocurren dentro de un intervalo corto (400 ms).
+   *
+   * @param dx Desplazamiento horizontal en píxeles
+   * @param dy Desplazamiento vertical en píxeles
+   * @param timestamp Marca temporal opcional (para pruebas deterministas o repetición)
+   * @returns true si la figura fue movida, false en caso contrario
+   */
+  public moveSelection(dx: number, dy: number, timestamp?: number): boolean {
+    if (this._currentTool !== 'select') {
+      return false;
+    }
+
+    if (dx === 0 && dy === 0) {
+      return false;
+    }
+
+    const selectedShape = this.stateManager.getSelectedNode();
+    if (!selectedShape || selectedShape.locked === true) {
+      return false;
+    }
+
+    const currentX = selectedShape.x;
+    const currentY = selectedShape.y;
+    const targetX = currentX + dx;
+    const targetY = currentY + dy;
+
+    const command = new TranslateCommand(
+      this.stateManager,
+      selectedShape.id,
+      currentX,
+      currentY,
+      targetX,
+      targetY,
+      {
+        timestamp: timestamp ?? Date.now(),
+        mergeTimeout: 400,
+      }
+    );
 
     this.commandManager.executeCommand(command);
     return true;

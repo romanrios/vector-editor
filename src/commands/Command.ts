@@ -17,4 +17,10 @@ export interface Command {
    * Revierte la acción del comando restaurando el estado previo.
    */
   undo(): void;
+
+  /**
+   * Intenta fusionar este comando con un comando subsiguiente.
+   * Si retorna true, la fusión fue exitosa y CommandManager no creará una nueva entrada en el historial.
+   */
+  mergeWith?(nextCommand: Command): boolean;
 }

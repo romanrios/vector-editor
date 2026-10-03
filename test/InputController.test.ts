@@ -1211,6 +1211,186 @@ describe('InputController & Hit-testing AABB', () => {
 
     controller.destroy();
   });
+
+  it('mueve la figura seleccionada con las 4 flechas (1 px) y con Shift (10 px)', () => {
+    const commandManager = new CommandManager();
+    const stateManager = new StateManager(undefined, commandManager);
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const rect: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 100, y: 100, width: 50, height: 50 };
+    stateManager.addShape(layerId, rect);
+    stateManager.selectNode('r1');
+
+    let preventDefaultCalled = false;
+    const sendArrow = (key: string, shiftKey: boolean = false) => {
+      preventDefaultCalled = false;
+      controller.handleKeyDown({
+        key,
+        shiftKey,
+        preventDefault: () => {
+          preventDefaultCalled = true;
+        },
+      } as unknown as KeyboardEvent);
+    };
+
+    // 1 px en cada dirección
+    sendArrow('ArrowRight');
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 101);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 100);
+
+    sendArrow('ArrowLeft');
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 100);
+
+    sendArrow('ArrowDown');
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 101);
+
+    sendArrow('ArrowUp');
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 100);
+
+    // Con Shift: 10 px
+    sendArrow('ArrowRight', true);
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 110);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 100);
+
+    sendArrow('ArrowDown', true);
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 110);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 110);
+
+    sendArrow('ArrowLeft', true);
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 110);
+
+    sendArrow('ArrowUp', true);
+    assert.equal(preventDefaultCalled, true);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r1') as Rectangle).y, 100);
+
+    controller.destroy();
+  });
+
+  it('no mueve figura si no hay selección, si está locked, si no está en herramienta select, o si el foco está en input', () => {
+    const commandManager = new CommandManager();
+    const stateManager = new StateManager(undefined, commandManager);
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const rect: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 50, y: 50, width: 40, height: 40, locked: false };
+    const lockedRect: Rectangle = { id: 'r-locked', type: 'rectangle', name: 'RLocked', x: 80, y: 80, width: 40, height: 40, locked: true };
+    stateManager.addShape(layerId, rect);
+    stateManager.addShape(layerId, lockedRect);
+
+    let preventDefaultCalled = false;
+    const sendKey = (eventData: Partial<KeyboardEvent>) => {
+      preventDefaultCalled = false;
+      controller.handleKeyDown({
+        key: 'ArrowRight',
+        preventDefault: () => {
+          preventDefaultCalled = true;
+        },
+        ...eventData,
+      } as unknown as KeyboardEvent);
+    };
+
+    // 1. Sin selección -> no hace nada
+    sendKey({});
+    assert.equal(preventDefaultCalled, false);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 50);
+    assert.equal(commandManager.undoCount, 0);
+
+    // 2. Con figura locked seleccionada -> no hace nada
+    stateManager.selectNode('r-locked');
+    sendKey({});
+    assert.equal(preventDefaultCalled, false);
+    assert.equal((stateManager.findNode('r-locked') as Rectangle).x, 80);
+    assert.equal(commandManager.undoCount, 0);
+
+    // 3. Con figura desbloqueada, pero foco en INPUT -> no hace nada
+    stateManager.selectNode('r1');
+    sendKey({ target: { tagName: 'INPUT' } as any });
+    assert.equal(preventDefaultCalled, false);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 50);
+    assert.equal(commandManager.undoCount, 0);
+
+    // 4. Con foco en TEXTAREA -> no hace nada
+    sendKey({ target: { tagName: 'TEXTAREA' } as any });
+    assert.equal(preventDefaultCalled, false);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 50);
+    assert.equal(commandManager.undoCount, 0);
+
+    // 5. Herramienta distinta de 'select' (ej: 'pen' o 'rectangle') -> no hace nada
+    controller.setTool('pen');
+    sendKey({});
+    assert.equal(preventDefaultCalled, false);
+    assert.equal((stateManager.findNode('r1') as Rectangle).x, 50);
+    assert.equal(commandManager.undoCount, 0);
+
+    controller.destroy();
+  });
+
+  it('agrupación en el historial: pulsaciones consecutivas dentro de 400ms se deshacen con un único Ctrl+Z, y separadas generan entradas distintas', () => {
+    const commandManager = new CommandManager();
+    const stateManager = new StateManager(undefined, commandManager);
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const rect: Rectangle = { id: 'r-history', type: 'rectangle', name: 'RH', x: 100, y: 100, width: 50, height: 50 };
+    stateManager.addShape(layerId, rect);
+    stateManager.selectNode('r-history');
+
+    // 1. Tres pulsaciones consecutivas dentro de 400 ms (t = 1000, 1100, 1200)
+    controller.handleKeyDown({ key: 'ArrowRight', customTimestamp: 1000 } as any);
+    controller.handleKeyDown({ key: 'ArrowRight', customTimestamp: 1100 } as any);
+    controller.handleKeyDown({ key: 'ArrowDown', customTimestamp: 1200 } as any);
+
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 102);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).y, 101);
+    assert.equal(commandManager.undoCount, 1, 'Las 3 pulsaciones consecutivas deben quedar agrupadas en 1 solo comando');
+
+    // Un único Ctrl+Z revierte las 3 pulsaciones
+    controller.handleKeyDown({ ctrlKey: true, key: 'z' } as any);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).y, 100);
+    assert.equal(commandManager.undoCount, 0);
+
+    // Un único Ctrl+Y rehace las 3 pulsaciones
+    controller.handleKeyDown({ ctrlKey: true, key: 'y' } as any);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 102);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).y, 101);
+    assert.equal(commandManager.undoCount, 1);
+
+    // 2. Pulsación separada por más de 400 ms (t = 2000 vs t = 1200)
+    controller.handleKeyDown({ key: 'ArrowRight', customTimestamp: 2000 } as any);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 103);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).y, 101);
+    assert.equal(commandManager.undoCount, 2, 'Pulsación tras más de 400 ms debe generar una nueva entrada');
+
+    // Deshacer segundo movimiento
+    controller.handleKeyDown({ ctrlKey: true, key: 'z' } as any);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 102);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Deshacer primer grupo de movimientos
+    controller.handleKeyDown({ ctrlKey: true, key: 'z' } as any);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).x, 100);
+    assert.equal((stateManager.findNode('r-history') as Rectangle).y, 100);
+    assert.equal(commandManager.undoCount, 0);
+
+    controller.destroy();
+  });
 });
 
 
