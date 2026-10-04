@@ -196,10 +196,14 @@ export function setupUIBindings(
   const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
   const menuItemZoom100 = document.querySelector<HTMLButtonElement>('#menu-item-zoom-100');
   const menuItemShortcuts = document.querySelector<HTMLButtonElement>('#menu-item-shortcuts');
+  const menuItemAbout = document.querySelector<HTMLButtonElement>('#menu-item-about');
+  const btnAboutBrand = document.querySelector<HTMLButtonElement>('#btn-about-brand');
 
   const shortcutsDialog = document.querySelector<HTMLDialogElement>('#shortcuts-dialog');
   const btnCloseShortcuts = document.querySelector<HTMLButtonElement>('#btn-close-shortcuts');
   const shortcutsDialogList = document.querySelector<HTMLElement>('#shortcuts-dialog-list');
+  const aboutDialog = document.querySelector<HTMLDialogElement>('#about-dialog');
+  const btnCloseAbout = document.querySelector<HTMLButtonElement>('#btn-close-about');
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
   const syncToolButtons = (tool: ToolMode) => {
@@ -984,7 +988,7 @@ export function setupUIBindings(
     {
       trigger: menuBtnHelp,
       dropdown: menuDropdownHelp,
-      items: [menuItemShortcuts],
+      items: [menuItemShortcuts, menuItemAbout],
     },
   ];
 
@@ -1579,6 +1583,44 @@ export function setupUIBindings(
     openShortcutsDialog();
   };
 
+  let aboutRestoreFocus: HTMLButtonElement | null = null;
+
+  const openAboutDialog = (restoreFocus: HTMLButtonElement | null = null) => {
+    if (!aboutDialog) return;
+    aboutRestoreFocus = restoreFocus;
+    if (typeof aboutDialog.showModal === 'function') {
+      aboutDialog.showModal();
+    } else {
+      aboutDialog.setAttribute('open', '');
+      if (aboutDialog.style) {
+        aboutDialog.style.display = 'block';
+      }
+    }
+  };
+
+  const closeAboutDialog = () => {
+    if (!aboutDialog) return;
+    if (typeof aboutDialog.close === 'function') {
+      aboutDialog.close();
+    } else {
+      aboutDialog.removeAttribute('open');
+      if (aboutDialog.style) {
+        aboutDialog.style.display = 'none';
+      }
+    }
+    aboutRestoreFocus?.focus?.();
+  };
+
+  const onMenuAboutClick = () => {
+    closeAllMenus();
+    openAboutDialog(menuBtnHelp);
+  };
+
+  const onBrandAboutClick = () => {
+    closeAllMenus();
+    openAboutDialog(btnAboutBrand);
+  };
+
   menuItemImport?.addEventListener('click', onMenuImportClick);
   menuItemExport?.addEventListener('click', onMenuExportClick);
   menuItemUndo?.addEventListener('click', onMenuUndoClick);
@@ -1597,6 +1639,9 @@ export function setupUIBindings(
   menuItemZoom100?.addEventListener('click', onMenuZoom100Click);
   menuItemShortcuts?.addEventListener('click', onMenuShortcutsClick);
   btnCloseShortcuts?.addEventListener('click', closeShortcutsDialog);
+  menuItemAbout?.addEventListener('click', onMenuAboutClick);
+  btnAboutBrand?.addEventListener('click', onBrandAboutClick);
+  btnCloseAbout?.addEventListener('click', closeAboutDialog);
 
   // Inicializar atajos en el diálogo
   populateShortcutsDialog();
@@ -1872,6 +1917,9 @@ export function setupUIBindings(
       menuItemZoom100?.removeEventListener('click', onMenuZoom100Click);
       menuItemShortcuts?.removeEventListener('click', onMenuShortcutsClick);
       btnCloseShortcuts?.removeEventListener('click', closeShortcutsDialog);
+      menuItemAbout?.removeEventListener('click', onMenuAboutClick);
+      btnAboutBrand?.removeEventListener('click', onBrandAboutClick);
+      btnCloseAbout?.removeEventListener('click', closeAboutDialog);
 
       statusZoomBtn?.removeEventListener('click', onZoomBtnClick);
       statusZoomBtn?.removeEventListener('keydown', onZoomBtnKeyDown);

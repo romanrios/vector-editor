@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vector Editor - Scene Graph Canvas 2D</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -99,14 +100,24 @@
       }
 
       .brand {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        gap: 8px;
-        font-family: var(--font-heading);
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        justify-content: center;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius-xs);
+        cursor: pointer;
         color: var(--text-primary);
+      }
+
+      .brand:hover .brand-icon {
+        background: var(--accent-hover);
+      }
+
+      .brand:focus-visible {
+        outline: 1px solid var(--border-focus);
       }
 
       .brand-icon {
@@ -118,6 +129,7 @@
         align-items: center;
         justify-content: center;
         color: #0f172a;
+        transition: background var(--transition);
       }
 
       /* Barra de Menú (Desplegables) */
@@ -351,6 +363,106 @@
         font-family: monospace;
         color: var(--accent);
         white-space: nowrap;
+      }
+
+      /* Diálogo Acerca de */
+      .about-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 22px 24px 20px;
+        max-width: 360px;
+        width: 90vw;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+        margin: auto;
+        position: relative;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .about-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .about-dialog-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+      }
+
+      .about-dialog-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        margin-bottom: 18px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .about-dialog-icon {
+        width: 36px;
+        height: 36px;
+      }
+
+      .about-dialog-title {
+        font-size: 18px;
+        font-weight: 700;
+        font-family: var(--font-heading);
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+      }
+
+      .about-dialog-tagline {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.4;
+      }
+
+      .about-dialog-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+      }
+
+      .about-dialog-meta div {
+        display: grid;
+        grid-template-columns: 108px 1fr;
+        gap: 8px;
+        align-items: baseline;
+        font-size: 12px;
+      }
+
+      .about-dialog-meta dt {
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .about-dialog-meta dd {
+        margin: 0;
+        color: var(--text-primary);
+      }
+
+      .about-dialog-meta a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .about-dialog-meta a:hover {
+        text-decoration: underline;
+        color: var(--accent-hover);
+      }
+
+      .about-dialog-copy {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
       }
 
       .header-actions {
@@ -938,16 +1050,15 @@
     <!-- 1. Header con barra de menú y botones de acción rápida -->
     <header class="editor-header" role="region" aria-label="Barra de menú del editor">
       <div class="header-left">
-        <div class="brand">
-          <div class="brand-icon" aria-hidden="true">
+        <button type="button" id="btn-about-brand" class="brand" title="Acerca de Vector Editor" aria-label="Acerca de Vector Editor">
+          <span class="brand-icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 19l7-7 3 3-7 7-3-3z"/>
               <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
               <path d="M2 2l7.586 7.586"/>
             </svg>
-          </div>
-          <span>Vector Editor</span>
-        </div>
+          </span>
+        </button>
 
         <nav class="menu-bar" role="menubar" aria-label="Menú principal">
           <!-- Menú Archivo -->
@@ -1110,6 +1221,10 @@
             <div id="menu-dropdown-help" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-help" hidden>
               <button id="menu-item-shortcuts" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Atajos de teclado</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-about" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Acerca de</span>
               </button>
             </div>
           </div>
@@ -1414,6 +1529,45 @@
       <div class="shortcuts-dialog-body" id="shortcuts-dialog-list">
         <!-- Generado dinámicamente desde InputController.getShortcuts() -->
       </div>
+    </dialog>
+
+    <!-- Diálogo modal Acerca de -->
+    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-dialog-title">
+      <button id="btn-close-about" class="dialog-close-btn about-dialog-close" aria-label="Cerrar diálogo">✕</button>
+      <div class="about-dialog-brand">
+        <div class="brand-icon about-dialog-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            <path d="M2 2l7.586 7.586"/>
+          </svg>
+        </div>
+        <h2 id="about-dialog-title" class="about-dialog-title">Vector Editor</h2>
+        <p class="about-dialog-tagline">Editor gráfico vectorial 2D sobre Canvas nativo</p>
+      </div>
+      <dl class="about-dialog-meta">
+        <div>
+          <dt>Autor</dt>
+          <dd>Román Ríos</dd>
+        </div>
+        <div>
+          <dt>Sitio web</dt>
+          <dd><a href="https://romanrios.com.ar" target="_blank" rel="noopener noreferrer">romanrios.com.ar</a></dd>
+        </div>
+        <div>
+          <dt>Código fuente</dt>
+          <dd><a href="https://github.com/romanrios/vector-editor" target="_blank" rel="noopener noreferrer">github.com/romanrios/vector-editor</a></dd>
+        </div>
+        <div>
+          <dt>Licencia</dt>
+          <dd>MIT</dd>
+        </div>
+        <div>
+          <dt>Tecnología</dt>
+          <dd>TypeScript · Canvas 2D</dd>
+        </div>
+      </dl>
+      <p class="about-dialog-copy">© 2026 Román Ríos</p>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>

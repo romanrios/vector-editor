@@ -176,9 +176,13 @@ function setupMockDOM() {
     '#menu-item-zoom-fit': new MockElement('menu-item-zoom-fit', 'button'),
     '#menu-item-zoom-100': new MockElement('menu-item-zoom-100', 'button'),
     '#menu-item-shortcuts': new MockElement('menu-item-shortcuts', 'button'),
+    '#menu-item-about': new MockElement('menu-item-about', 'button'),
+    '#btn-about-brand': new MockElement('btn-about-brand', 'button'),
     '#shortcuts-dialog': new MockElement('shortcuts-dialog', 'dialog'),
     '#btn-close-shortcuts': new MockElement('btn-close-shortcuts', 'button'),
     '#shortcuts-dialog-list': new MockElement('shortcuts-dialog-list', 'div'),
+    '#about-dialog': new MockElement('about-dialog', 'dialog'),
+    '#btn-close-about': new MockElement('btn-close-about', 'button'),
     '#file-import-input': new MockElement('file-import-input', 'input'),
     '#btn-undo': new MockElement('btn-undo', 'button'),
     '#btn-redo': new MockElement('btn-redo', 'button'),
@@ -212,6 +216,7 @@ function setupMockDOM() {
   elements['.menu-bar'].appendChild(elements['#menu-btn-help']);
   elements['.menu-bar'].appendChild(elements['#menu-dropdown-help']);
   elements['#menu-dropdown-help'].appendChild(elements['#menu-item-shortcuts']);
+  elements['#menu-dropdown-help'].appendChild(elements['#menu-item-about']);
 
   const docListeners: Map<string, Set<(e: any) => void>> = new Map();
 
@@ -507,6 +512,35 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     cleanup();
   });
 
+  it('el menú Ayuda y el ícono de marca abren el diálogo Acerca de', () => {
+    const { elements } = setupMockDOM();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    const dialog = elements['#about-dialog'];
+
+    elements['#menu-item-about'].click();
+    assert.equal(dialog.getAttribute('open'), '');
+    assert.equal(dialog.style.display, 'block');
+
+    elements['#btn-close-about'].click();
+    assert.equal(dialog.getAttribute('open'), null);
+    assert.equal(dialog.style.display, 'none');
+
+    elements['#btn-about-brand'].click();
+    assert.equal(dialog.getAttribute('open'), '');
+    assert.equal(dialog.style.display, 'block');
+
+    elements['#btn-close-about'].click();
+    assert.equal(dialog.getAttribute('open'), null);
+
+    cleanup();
+  });
+
   it('navegación con teclado: flechas, Enter y Escape en la barra de menú', () => {
     const { elements, doc } = setupMockDOM();
     const stateManager = new StateManager();
@@ -591,6 +625,9 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     assert.equal(elements['#menu-dropdown-file'].getListenerCount('keydown'), 0);
     assert.equal(elements['#menu-item-undo'].getListenerCount('click'), 0);
     assert.equal(elements['#btn-close-shortcuts'].getListenerCount('click'), 0);
+    assert.equal(elements['#menu-item-about'].getListenerCount('click'), 0);
+    assert.equal(elements['#btn-about-brand'].getListenerCount('click'), 0);
+    assert.equal(elements['#btn-close-about'].getListenerCount('click'), 0);
     assert.equal(doc.getListenerCount('click'), 0);
     assert.equal(doc.getListenerCount('keydown'), 0);
   });
