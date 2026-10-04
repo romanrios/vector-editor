@@ -11,21 +11,25 @@ export class DeleteCommand implements Command {
   private readonly stateManager: StateManager;
   public readonly shape: Shape;
   public readonly layerId: string;
+  public readonly originalIndex?: number;
 
-  constructor(stateManager: StateManager, shape: Shape, layerId: string);
-  constructor(stateManager: StateManager, layerId: string, shape: Shape);
+  constructor(stateManager: StateManager, shape: Shape, layerId: string, originalIndex?: number);
+  constructor(stateManager: StateManager, layerId: string, shape: Shape, originalIndex?: number);
   constructor(
     stateManager: StateManager,
     arg2: Shape | string,
-    arg3: string | Shape
+    arg3: string | Shape,
+    arg4?: number
   ) {
     this.stateManager = stateManager;
     if (typeof arg2 === 'string') {
       this.layerId = arg2;
       this.shape = arg3 as Shape;
+      this.originalIndex = arg4;
     } else {
       this.shape = arg2;
       this.layerId = arg3 as string;
+      this.originalIndex = arg4;
     }
   }
 
@@ -40,6 +44,6 @@ export class DeleteCommand implements Command {
    * Restaura la figura en su capa contenedora original.
    */
   public undo(): void {
-    this.stateManager.addShape(this.layerId, this.shape);
+    this.stateManager.addShape(this.layerId, this.shape, this.originalIndex);
   }
 }

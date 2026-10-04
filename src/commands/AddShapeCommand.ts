@@ -43,13 +43,10 @@ export class AddShapeCommand implements Command {
   }
 
   /**
-   * Elimina la figura y, si estaba seleccionada, la deselecciona.
+   * Elimina la figura y, si estaba seleccionada, la remueve de la selección activa.
    */
   public undo(): void {
-    const selected = this.stateManager.getSelectedNode();
-    if (selected && selected.id === this.shape.id) {
-      this.stateManager.selectNode(null);
-    }
+    this.stateManager.removeFromSelection([this.shape.id]);
     this.stateManager.removeShape(this.shape.id);
   }
 }

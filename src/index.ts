@@ -30,6 +30,7 @@ export * from './commands/AddShapeCommand.ts';
 export * from './commands/RotateCommand.ts';
 export * from './commands/PointCommand.ts';
 export * from './commands/ReorderCommand.ts';
+export * from './commands/BatchCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

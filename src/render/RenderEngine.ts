@@ -1,6 +1,6 @@
 import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import { getPathBaseAABB, getShapeAABB } from '../utils/geometry.ts';
+import { getPathBaseAABB, getSelectionBounds, getShapeAABB } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 
@@ -401,136 +401,233 @@ export class RenderEngine {
   }
 
   /**
-   * Dibuja la caja delimitadora (bounding box) azul y los manejadores cuadrados en las 4 esquinas
-   * para todos los nodos que tengan el flag selected activo.
+   * Dibuja la caja delimitadora (bounding box) y los manejadores de selección.
+   * - Con una sola figura: dibuja la caja OBB con manejadores de esquina y rotación.
+   * - Con varias figuras: dibuja un contorno fino sobre cada figura y una única caja AABB
+   *   combinada (getSelectionBounds) sin tiradores.
    * Mantiene un tamaño constante en pantalla dividiendo las medidas entre el factor de zoom.
    */
   private renderSelectionOverlay(document: Document, zoom: number): void {
-    const handleSize = 8 / zoom;
-    const halfHandle = handleSize / 2;
-    const rotationDistance = 30 / zoom;
-
+    const selectedShapes: Shape[] = [];
     for (const layer of document.children) {
       if (layer.visible === false) {
         continue;
       }
-
       for (const shape of layer.children) {
-        if (shape.visible === false || !this.stateManager.isSelected(shape.id)) {
+        if (shape.visible === false) {
           continue;
         }
-
-        const rotation = shape.rotation ?? 0;
-
-        let baseX = 0;
-        let baseY = 0;
-        let baseWidth = 0;
-        let baseHeight = 0;
-        let cx = 0;
-        let cy = 0;
-
-        if (!rotation) {
-          const aabb = getShapeAABB(shape);
-          baseX = aabb.minX;
-          baseY = aabb.minY;
-          baseWidth = aabb.width;
-          baseHeight = aabb.height;
-          cx = (baseX + baseWidth) / 2;
-          cy = (baseY + baseHeight) / 2;
-        } else if (shape.type === 'rectangle') {
-          baseX = shape.x;
-          baseY = shape.y;
-          baseWidth = shape.width;
-          baseHeight = shape.height;
-          cx = shape.x + shape.width / 2;
-          cy = shape.y + shape.height / 2;
-        } else if (shape.type === 'ellipse') {
-          baseX = shape.x - shape.radiusX;
-          baseY = shape.y - shape.radiusY;
-          baseWidth = shape.radiusX * 2;
-          baseHeight = shape.radiusY * 2;
-          cx = shape.x;
-          cy = shape.y;
-        } else if (shape.type === 'path') {
-          const baseAABB = getPathBaseAABB(shape);
-          baseX = baseAABB.minX;
-          baseY = baseAABB.minY;
-          baseWidth = baseAABB.width;
-          baseHeight = baseAABB.height;
-          cx = (baseAABB.minX + baseAABB.maxX) / 2;
-          cy = (baseAABB.minY + baseAABB.maxY) / 2;
+        if (this.stateManager.isSelected(shape.id)) {
+          selectedShapes.push(shape);
         }
-
-        const midX = baseX + baseWidth / 2;
-        const rotY = baseY - rotationDistance;
-
-        this.ctx.save();
-
-        if (rotation) {
-          this.ctx.translate(cx, cy);
-          this.ctx.rotate((rotation * Math.PI) / 180);
-          this.ctx.translate(-cx, -cy);
-        }
-
-        // 1. Caja delimitadora (Bounding Box) azul
-        this.ctx.strokeStyle = '#2563eb'; // Azul primario vibrante
-        this.ctx.lineWidth = 1.5 / zoom;
-        this.ctx.setLineDash([]);
-        this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
-
-        // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
-        this.ctx.beginPath();
-        this.ctx.strokeStyle = '#2563eb';
-        this.ctx.lineWidth = 1 / zoom;
-        this.ctx.moveTo(midX, baseY);
-        this.ctx.lineTo(midX, rotY);
-        this.ctx.stroke();
-
-        // 3. Manejadores (cuadrados en las 4 esquinas)
-        const corners = [
-          { x: baseX, y: baseY }, // Superior Izquierda
-          { x: baseX + baseWidth, y: baseY }, // Superior Derecha
-          { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
-          { x: baseX, y: baseY + baseHeight }, // Inferior Izquierda
-        ];
-
-        for (const corner of corners) {
-          // Relleno blanco nítido
-          this.ctx.fillStyle = '#ffffff';
-          this.ctx.fillRect(
-            corner.x - halfHandle,
-            corner.y - halfHandle,
-            handleSize,
-            handleSize
-          );
-
-          // Borde azul de contraste
-          this.ctx.strokeStyle = '#2563eb';
-          this.ctx.lineWidth = 1.5 / zoom;
-          this.ctx.strokeRect(
-            corner.x - halfHandle,
-            corner.y - halfHandle,
-            handleSize,
-            handleSize
-          );
-        }
-
-        // 4. Manejador de rotación flotante (círculo verde)
-        this.ctx.beginPath();
-        if (typeof this.ctx.arc === 'function') {
-          this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
-        } else if (typeof this.ctx.ellipse === 'function') {
-          this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
-        }
-        this.ctx.fillStyle = '#10b981'; // Verde para diferenciarlo visualmente de las esquinas azules
-        this.ctx.fill();
-        this.ctx.strokeStyle = '#059669'; // Borde verde de definición
-        this.ctx.lineWidth = 1.5 / zoom;
-        this.ctx.stroke();
-
-        this.ctx.restore();
       }
     }
+
+    if (selectedShapes.length === 0) {
+      return;
+    }
+
+    if (selectedShapes.length === 1) {
+      this.renderSingleShapeSelection(selectedShapes[0], zoom);
+      return;
+    }
+
+    // Múltiples figuras seleccionadas:
+    // 1. Contorno fino sobre cada figura seleccionada
+    for (const shape of selectedShapes) {
+      this.renderShapeOutline(shape, zoom);
+    }
+
+    // 2. Un recuadro delimitador combinado (getSelectionBounds) sin tiradores
+    const combinedBounds = getSelectionBounds(selectedShapes);
+    if (combinedBounds) {
+      this.ctx.save();
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.setLineDash([]);
+      this.ctx.strokeRect(
+        combinedBounds.minX,
+        combinedBounds.minY,
+        combinedBounds.width,
+        combinedBounds.height
+      );
+      this.ctx.restore();
+    }
+  }
+
+  /**
+   * Dibuja un contorno fino de 1px constante sobre una figura individual perteneciente
+   * a una selección múltiple.
+   */
+  private renderShapeOutline(shape: Shape, zoom: number): void {
+    const rotation = shape.rotation ?? 0;
+
+    let baseX = 0;
+    let baseY = 0;
+    let baseWidth = 0;
+    let baseHeight = 0;
+    let cx = 0;
+    let cy = 0;
+
+    if (!rotation) {
+      const aabb = getShapeAABB(shape);
+      baseX = aabb.minX;
+      baseY = aabb.minY;
+      baseWidth = aabb.width;
+      baseHeight = aabb.height;
+    } else if (shape.type === 'rectangle') {
+      baseX = shape.x;
+      baseY = shape.y;
+      baseWidth = shape.width;
+      baseHeight = shape.height;
+      cx = shape.x + shape.width / 2;
+      cy = shape.y + shape.height / 2;
+    } else if (shape.type === 'ellipse') {
+      baseX = shape.x - shape.radiusX;
+      baseY = shape.y - shape.radiusY;
+      baseWidth = shape.radiusX * 2;
+      baseHeight = shape.radiusY * 2;
+      cx = shape.x;
+      cy = shape.y;
+    } else if (shape.type === 'path') {
+      const baseAABB = getPathBaseAABB(shape);
+      baseX = baseAABB.minX;
+      baseY = baseAABB.minY;
+      baseWidth = baseAABB.width;
+      baseHeight = baseAABB.height;
+      cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    }
+
+    this.ctx.save();
+    if (rotation) {
+      this.ctx.translate(cx, cy);
+      this.ctx.rotate((rotation * Math.PI) / 180);
+      this.ctx.translate(-cx, -cy);
+    }
+
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([]);
+    this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja la caja delimitadora (Bounding Box) azul orientada y los 4 manejadores cuadrados
+   * de redimensionado más el manejador flotante de rotación para una única figura seleccionada.
+   */
+  private renderSingleShapeSelection(shape: Shape, zoom: number): void {
+    const handleSize = 8 / zoom;
+    const halfHandle = handleSize / 2;
+    const rotationDistance = 30 / zoom;
+    const rotation = shape.rotation ?? 0;
+
+    let baseX = 0;
+    let baseY = 0;
+    let baseWidth = 0;
+    let baseHeight = 0;
+    let cx = 0;
+    let cy = 0;
+
+    if (!rotation) {
+      const aabb = getShapeAABB(shape);
+      baseX = aabb.minX;
+      baseY = aabb.minY;
+      baseWidth = aabb.width;
+      baseHeight = aabb.height;
+      cx = (baseX + baseWidth) / 2;
+      cy = (baseY + baseHeight) / 2;
+    } else if (shape.type === 'rectangle') {
+      baseX = shape.x;
+      baseY = shape.y;
+      baseWidth = shape.width;
+      baseHeight = shape.height;
+      cx = shape.x + shape.width / 2;
+      cy = shape.y + shape.height / 2;
+    } else if (shape.type === 'ellipse') {
+      baseX = shape.x - shape.radiusX;
+      baseY = shape.y - shape.radiusY;
+      baseWidth = shape.radiusX * 2;
+      baseHeight = shape.radiusY * 2;
+      cx = shape.x;
+      cy = shape.y;
+    } else if (shape.type === 'path') {
+      const baseAABB = getPathBaseAABB(shape);
+      baseX = baseAABB.minX;
+      baseY = baseAABB.minY;
+      baseWidth = baseAABB.width;
+      baseHeight = baseAABB.height;
+      cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    }
+
+    const midX = baseX + baseWidth / 2;
+    const rotY = baseY - rotationDistance;
+
+    this.ctx.save();
+
+    if (rotation) {
+      this.ctx.translate(cx, cy);
+      this.ctx.rotate((rotation * Math.PI) / 180);
+      this.ctx.translate(-cx, -cy);
+    }
+
+    // 1. Caja delimitadora (Bounding Box) azul
+    this.ctx.strokeStyle = '#2563eb'; // Azul primario vibrante
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.setLineDash([]);
+    this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
+
+    // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
+    this.ctx.beginPath();
+    this.ctx.strokeStyle = '#2563eb';
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.moveTo(midX, baseY);
+    this.ctx.lineTo(midX, rotY);
+    this.ctx.stroke();
+
+    // 3. Manejadores (cuadrados en las 4 esquinas)
+    const corners = [
+      { x: baseX, y: baseY }, // Superior Izquierda
+      { x: baseX + baseWidth, y: baseY }, // Superior Derecha
+      { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
+      { x: baseX, y: baseY + baseHeight }, // Inferior Izquierda
+    ];
+
+    for (const corner of corners) {
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(
+        corner.x - halfHandle,
+        corner.y - halfHandle,
+        handleSize,
+        handleSize
+      );
+
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.strokeRect(
+        corner.x - halfHandle,
+        corner.y - halfHandle,
+        handleSize,
+        handleSize
+      );
+    }
+
+    // 4. Manejador de rotación flotante (círculo verde)
+    this.ctx.beginPath();
+    if (typeof this.ctx.arc === 'function') {
+      this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
+    } else if (typeof this.ctx.ellipse === 'function') {
+      this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
+    }
+    this.ctx.fillStyle = '#10b981';
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#059669';
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.stroke();
+
+    this.ctx.restore();
   }
 
   /**
@@ -594,8 +691,8 @@ export class RenderEngine {
       this.ctx.stroke();
     }
 
-    // Si el trazado está seleccionado, dibujar sus puntos de ancla y manejadores de control Bézier
-    if (this.stateManager.isSelected(path.id)) {
+    // Si el trazado está seleccionado y es la única figura seleccionada, dibujar sus puntos de ancla y manejadores de control Bézier
+    if (this.stateManager.isSelected(path.id) && this.stateManager.getSelection().length === 1) {
       this.renderPathControls(path, zoom);
     }
 
@@ -654,6 +751,32 @@ export class RenderEngine {
    * utilizando trazo punteado y relleno semitransparente, manteniendo grosor de trazo constante.
    */
   private renderShapePreview(preview: ShapePreview, zoom: number): void {
+    if (preview.type === 'marquee') {
+      const minX = Math.min(preview.x, preview.x + preview.width);
+      const minY = Math.min(preview.y, preview.y + preview.height);
+      const w = Math.abs(preview.width);
+      const h = Math.abs(preview.height);
+
+      if (w < 1 && h < 1) {
+        return;
+      }
+
+      this.ctx.save();
+      if (typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([4 / zoom, 4 / zoom]);
+      }
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.fillStyle = 'rgba(37, 99, 235, 0.12)';
+
+      this.ctx.beginPath();
+      this.ctx.rect(minX, minY, w, h);
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+      return;
+    }
+
     if (preview.width < 1 && preview.height < 1) {
       return;
     }

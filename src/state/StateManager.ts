@@ -19,6 +19,12 @@ import {
 
 export type StateListener = (state: Readonly<Document>) => void;
 
+export interface ShapePositionEntry {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+}
+
 /**
  * Gestor de estado inmutable para el Scene Graph de un editor vectorial.
  * Toda modificación produce un nuevo estado a través de persistencia estructural,
@@ -153,8 +159,11 @@ export class StateManager {
     this._isDirty = true;
     this._state = deepFreeze(nextState);
 
-    // Purgar IDs seleccionados que ya no existan en nextState
-    const validSelectedIds = this._selectedIds.filter((id) => this.findNode(id) !== null);
+    // Purgar IDs seleccionados que ya no existan como figuras (Shape) en nextState
+    const validSelectedIds = this._selectedIds.filter((id) => {
+      const node = this.findNode(id);
+      return node !== null && isShape(node);
+    });
     if (validSelectedIds.length !== this._selectedIds.length) {
       this._selectedIds = Object.freeze(validSelectedIds);
     }
@@ -556,6 +565,15 @@ export class StateManager {
    * Retorna una lista inmutable con los IDs de las figuras actualmente seleccionadas.
    */
   public getSelection(): readonly string[] {
+    if (this._selectedIds.length > 0) {
+      const sanitized = this._selectedIds.filter((id) => {
+        const node = this.findNode(id);
+        return node !== null && isShape(node);
+      });
+      if (sanitized.length !== this._selectedIds.length) {
+        this._selectedIds = Object.freeze(sanitized);
+      }
+    }
     return this._selectedIds;
   }
 
@@ -631,46 +649,113 @@ export class StateManager {
   }
 
   /**
-   * Actualiza la posición (x, y) de una figura en el Scene Graph de forma inmutable.
-   * Produce una nueva copia estructural y marca el estado como sucio (isDirty = true).
+   * Conmuta la presencia de una figura en la selección activa.
+   * Si ya está seleccionada, la remueve; si no lo está, la añade.
+   * Implementado sobre setSelection con las mismas garantías de validación y notificación única.
    */
-  public updateShapePosition(shapeId: string, x: number, y: number): boolean {
+  public toggleInSelection(id: string): void {
+    if (this.isSelected(id)) {
+      this.setSelection(this._selectedIds.filter((selId) => selId !== id));
+    } else {
+      this.setSelection([...this._selectedIds, id]);
+    }
+  }
+
+  /**
+   * Añade una lista de IDs a la selección actual, eliminando duplicados e ignorando IDs inválidos.
+   * Si no se añade ningún ID nuevo y válido, no produce cambios ni notificaciones.
+   */
+  public addToSelection(ids: readonly string[]): void {
+    this.setSelection([...this._selectedIds, ...ids]);
+  }
+
+  /**
+   * Remueve una lista de IDs de la selección actual.
+   * Si ninguno de los IDs provistos estaba seleccionado, no produce cambios ni notificaciones.
+   */
+  public removeFromSelection(ids: readonly string[]): void {
+    const toRemove = new Set(ids);
+    this.setSelection(this._selectedIds.filter((id) => !toRemove.has(id)));
+  }
+
+  /**
+   * Selecciona todas las figuras del documento que sean visibles y no estén bloqueadas,
+   * siempre que sus capas contenedoras también sean visibles y no estén bloqueadas.
+   */
+  public selectAll(): void {
+    const selectableIds: string[] = [];
+    for (const layer of this._state.children) {
+      if (layer.visible === false || layer.locked === true) {
+        continue;
+      }
+      for (const shape of layer.children) {
+        if (shape.visible === false || shape.locked === true) {
+          continue;
+        }
+        selectableIds.push(shape.id);
+      }
+    }
+    this.setSelection(selectableIds);
+  }
+
+  /**
+   * Actualiza la posición de múltiples figuras en UNA sola actualización de estado
+   * y emite UNA sola notificación a los suscriptores.
+   * Reutiliza la misma lógica geométrica de traslación, incluyendo el desplazamiento
+   * relativo de los puntos de control y ancla en trazados Path.
+   *
+   * @param entries Array de actualizaciones { id, x, y }
+   * @returns true si al menos una figura cambió de posición, false en caso contrario
+   */
+  public updateShapesPosition(entries: readonly ShapePositionEntry[]): boolean {
+    if (!entries || entries.length === 0) {
+      return false;
+    }
+
+    const posMap = new Map<string, { x: number; y: number }>();
+    for (const entry of entries) {
+      posMap.set(entry.id, { x: entry.x, y: entry.y });
+    }
+
     let updated = false;
 
     const nextLayers = this._state.children.map((layer) => {
       let layerChanged = false;
       const nextShapes = layer.children.map((shape) => {
-        if (shape.id === shapeId) {
-          if (shape.x === x && shape.y === y) {
-            return shape;
-          }
-          layerChanged = true;
-          updated = true;
+        const targetPos = posMap.get(shape.id);
+        if (!targetPos) {
+          return shape;
+        }
 
-          if (shape.type === 'path') {
-            const dx = x - shape.x;
-            const dy = y - shape.y;
-            const updatedPoints = shape.points.map((pt) => ({
-              x: pt.x + dx,
-              y: pt.y + dy,
-              handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
-              handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
-            }));
-            return {
-              ...shape,
-              x,
-              y,
-              points: updatedPoints,
-            };
-          }
+        if (shape.x === targetPos.x && shape.y === targetPos.y) {
+          return shape;
+        }
 
+        layerChanged = true;
+        updated = true;
+
+        if (shape.type === 'path') {
+          const dx = targetPos.x - shape.x;
+          const dy = targetPos.y - shape.y;
+          const updatedPoints = shape.points.map((pt) => ({
+            x: pt.x + dx,
+            y: pt.y + dy,
+            handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
+            handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
+          }));
           return {
             ...shape,
-            x,
-            y,
+            x: targetPos.x,
+            y: targetPos.y,
+            points: updatedPoints,
           };
         }
-        return shape;
+
+        return {
+          ...shape,
+          x: targetPos.x,
+          y: targetPos.y,
+        };
       });
 
       if (layerChanged) {
@@ -682,14 +767,24 @@ export class StateManager {
       return layer;
     });
 
-    if (updated) {
-      this.setState({
-        ...this._state,
-        children: nextLayers,
-      });
+    if (!updated) {
+      return false;
     }
 
-    return updated;
+    this.setState({
+      ...this._state,
+      children: nextLayers,
+    });
+
+    return true;
+  }
+
+  /**
+   * Actualiza la posición (x, y) de una figura en el Scene Graph de forma inmutable.
+   * Produce una nueva copia estructural y marca el estado como sucio (isDirty = true).
+   */
+  public updateShapePosition(shapeId: string, x: number, y: number): boolean {
+    return this.updateShapesPosition([{ id: shapeId, x, y }]);
   }
 
   /**

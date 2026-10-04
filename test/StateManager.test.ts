@@ -4,7 +4,7 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from '../src/state/injectSampleShapes.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
-import type { Document, Layer, Rectangle, Ellipse } from '../src/types/scene-graph.ts';
+import type { Document, Layer, Rectangle, Ellipse, Path } from '../src/types/scene-graph.ts';
 
 describe('StateManager - Scene Graph Inmutable', () => {
   it('inicializa con un documento y una capa base por defecto', () => {
@@ -542,6 +542,172 @@ describe('StateManager - Selección fuera del Documento e isDirty', () => {
 
     manager.setSelection(['shape-rect-1', 'inexistente-1', 'shape-rect-1', 'shape-ellipse-1', 'inexistente-2']);
     assert.deepEqual(manager.getSelection(), ['shape-rect-1', 'shape-ellipse-1']);
+  });
+
+  it('toggleInSelection conmuta la presencia de un ID y no notifica si el ID es inválido', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+
+    let notifyCount = 0;
+    manager.subscribe(() => notifyCount++);
+
+    // 1. Añadir 'shape-rect-1' a la selección
+    manager.toggleInSelection('shape-rect-1');
+    assert.deepEqual(manager.getSelection(), ['shape-rect-1']);
+    assert.equal(notifyCount, 1);
+
+    // 2. Quitar 'shape-rect-1' de la selección
+    manager.toggleInSelection('shape-rect-1');
+    assert.deepEqual(manager.getSelection(), []);
+    assert.equal(notifyCount, 2);
+
+    // 3. Conmutar con un ID inexistente: no cambia nada ni notifica
+    manager.toggleInSelection('no-existe');
+    assert.deepEqual(manager.getSelection(), []);
+    assert.equal(notifyCount, 2, 'No debe notificar si el ID no es una figura válida');
+  });
+
+  it('addToSelection y removeFromSelection operan acumulativamente y no notifican si no hay cambios', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+
+    let notifyCount = 0;
+    manager.subscribe(() => notifyCount++);
+
+    // 1. addToSelection añade IDs válidos
+    manager.addToSelection(['shape-rect-1', 'shape-ellipse-1']);
+    assert.deepEqual(manager.getSelection(), ['shape-rect-1', 'shape-ellipse-1']);
+    assert.equal(notifyCount, 1);
+
+    // 2. addToSelection con los mismos IDs o inválidos: no notifica
+    manager.addToSelection(['shape-rect-1', 'fantasma']);
+    assert.equal(notifyCount, 1, 'No debe notificar si no se agregan IDs nuevos válidos');
+
+    // 3. removeFromSelection remueve un ID
+    manager.removeFromSelection(['shape-rect-1']);
+    assert.deepEqual(manager.getSelection(), ['shape-ellipse-1']);
+    assert.equal(notifyCount, 2);
+
+    // 4. removeFromSelection con ID no seleccionado: no notifica
+    manager.removeFromSelection(['no-estaba']);
+    assert.equal(notifyCount, 2, 'No debe notificar si ningún ID fue removido');
+  });
+
+  it('selectAll selecciona todas las figuras visibles y desbloqueadas respetando capas', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+    const layer1Id = manager.getState().children[0].id;
+
+    // Añadir una figura oculta y una bloqueada a la capa 1
+    const hiddenShape: Rectangle = {
+      id: 'hidden-rect',
+      type: 'rectangle',
+      name: 'Oculta',
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      visible: false,
+    };
+    const lockedShape: Rectangle = {
+      id: 'locked-rect',
+      type: 'rectangle',
+      name: 'Bloqueada',
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      locked: true,
+    };
+    manager.addShape(layer1Id, hiddenShape);
+    manager.addShape(layer1Id, lockedShape);
+
+    // Añadir una capa oculta con una figura normal
+    const hiddenLayerId = 'hidden-layer';
+    manager.addLayer({
+      id: hiddenLayerId,
+      type: 'layer',
+      name: 'Capa Oculta',
+      visible: false,
+      children: [
+        {
+          id: 'rect-in-hidden-layer',
+          type: 'rectangle',
+          name: 'En Capa Oculta',
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+        },
+      ],
+    });
+
+    // selectAll debe seleccionar solo las 3 figuras iniciales de la capa 1 (visibles y desbloqueadas)
+    manager.selectAll();
+    assert.deepEqual(manager.getSelection(), [
+      'shape-rect-1',
+      'shape-ellipse-1',
+      'shape-ellipse-2',
+    ]);
+  });
+
+  it('updateShapesPosition mueve múltiples figuras en UNA sola actualización y UNA notificación', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+    const layerId = manager.getState().children[0].id;
+
+    // Añadir un Path para comprobar el desplazamiento de puntos
+    const path: Path = {
+      id: 'test-path',
+      type: 'path',
+      name: 'Path',
+      x: 100,
+      y: 100,
+      points: [
+        { x: 100, y: 100, handleOut: { x: 120, y: 110 } },
+        { x: 150, y: 150, handleIn: { x: 140, y: 130 } },
+      ],
+    };
+    manager.addShape(layerId, path);
+
+    let notifyCount = 0;
+    manager.subscribe(() => notifyCount++);
+
+    manager.clearDirty();
+    assert.equal(manager.isDirty, false);
+
+    // Mover simultáneamente un rectángulo y el trazado
+    const updated = manager.updateShapesPosition([
+      { id: 'shape-rect-1', x: 200, y: 250 },
+      { id: 'test-path', x: 120, y: 130 }, // dx=+20, dy=+30
+    ]);
+
+    assert.equal(updated, true);
+    assert.equal(notifyCount, 1, 'Debe emitir exactamente UNA sola notificación para todas las figuras');
+    assert.equal(manager.isDirty, true);
+
+    const r = manager.findNode('shape-rect-1') as Rectangle;
+    assert.equal(r.x, 200);
+    assert.equal(r.y, 250);
+
+    const p = manager.findNode('test-path') as Path;
+    assert.equal(p.x, 120);
+    assert.equal(p.y, 130);
+    assert.equal(p.points[0].x, 120);
+    assert.equal(p.points[0].y, 130);
+    assert.equal(p.points[0].handleOut?.x, 140);
+    assert.equal(p.points[0].handleOut?.y, 140);
+    assert.equal(p.points[1].x, 170);
+    assert.equal(p.points[1].y, 180);
+    assert.equal(p.points[1].handleIn?.x, 160);
+    assert.equal(p.points[1].handleIn?.y, 160);
+
+    // Si se envían las mismas coordenadas exactas: no actualiza ni notifica
+    const noopUpdated = manager.updateShapesPosition([
+      { id: 'shape-rect-1', x: 200, y: 250 },
+    ]);
+    assert.equal(noopUpdated, false);
+    assert.equal(notifyCount, 1, 'No debe notificar si no hubo desplazamientos reales');
   });
 });
 

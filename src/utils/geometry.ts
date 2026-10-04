@@ -785,4 +785,93 @@ export function normalizeShapeBounds(
   };
 }
 
+export interface RectLike {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Calcula el Axis-Aligned Bounding Box (AABB) unificado que envuelve a todas las
+ * figuras provistas (considerando su rotación exacta).
+ * Retorna null si la lista está vacía o no contiene figuras con dimensiones finitas.
+ */
+export function getSelectionBounds(shapes: readonly Shape[]): AABB | null {
+  if (!shapes || shapes.length === 0) {
+    return null;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const shape of shapes) {
+    const aabb = getShapeAABB(shape);
+    if (aabb.minX < minX) minX = aabb.minX;
+    if (aabb.minY < minY) minY = aabb.minY;
+    if (aabb.maxX > maxX) maxX = aabb.maxX;
+    if (aabb.maxY > maxY) maxY = aabb.maxY;
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return null;
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
+ * Filtra y retorna las figuras cuyo AABB intersecta con el rectángulo provisto.
+ * Normaliza el rectángulo para tolerar cualquier dirección de arrastre
+ * (anchos o alturas negativos, o extremos min/max invertidos).
+ */
+export function getShapesIntersectingRect(
+  shapes: readonly Shape[],
+  rect: RectLike | AABB
+): Shape[] {
+  if (!shapes || shapes.length === 0) {
+    return [];
+  }
+
+  let rMinX: number;
+  let rMaxX: number;
+  let rMinY: number;
+  let rMaxY: number;
+
+  if ('x' in rect && 'y' in rect) {
+    const x = rect.x;
+    const y = rect.y;
+    const w = rect.width;
+    const h = rect.height;
+    rMinX = Math.min(x, x + w);
+    rMaxX = Math.max(x, x + w);
+    rMinY = Math.min(y, y + h);
+    rMaxY = Math.max(y, y + h);
+  } else {
+    rMinX = Math.min(rect.minX, rect.maxX);
+    rMaxX = Math.max(rect.minX, rect.maxX);
+    rMinY = Math.min(rect.minY, rect.maxY);
+    rMaxY = Math.max(rect.minY, rect.maxY);
+  }
+
+  return shapes.filter((shape) => {
+    const aabb = getShapeAABB(shape);
+    return (
+      aabb.minX <= rMaxX &&
+      aabb.maxX >= rMinX &&
+      aabb.minY <= rMaxY &&
+      aabb.maxY >= rMinY
+    );
+  });
+}
+
 

@@ -1,10 +1,11 @@
-import type { StateManager } from '../state/StateManager.ts';
-import { isLayer, isShape, type AABB, type Ellipse, type Path, type PathPoint, type Rectangle, type Shape, type Vector2D } from '../types/scene-graph.ts';
+import type { StateManager, ShapePositionEntry } from '../state/StateManager.ts';
+import { isLayer, type AABB, type Ellipse, type Path, type PathPoint, type Rectangle, type Shape, type Vector2D } from '../types/scene-graph.ts';
 import { cloneShape } from '../utils/cloneShape.ts';
 import {
   getPathBaseAABB,
   getSelectionHandles,
   getShapeAABB,
+  getShapesIntersectingRect,
   isPointInAABB,
   isPointInPath,
   isPointInShape,
@@ -13,6 +14,7 @@ import {
 } from '../utils/geometry.ts';
 import { CommandManager } from '../commands/CommandManager.ts';
 import { TranslateCommand } from '../commands/TranslateCommand.ts';
+import { BatchCommand } from '../commands/BatchCommand.ts';
 import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.ts';
 import { DeleteCommand } from '../commands/DeleteCommand.ts';
 import { RotateCommand } from '../commands/RotateCommand.ts';
@@ -44,32 +46,79 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
   { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
+  { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
+  { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
+  { key: 'Arrastrar en el vacío', description: 'Selección por marquesina (rectángulo)', category: 'Selección' },
   { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
   { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
-  { key: 'Ctrl+C / Cmd+C', description: 'Copiar figura seleccionada', category: 'Edición' },
-  { key: 'Ctrl+V / Cmd+V', description: 'Pegar figura del portapapeles', category: 'Edición' },
-  { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figura seleccionada', category: 'Edición' },
-  { key: 'Supr / Backspace', description: 'Eliminar figura seleccionada', category: 'Edición' },
-  { key: 'Ctrl+Shift+]', description: 'Traer figura al frente', category: 'Objeto' },
-  { key: 'Ctrl+Shift+[', description: 'Enviar figura al fondo', category: 'Objeto' },
+  { key: 'Ctrl+C / Cmd+C', description: 'Copiar figuras seleccionadas', category: 'Edición' },
+  { key: 'Ctrl+V / Cmd+V', description: 'Pegar figuras del portapapeles', category: 'Edición' },
+  { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figuras seleccionadas', category: 'Edición' },
+  { key: 'Supr / Backspace', description: 'Eliminar figuras seleccionadas', category: 'Edición' },
+  { key: 'Ctrl+Shift+]', description: 'Traer figuras al frente', category: 'Objeto' },
+  { key: 'Ctrl+Shift+[', description: 'Enviar figuras al fondo', category: 'Objeto' },
   { key: 'Ctrl++ / Cmd++', description: 'Acercar zoom', category: 'Navegación' },
   { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
   { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
   { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
-  { key: 'Flechas', description: 'Mover figura seleccionada (1 px)', category: 'Transformación' },
-  { key: 'Shift + Flechas', description: 'Mover figura seleccionada (10 px)', category: 'Transformación' },
+  { key: 'Flechas', description: 'Mover figuras seleccionadas (1 px)', category: 'Transformación' },
+  { key: 'Shift + Flechas', description: 'Mover figuras seleccionadas (10 px)', category: 'Transformación' },
   { key: 'Shift (al arrastrar)', description: 'Restringir proporción 1:1', category: 'Dibujo' },
-  { key: 'Escape', description: 'Cancelar creación/rotación o terminar trazado', category: 'Navegación' },
+  { key: 'Escape', description: 'Cancelar creación/marquesina o deseleccionar', category: 'Navegación' },
   { key: 'Enter', description: 'Finalizar trazado Bézier activo', category: 'Dibujo' },
   { key: 'Espacio + Arrastrar', description: 'Desplazar lienzo (Pan)', category: 'Navegación' },
   { key: 'Ctrl + Rueda', description: 'Acercar / Alejar zoom', category: 'Navegación' },
 ];
 
 /**
+ * Portapapeles que almacena una lista de figuras preservando compatibilidad con .id
+ */
+export interface ClipboardList extends ReadonlyArray<Shape> {
+  readonly id?: string;
+}
+
+export interface ClipboardEntry {
+  readonly shape: Shape;
+  readonly layerId: string;
+  readonly layerIndex: number;
+  readonly shapeIndex: number;
+}
+
+export function createClipboardList(shapes: readonly Shape[]): ClipboardList {
+  const list = [...shapes] as Shape[] & { id?: string };
+  Object.defineProperty(list, 'id', {
+    get: () => list[0]?.id,
+    enumerable: false,
+    configurable: true,
+  });
+  return Object.freeze(list) as unknown as ClipboardList;
+}
+
+export function asShapeArray(shapes: readonly Shape[]): Shape[] & Shape {
+  const arr = [...shapes] as unknown as Shape[] & Shape;
+  if (arr.length > 0) {
+    Object.defineProperties(arr, {
+      id: { get: () => arr[0]?.id, configurable: true },
+      name: { get: () => arr[0]?.name, configurable: true },
+      type: { get: () => arr[0]?.type, configurable: true },
+      x: { get: () => arr[0]?.x, configurable: true },
+      y: { get: () => arr[0]?.y, configurable: true },
+      stroke: { get: () => arr[0]?.stroke, configurable: true },
+      fill: { get: () => arr[0]?.fill, configurable: true },
+      strokeWidth: { get: () => arr[0]?.strokeWidth, configurable: true },
+      visible: { get: () => arr[0]?.visible, configurable: true },
+      locked: { get: () => arr[0]?.locked, configurable: true },
+      rotation: { get: () => arr[0]?.rotation, configurable: true },
+    });
+  }
+  return arr;
+}
+
+/**
  * Representa el estado y dimensiones de la vista previa de creación de figura por arrastre
  */
 export interface ShapePreview {
-  readonly type: 'rectangle' | 'ellipse';
+  readonly type: 'rectangle' | 'ellipse' | 'marquee';
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -151,8 +200,18 @@ export class InputController {
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
   private dragOrigin: { x: number; y: number } | null = null;
-  private initialShapePosition: { x: number; y: number } | null = null;
-  private draggedShapeId: string | null = null;
+  private initialShapesPositions: Map<string, { x: number; y: number }> | null = null;
+  private pendingSingleSelectionId: string | null = null;
+  private dragStartScreen: { x: number; y: number } | null = null;
+  private hasMovedPastThreshold: boolean = false;
+
+  // Estado del rectángulo de selección marquesina (modo Selección)
+  private _isMarqueeSelecting: boolean = false;
+  private _marqueeStartWorld: { x: number; y: number } | null = null;
+  private _marqueeStartScreen: { x: number; y: number } | null = null;
+  private _marqueeShiftKey: boolean = false;
+  private _marqueeInitialSelection: readonly string[] = [];
+  private _hasMarqueeDragged: boolean = false;
 
   // Estado del redimensionado por manejadores de esquina (modo Selección)
   private _isResizing: boolean = false;
@@ -169,8 +228,8 @@ export class InputController {
   private rotationCentroid: { x: number; y: number } | null = null;
 
   // Portapapeles interno en memoria
-  private _clipboard: Shape | null = null;
-  private _clipboardLayerId: string | null = null;
+  private _clipboard: ClipboardList | null = null;
+  private _clipboardEntries: readonly ClipboardEntry[] | null = null;
   private _pasteCount: number = 0;
 
   // Estado de la herramienta Selección Directa (modo 'direct-select')
@@ -229,9 +288,22 @@ export class InputController {
     return this._currentTool;
   }
 
+  /**
+   * Cambia la herramienta activa en el editor.
+   *
+   * Reglas de transición y coexistencia con selecciones múltiples:
+   * - Si hay un rectángulo de selección marquesina activo al cambiar de herramienta, se cancela y limpia.
+   * - Al entrar a 'direct-select': solo opera con exactamente un trazado; si hay varias figuras
+   *   seleccionadas, reduce la selección a una sola figura (priorizando el primer Path seleccionado si existe).
+   * - La herramienta 'pen' (Pluma) ignora cualquier selección preexistente al crear nuevos trazados.
+   * - Al conmutar entre otras herramientas, la selección actual en StateManager se preserva intacta.
+   */
   public setTool(tool: ToolMode): void {
     if (this._currentTool === tool) return;
 
+    if (this._isMarqueeSelecting) {
+      this.cancelMarquee();
+    }
     if (this._currentTool === 'pen' && tool !== 'pen') {
       this.finishActivePath();
     }
@@ -250,6 +322,16 @@ export class InputController {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
       }
       this.resetRotate();
+    }
+
+    if (tool === 'direct-select' && this.stateManager.getSelection().length > 1) {
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      const firstPath = selectedNodes.find((n) => n.type === 'path');
+      if (firstPath) {
+        this.stateManager.selectNode(firstPath.id);
+      } else {
+        this.stateManager.selectNode(selectedNodes[0].id);
+      }
     }
 
     this._currentTool = tool;
@@ -317,6 +399,29 @@ export class InputController {
     return this._shapePreview;
   }
 
+  public get isMarqueeSelecting(): boolean {
+    return this._isMarqueeSelecting;
+  }
+
+  /**
+   * Cancela el rectángulo de selección interactivo (marquesina),
+   * restaurando la selección previa a su inicio y limpiando la vista previa.
+   */
+  public cancelMarquee(): void {
+    if (!this._isMarqueeSelecting) {
+      return;
+    }
+    this.stateManager.setSelection(this._marqueeInitialSelection);
+    this._isMarqueeSelecting = false;
+    this._marqueeStartWorld = null;
+    this._marqueeStartScreen = null;
+    this._marqueeShiftKey = false;
+    this._marqueeInitialSelection = [];
+    this._hasMarqueeDragged = false;
+    this._shapePreview = null;
+    this.stateManager.markDirty();
+  }
+
   public get isResizing(): boolean {
     return this._isResizing;
   }
@@ -381,7 +486,7 @@ export class InputController {
     return this.activePathId;
   }
 
-  public get clipboard(): Shape | null {
+  public get clipboard(): (readonly Shape[] & { readonly id?: string }) | null {
     return this._clipboard;
   }
 
@@ -723,75 +828,79 @@ export class InputController {
     }
 
     // Modo 'select'
-    // 1. Antes de evaluar colisiones con figuras mediante hitTest,
-    // verifica si ya existe un nodo seleccionado y si el cursor colisiona con uno de sus manejadores utilizando isPointInAABB
-    const selectedNode = this.stateManager.getSelectedNode();
-    if (selectedNode) {
-      const zoom = this.viewportManager.zoom;
-      const handles = getSelectionHandles(selectedNode, 8 / zoom, 30 / zoom);
-      const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+    // 1. Manejadores de redimensionado y rotación:
+    // Con varias figuras seleccionadas NO se muestran ni se detectan los tiradores.
+    // Solo se evalúan cuando hay exactamente UNA figura seleccionada.
+    const selection = this.stateManager.getSelection();
+    if (selection.length === 1) {
+      const selectedNode = this.stateManager.getSelectedNode();
+      if (selectedNode) {
+        const zoom = this.viewportManager.zoom;
+        const handles = getSelectionHandles(selectedNode, 8 / zoom, 30 / zoom);
+        const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
-      if (hitHandle) {
-        if (hitHandle.type === 'rotation-handle') {
-          this._isRotating = true;
-          this._isResizing = false;
+        if (hitHandle) {
+          if (hitHandle.type === 'rotation-handle') {
+            this._isRotating = true;
+            this._isResizing = false;
+            this._isDragging = false;
+            this.rotatingShapeId = selectedNode.id;
+            this.initialRotation = selectedNode.rotation ?? 0;
+
+            const centroid = this.getShapeCentroid(selectedNode);
+            this.rotationCentroid = centroid;
+            const clickAngle = (Math.atan2(y - centroid.y, x - centroid.x) * 180) / Math.PI;
+            const expectedHandleAngle = this.initialRotation - 90;
+            let offset = clickAngle - expectedHandleAngle;
+            while (offset > 180) offset -= 360;
+            while (offset <= -180) offset += 360;
+            this.rotationAngleOffset = offset;
+
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+
+          // Marca la bandera _isResizing = true (y el origen del resize) en lugar de _isDragging
+          this._isResizing = true;
           this._isDragging = false;
-          this.rotatingShapeId = selectedNode.id;
-          this.initialRotation = selectedNode.rotation ?? 0;
+          this._isRotating = false;
+          this.resizeOrigin = { x, y };
+          this.activeResizeHandle = hitHandle.type;
+          this.resizingShapeId = selectedNode.id;
 
-          const centroid = this.getShapeCentroid(selectedNode);
-          this.rotationCentroid = centroid;
-          const clickAngle = (Math.atan2(y - centroid.y, x - centroid.x) * 180) / Math.PI;
-          const expectedHandleAngle = this.initialRotation - 90;
-          let offset = clickAngle - expectedHandleAngle;
-          while (offset > 180) offset -= 360;
-          while (offset <= -180) offset += 360;
-          this.rotationAngleOffset = offset;
+          if (selectedNode.type === 'rectangle') {
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              width: selectedNode.width,
+              height: selectedNode.height,
+              rotation: selectedNode.rotation ?? 0,
+            };
+          } else if (selectedNode.type === 'ellipse') {
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              radiusX: selectedNode.radiusX,
+              radiusY: selectedNode.radiusY,
+              rotation: selectedNode.rotation ?? 0,
+            };
+          } else if (selectedNode.type === 'path') {
+            const aabb = getPathBaseAABB(selectedNode);
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              width: aabb.width,
+              height: aabb.height,
+              points: selectedNode.points,
+              rotation: selectedNode.rotation ?? 0,
+            };
+          } else {
+            this.initialDimensions = null;
+          }
 
-          this.canvas.style.cursor = 'crosshair';
+          this.canvas.style.cursor = this.getResizeCursor(hitHandle.type, selectedNode.rotation ?? 0);
           return;
         }
-
-        // Marca la bandera _isResizing = true (y el origen del resize) en lugar de _isDragging
-        this._isResizing = true;
-        this._isDragging = false;
-        this._isRotating = false;
-        this.resizeOrigin = { x, y };
-        this.activeResizeHandle = hitHandle.type;
-        this.resizingShapeId = selectedNode.id;
-
-        if (selectedNode.type === 'rectangle') {
-          this.initialDimensions = {
-            x: selectedNode.x,
-            y: selectedNode.y,
-            width: selectedNode.width,
-            height: selectedNode.height,
-            rotation: selectedNode.rotation ?? 0,
-          };
-        } else if (selectedNode.type === 'ellipse') {
-          this.initialDimensions = {
-            x: selectedNode.x,
-            y: selectedNode.y,
-            radiusX: selectedNode.radiusX,
-            radiusY: selectedNode.radiusY,
-            rotation: selectedNode.rotation ?? 0,
-          };
-        } else if (selectedNode.type === 'path') {
-          const aabb = getPathBaseAABB(selectedNode);
-          this.initialDimensions = {
-            x: selectedNode.x,
-            y: selectedNode.y,
-            width: aabb.width,
-            height: aabb.height,
-            points: selectedNode.points,
-            rotation: selectedNode.rotation ?? 0,
-          };
-        } else {
-          this.initialDimensions = null;
-        }
-
-        this.canvas.style.cursor = this.getResizeCursor(hitHandle.type, selectedNode.rotation ?? 0);
-        return;
       }
     }
 
@@ -799,24 +908,69 @@ export class InputController {
     const hitShape = this.hitTest(x, y);
 
     if (hitShape) {
-      if (!this.stateManager.isSelected(hitShape.id)) {
+      if (this._isMarqueeSelecting) {
+        this.cancelMarquee();
+      }
+
+      // A.1: Shift+clic sobre una figura: la añade o quita de la selección (toggleInSelection). Sin arrastre.
+      if (event.shiftKey) {
+        this.stateManager.toggleInSelection(hitShape.id);
+        this.resetDrag();
+        this.resetResize();
+        this.resetRotate();
+        return;
+      }
+
+      // A.2 & A.3: Clic sin Shift sobre una figura
+      const isAlreadySelected = this.stateManager.isSelected(hitShape.id);
+      const isMultiSelection = this.stateManager.getSelection().length > 1;
+
+      if (isAlreadySelected && isMultiSelection) {
+        // Clic sobre figura que ya forma parte de selección múltiple: se mantiene y puede arrastrarse el conjunto.
+        // Si se suelta sin haber arrastrado (>3px en pantalla), la selección pasa a ser solo esa figura.
+        this.pendingSingleSelectionId = hitShape.id;
+      } else if (!isAlreadySelected) {
+        // Clic sobre figura no seleccionada: selección simple.
         this.stateManager.selectNode(hitShape.id);
+        this.pendingSingleSelectionId = null;
+      } else {
+        this.pendingSingleSelectionId = null;
       }
 
       this._isDragging = true;
       this._isResizing = false;
       this._isRotating = false;
-      this.draggedShapeId = hitShape.id;
       this.dragOrigin = { x, y };
-      this.initialShapePosition = { x: hitShape.x, y: hitShape.y };
-      this.canvas.style.cursor = 'grabbing';
-    } else {
-      if (this.options.deselectOnEmptyClick) {
-        this.stateManager.selectNode(null);
+      this.dragStartScreen = this.getScreenCoordinates(event);
+      this.hasMovedPastThreshold = false;
+
+      // Registrar posiciones iniciales de todas las figuras del conjunto seleccionado
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      this.initialShapesPositions = new Map<string, { x: number; y: number }>();
+      for (const node of selectedNodes) {
+        this.initialShapesPositions.set(node.id, { x: node.x, y: node.y });
       }
-      this.resetDrag();
-      this.resetResize();
-      this.resetRotate();
+
+      this.canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    // 3. Clic sobre el vacío (A.4)
+    // Prepara el rectángulo de selección marquesina. Con Shift suma a la selección previa; sin Shift reemplaza.
+    this.resetDrag();
+    this.resetResize();
+    this.resetRotate();
+
+    this._isMarqueeSelecting = true;
+    this._marqueeStartWorld = { x, y };
+    this._marqueeStartScreen = this.getScreenCoordinates(event);
+    this._marqueeShiftKey = Boolean(event.shiftKey);
+    this._marqueeInitialSelection = [...this.stateManager.getSelection()];
+    this._hasMarqueeDragged = false;
+    this._shapePreview = null;
+
+    if (!event.shiftKey && this.options.deselectOnEmptyClick) {
+      this.stateManager.selectNode(null);
     }
   }
 
@@ -964,16 +1118,100 @@ export class InputController {
       }
     }
 
-    if (this._isDragging && this.draggedShapeId && this.dragOrigin && this.initialShapePosition) {
-      const deltaX = x - this.dragOrigin.x;
-      const deltaY = y - this.dragOrigin.y;
+    // 1. Arrastre del rectángulo de selección marquesina (A.4)
+    if (this._isMarqueeSelecting && this._marqueeStartWorld && this._marqueeStartScreen) {
+      const screenPos = this.getScreenCoordinates(event);
+      const screenDist = Math.hypot(
+        screenPos.x - this._marqueeStartScreen.x,
+        screenPos.y - this._marqueeStartScreen.y
+      );
 
-      const nextX = this.initialShapePosition.x + deltaX;
-      const nextY = this.initialShapePosition.y + deltaY;
+      if (screenDist > 3 || this._hasMarqueeDragged) {
+        this._hasMarqueeDragged = true;
 
-      this.stateManager.updateShapePosition(this.draggedShapeId, nextX, nextY);
-      this.canvas.style.cursor = 'grabbing';
+        const minX = Math.min(this._marqueeStartWorld.x, x);
+        const minY = Math.min(this._marqueeStartWorld.y, y);
+        const width = Math.abs(x - this._marqueeStartWorld.x);
+        const height = Math.abs(y - this._marqueeStartWorld.y);
+
+        this._shapePreview = {
+          type: 'marquee',
+          x: minX,
+          y: minY,
+          width,
+          height,
+        };
+
+        const docState = this.stateManager.getState();
+        const candidates: Shape[] = [];
+        for (const layer of docState.children) {
+          if (layer.visible === false || layer.locked === true) {
+            continue;
+          }
+          for (const shape of layer.children) {
+            if (shape.visible === false || shape.locked === true) {
+              continue;
+            }
+            candidates.push(shape);
+          }
+        }
+
+        const intersectingShapes = getShapesIntersectingRect(candidates, {
+          x: minX,
+          y: minY,
+          width,
+          height,
+        });
+
+        const hitIds = intersectingShapes.map((s) => s.id);
+
+        if (this._marqueeShiftKey) {
+          const combined = new Set([...this._marqueeInitialSelection, ...hitIds]);
+          this.stateManager.setSelection(Array.from(combined));
+        } else {
+          this.stateManager.setSelection(hitIds);
+        }
+
+        this.stateManager.markDirty();
+      }
+
+      this.canvas.style.cursor = 'default';
       return;
+    }
+
+    // 2. Arrastre de figuras (A.2, A.3, A.5)
+    if (this._isDragging && this.initialShapesPositions && this.dragOrigin && this.dragStartScreen) {
+      const screenPos = this.getScreenCoordinates(event);
+      const screenDist = Math.hypot(
+        screenPos.x - this.dragStartScreen.x,
+        screenPos.y - this.dragStartScreen.y
+      );
+
+      const isMulti = this.initialShapesPositions.size > 1;
+      const shouldMove = isMulti ? (screenDist > 3 || this.hasMovedPastThreshold) : (screenDist > 0);
+
+      if (shouldMove) {
+        if (screenDist > 3) {
+          this.hasMovedPastThreshold = true;
+          this.pendingSingleSelectionId = null;
+        }
+
+        const deltaX = x - this.dragOrigin.x;
+        const deltaY = y - this.dragOrigin.y;
+
+        const entries: ShapePositionEntry[] = [];
+        for (const [id, initialPos] of this.initialShapesPositions.entries()) {
+          entries.push({
+            id,
+            x: initialPos.x + deltaX,
+            y: initialPos.y + deltaY,
+          });
+        }
+
+        this.stateManager.updateShapesPosition(entries);
+        this.canvas.style.cursor = 'grabbing';
+        return;
+      }
     }
 
     if (this._isResizing) {
@@ -1004,19 +1242,22 @@ export class InputController {
       return;
     }
 
-    // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado
-    const selectedShape = this.stateManager.getSelectedNode();
-    if (selectedShape) {
-      const zoom = this.viewportManager.zoom;
-      const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
-      const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
-      if (hoveredHandle) {
-        if (hoveredHandle.type === 'rotation-handle') {
-          this.canvas.style.cursor = 'crosshair';
+    // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado (SOLO si hay exactamente 1 figura seleccionada)
+    const selection = this.stateManager.getSelection();
+    if (selection.length === 1) {
+      const selectedShape = this.stateManager.getSelectedNode();
+      if (selectedShape) {
+        const zoom = this.viewportManager.zoom;
+        const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
+        const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+        if (hoveredHandle) {
+          if (hoveredHandle.type === 'rotation-handle') {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+          this.canvas.style.cursor = this.getResizeCursor(hoveredHandle.type, selectedShape.rotation ?? 0);
           return;
         }
-        this.canvas.style.cursor = this.getResizeCursor(hoveredHandle.type, selectedShape.rotation ?? 0);
-        return;
       }
     }
 
@@ -1265,32 +1506,112 @@ export class InputController {
       return;
     }
 
-    if (!this._isDragging || !this.draggedShapeId || !this.dragOrigin || !this.initialShapePosition) {
+    // Finalizar selección marquesina si estaba activa
+    if (this._isMarqueeSelecting) {
+      if (!this._hasMarqueeDragged) {
+        if (!this._marqueeShiftKey && this.options.deselectOnEmptyClick) {
+          this.stateManager.selectNode(null);
+        } else if (this._marqueeShiftKey) {
+          this.stateManager.setSelection(this._marqueeInitialSelection);
+        }
+      }
+      this._isMarqueeSelecting = false;
+      this._marqueeStartWorld = null;
+      this._marqueeStartScreen = null;
+      this._marqueeShiftKey = false;
+      this._marqueeInitialSelection = [];
+      this._hasMarqueeDragged = false;
+      this._shapePreview = null;
+      this.stateManager.markDirty();
+
+      const { x, y } = this.getLocalCoordinates(event);
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
+
+    if (!this._isDragging) {
       this.resetDrag();
       return;
     }
 
     const { x, y } = this.getLocalCoordinates(event);
-    const deltaX = x - this.dragOrigin.x;
-    const deltaY = y - this.dragOrigin.y;
+    const screenPos = this.getScreenCoordinates(event);
+    const screenDist = this.dragStartScreen
+      ? Math.hypot(screenPos.x - this.dragStartScreen.x, screenPos.y - this.dragStartScreen.y)
+      : 0;
 
-    const finalX = this.initialShapePosition.x + deltaX;
-    const finalY = this.initialShapePosition.y + deltaY;
+    // A.2: Soltar sobre una figura que formaba parte de multiselección sin haber arrastrado (>3px):
+    if (this.pendingSingleSelectionId && screenDist <= 3 && !this.hasMovedPastThreshold) {
+      if (this.initialShapesPositions) {
+        const restoreEntries: ShapePositionEntry[] = [];
+        for (const [id, pos] of this.initialShapesPositions.entries()) {
+          restoreEntries.push({ id, x: pos.x, y: pos.y });
+        }
+        this.stateManager.updateShapesPosition(restoreEntries);
+      }
+      this.stateManager.selectNode(this.pendingSingleSelectionId);
+      this.resetDrag();
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
 
-    this.stateManager.updateShapePosition(this.draggedShapeId, finalX, finalY);
+    // Finalizar arrastre de figuras (A.5):
+    if (this.initialShapesPositions && this.dragOrigin) {
+      const deltaX = x - this.dragOrigin.x;
+      const deltaY = y - this.dragOrigin.y;
 
-    if (finalX !== this.initialShapePosition.x || finalY !== this.initialShapePosition.y) {
-      const command = new TranslateCommand(
-        this.stateManager,
-        this.draggedShapeId,
-        this.initialShapePosition.x,
-        this.initialShapePosition.y,
-        finalX,
-        finalY,
-        { mergeTimeout: 0 }
-      );
+      if (this.initialShapesPositions.size > 1) {
+        const commands: TranslateCommand[] = [];
+        const entries: ShapePositionEntry[] = [];
 
-      this.commandManager.recordCommand(command);
+        for (const [id, initialPos] of this.initialShapesPositions.entries()) {
+          const finalX = initialPos.x + deltaX;
+          const finalY = initialPos.y + deltaY;
+          entries.push({ id, x: finalX, y: finalY });
+
+          if (finalX !== initialPos.x || finalY !== initialPos.y) {
+            commands.push(
+              new TranslateCommand(
+                this.stateManager,
+                id,
+                initialPos.x,
+                initialPos.y,
+                finalX,
+                finalY,
+                { mergeTimeout: 0 }
+              )
+            );
+          }
+        }
+
+        this.stateManager.updateShapesPosition(entries);
+
+        if (commands.length > 0) {
+          const batch = new BatchCommand(commands, 'Mover figuras');
+          this.commandManager.recordCommand(batch);
+        }
+      } else if (this.initialShapesPositions.size === 1) {
+        const [singleId, initialPos] = Array.from(this.initialShapesPositions.entries())[0];
+        const finalX = initialPos.x + deltaX;
+        const finalY = initialPos.y + deltaY;
+
+        this.stateManager.updateShapePosition(singleId, finalX, finalY);
+
+        if (finalX !== initialPos.x || finalY !== initialPos.y) {
+          const command = new TranslateCommand(
+            this.stateManager,
+            singleId,
+            initialPos.x,
+            initialPos.y,
+            finalX,
+            finalY,
+            { mergeTimeout: 0 }
+          );
+          this.commandManager.recordCommand(command);
+        }
+      }
     }
 
     this.resetDrag();
@@ -1335,15 +1656,22 @@ export class InputController {
 
       if (isBringToFront || isSendToBack) {
         if (!this.isInputFocused(event)) {
-          const selectedNode = this.stateManager.getSelectedNode();
-          if (selectedNode) {
+          if (this.stateManager.getSelection().length > 0) {
             event.preventDefault?.();
             if (isBringToFront) {
-              this.bringToFront(selectedNode.id);
+              this.bringToFront();
             } else {
-              this.sendToBack(selectedNode.id);
+              this.sendToBack();
             }
           }
+        }
+        return;
+      }
+
+      if (keyLower === 'a') {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          this.stateManager.selectAll();
         }
         return;
       }
@@ -1444,8 +1772,8 @@ export class InputController {
         return;
       }
 
-      const selectedShape = this.stateManager.getSelectedNode();
-      if (!selectedShape || selectedShape.locked === true) {
+      const selectedShapes = this.stateManager.getSelectedNodes().filter((s) => !s.locked);
+      if (selectedShapes.length === 0) {
         return;
       }
 
@@ -1487,13 +1815,24 @@ export class InputController {
     } else if (keyLower === 'h') {
       this.setTool('hand');
     } else if (keyLower === 'escape') {
-      if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
+      if (this._isMarqueeSelecting) {
+        this.cancelMarquee();
+      } else if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
         this.resetRotate();
       } else if (this._isCreatingShape) {
         this.cancelCreation();
       } else if (this._currentTool === 'pen') {
         this.finishActivePath();
+      } else if (
+        !this._isDragging &&
+        !this._isResizing &&
+        !this._isRotating &&
+        !this._isPanning &&
+        !this._isDraggingPoint &&
+        this.stateManager.getSelection().length > 0
+      ) {
+        this.stateManager.selectNode(null);
       }
     } else if (keyLower === 'enter') {
       if (this._currentTool === 'pen') {
@@ -1518,42 +1857,172 @@ export class InputController {
   }
 
   /**
-   * Trae una figura (o la figura seleccionada) al frente de su capa contenedora,
-   * registrando un ReorderCommand en el CommandManager para soporte de Undo/Redo.
-   * Si la figura ya está al frente, no registra nada en el historial y retorna false.
+   * Trae las figuras seleccionadas al frente de sus capas contenedoras conservando su orden relativo,
+   * registrando una sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
    */
   public bringToFront(shapeId?: string): boolean {
-    const targetId = shapeId ?? this.stateManager.getSelectedNode()?.id;
-    if (!targetId) {
+    if (shapeId) {
+      const command = new ReorderCommand(this.stateManager, shapeId, 'bringToFront');
+      if (command.isAlreadyAtTarget) {
+        return false;
+      }
+      this.commandManager.executeCommand(command);
+      return true;
+    }
+
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
     }
 
-    const command = new ReorderCommand(this.stateManager, targetId, 'bringToFront');
-    if (command.isAlreadyAtTarget) {
+    if (selectedNodes.length === 1) {
+      const command = new ReorderCommand(this.stateManager, selectedNodes[0].id, 'bringToFront');
+      if (command.isAlreadyAtTarget) {
+        return false;
+      }
+      this.commandManager.executeCommand(command);
+      return true;
+    }
+
+    // Varias figuras seleccionadas:
+    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
+    for (const shape of selectedNodes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        let list = layerMap.get(parent.id);
+        if (!list) {
+          list = [];
+          layerMap.set(parent.id, list);
+        }
+        const index = parent.children.findIndex((s) => s.id === shape.id);
+        list.push({ shape, index });
+      }
+    }
+
+    let anyNeedsMove = false;
+    for (const [layerId, items] of layerMap.entries()) {
+      const parent = this.stateManager.findNode(layerId);
+      if (parent && isLayer(parent)) {
+        const total = parent.children.length;
+        items.sort((a, b) => a.index - b.index);
+        const k = items.length;
+        const alreadyAtTop = items.every((it, idx) => it.index === total - k + idx);
+        if (!alreadyAtTop) {
+          anyNeedsMove = true;
+        }
+      }
+    }
+
+    if (!anyNeedsMove) {
       return false;
     }
 
-    this.commandManager.executeCommand(command);
+    const commands: ReorderCommand[] = [];
+
+    for (const [layerId, items] of layerMap.entries()) {
+      items.sort((a, b) => a.index - b.index);
+
+      for (const item of items) {
+        const parent = this.stateManager.findNode(layerId);
+        if (parent && isLayer(parent)) {
+          const currentIndex = parent.children.findIndex((s) => s.id === item.shape.id);
+          const cmd = new ReorderCommand(this.stateManager, item.shape.id, 'bringToFront', currentIndex);
+          cmd.execute();
+          commands.push(cmd);
+        }
+      }
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    const batch = new BatchCommand(commands, 'Bring to Front');
+    this.commandManager.recordCommand(batch);
     return true;
   }
 
   /**
-   * Envía una figura (o la figura seleccionada) al fondo de su capa contenedora,
-   * registrando un ReorderCommand en el CommandManager para soporte de Undo/Redo.
-   * Si la figura ya está en el fondo, no registra nada en el historial y retorna false.
+   * Envía las figuras seleccionadas al fondo de sus capas contenedoras conservando su orden relativo,
+   * registrando una sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
    */
   public sendToBack(shapeId?: string): boolean {
-    const targetId = shapeId ?? this.stateManager.getSelectedNode()?.id;
-    if (!targetId) {
+    if (shapeId) {
+      const command = new ReorderCommand(this.stateManager, shapeId, 'sendToBack');
+      if (command.isAlreadyAtTarget) {
+        return false;
+      }
+      this.commandManager.executeCommand(command);
+      return true;
+    }
+
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
     }
 
-    const command = new ReorderCommand(this.stateManager, targetId, 'sendToBack');
-    if (command.isAlreadyAtTarget) {
+    if (selectedNodes.length === 1) {
+      const command = new ReorderCommand(this.stateManager, selectedNodes[0].id, 'sendToBack');
+      if (command.isAlreadyAtTarget) {
+        return false;
+      }
+      this.commandManager.executeCommand(command);
+      return true;
+    }
+
+    // Varias figuras seleccionadas:
+    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
+    for (const shape of selectedNodes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        let list = layerMap.get(parent.id);
+        if (!list) {
+          list = [];
+          layerMap.set(parent.id, list);
+        }
+        const index = parent.children.findIndex((s) => s.id === shape.id);
+        list.push({ shape, index });
+      }
+    }
+
+    let anyNeedsMove = false;
+    for (const [layerId, items] of layerMap.entries()) {
+      const parent = this.stateManager.findNode(layerId);
+      if (parent && isLayer(parent)) {
+        items.sort((a, b) => a.index - b.index);
+        const alreadyAtBottom = items.every((it, idx) => it.index === idx);
+        if (!alreadyAtBottom) {
+          anyNeedsMove = true;
+        }
+      }
+    }
+
+    if (!anyNeedsMove) {
       return false;
     }
 
-    this.commandManager.executeCommand(command);
+    const commands: ReorderCommand[] = [];
+
+    for (const [layerId, items] of layerMap.entries()) {
+      items.sort((a, b) => b.index - a.index);
+
+      for (const item of items) {
+        const parent = this.stateManager.findNode(layerId);
+        if (parent && isLayer(parent)) {
+          const currentIndex = parent.children.findIndex((s) => s.id === item.shape.id);
+          const cmd = new ReorderCommand(this.stateManager, item.shape.id, 'sendToBack', currentIndex);
+          cmd.execute();
+          commands.push(cmd);
+        }
+      }
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    const batch = new BatchCommand(commands, 'Send to Back');
+    this.commandManager.recordCommand(batch);
     return true;
   }
 
@@ -1577,126 +2046,224 @@ export class InputController {
   }
 
   /**
-   * Helper común para clonar e insertar una figura en el Scene Graph,
-   * registrando la acción en el CommandManager y seleccionando la nueva figura.
-   * Evita duplicación de código entre Duplicar y Pegar.
+   * Duplica las figuras seleccionadas con un desplazamiento de 10 px,
+   * conservando sus posiciones relativas y su orden de apilado relativo,
+   * en su capa de origen, con IDs y nombres nuevos.
+   * Las copias quedan seleccionadas.
+   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
-  private insertClonedShape(
-    sourceShape: Shape,
-    targetLayerId: string,
-    dx: number,
-    dy: number,
-    targetIndex?: number
-  ): Shape {
-    const cloned = cloneShape(sourceShape, { dx, dy });
-    const command = new AddShapeCommand(this.stateManager, targetLayerId, cloned, targetIndex);
-    this.commandManager.executeCommand(command);
-    this.stateManager.selectNode(cloned.id);
-    return cloned;
-  }
-
-  /**
-   * Duplica directamente la figura seleccionada con un desplazamiento de 10 px,
-   * sin modificar el portapapeles en memoria ni alterar el contador de pegados.
-   * La nueva figura queda seleccionada y se añade en la misma capa, justo por encima
-   * de la original (targetIndex = originalIndex + 1).
-   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand).
-   */
-  public duplicate(): Shape | null {
-    const selected = this.stateManager.getSelectedNode();
-    if (!selected || !isShape(selected)) {
+  public duplicate(): (Shape[] & Shape) | null {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return null;
     }
 
-    const parent = this.stateManager.findParent(selected.id);
-    if (!parent || !isLayer(parent)) {
+    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
+    for (const shape of selectedNodes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        let list = layerMap.get(parent.id);
+        if (!list) {
+          list = [];
+          layerMap.set(parent.id, list);
+        }
+        const index = parent.children.findIndex((s) => s.id === shape.id);
+        list.push({ shape, index });
+      }
+    }
+
+    if (layerMap.size === 0) {
       return null;
     }
 
-    const originalIndex = parent.children.findIndex((s) => s.id === selected.id);
-    const targetIndex = originalIndex >= 0 ? originalIndex + 1 : undefined;
+    const clonedShapes: Shape[] = [];
+    const commands: AddShapeCommand[] = [];
 
-    return this.insertClonedShape(selected, parent.id, 10, 10, targetIndex);
+    for (const [layerId, items] of layerMap.entries()) {
+      items.sort((a, b) => a.index - b.index);
+      const maxIndex = Math.max(...items.map((it) => it.index));
+
+      items.forEach((item, k) => {
+        const targetIndex = maxIndex + 1 + k;
+        const cloned = cloneShape(item.shape, { dx: 10, dy: 10 });
+        clonedShapes.push(cloned);
+        commands.push(new AddShapeCommand(this.stateManager, layerId, cloned, targetIndex));
+      });
+    }
+
+    if (commands.length === 0) {
+      return null;
+    }
+
+    if (commands.length === 1) {
+      this.commandManager.executeCommand(commands[0]);
+    } else {
+      const batch = new BatchCommand(commands, 'Duplicate Shapes');
+      this.commandManager.executeCommand(batch);
+    }
+
+    this.stateManager.setSelection(clonedShapes.map((s) => s.id));
+    return asShapeArray(clonedShapes);
   }
 
   /**
-   * Guarda una copia de la figura seleccionada en el portapapeles interno en memoria.
+   * Guarda una copia de las figuras seleccionadas en el portapapeles interno en memoria.
    * Reinicia el contador de desplazamientos de pegados consecutivos.
-   * Retorna true si se copió con éxito o false si no había figura seleccionada.
+   * Retorna true si se copió con éxito o false si no había figuras seleccionadas.
    */
   public copy(): boolean {
-    const selected = this.stateManager.getSelectedNode();
-    if (!selected || !isShape(selected)) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
     }
 
-    const parent = this.stateManager.findParent(selected.id);
-    this._clipboard = selected;
-    this._clipboardLayerId = parent ? parent.id : null;
+    const doc = this.stateManager.getState();
+    const entries: ClipboardEntry[] = [];
+
+    for (const shape of selectedNodes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        const layerIndex = doc.children.findIndex((l) => l.id === parent.id);
+        const shapeIndex = parent.children.findIndex((s) => s.id === shape.id);
+        entries.push({
+          shape,
+          layerId: parent.id,
+          layerIndex,
+          shapeIndex,
+        });
+      }
+    }
+
+    if (entries.length === 0) {
+      return false;
+    }
+
+    entries.sort((a, b) => {
+      if (a.layerIndex !== b.layerIndex) {
+        return a.layerIndex - b.layerIndex;
+      }
+      return a.shapeIndex - b.shapeIndex;
+    });
+
+    this._clipboardEntries = entries;
+    this._clipboard = createClipboardList(entries.map((e) => e.shape));
     this._pasteCount = 0;
     return true;
   }
 
   /**
-   * Crea una figura nueva a partir de la guardada en el portapapeles interno,
-   * con un desplazamiento de 10 px que se acumula en pegados consecutivos (10, 20, 30...).
-   * La figura se añade al frente de la capa (última posición visual) y queda seleccionada.
-   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand).
-   * Si el portapapeles está vacío, no hace nada y retorna null.
+   * Crea copias de las figuras del portapapeles conservando sus posiciones relativas
+   * y orden de apilado relativo, desplazadas 10 px de forma acumulada en pegados consecutivos.
+   * Las figuras se insertan en su capa de origen y quedan seleccionadas.
+   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
-  public paste(): Shape | null {
-    if (!this._clipboard) {
-      return null;
-    }
-
-    let targetLayerId = this._clipboardLayerId;
-    if (!targetLayerId || !this.stateManager.findNode(targetLayerId)) {
-      const selected = this.stateManager.getSelectedNode();
-      const parent = selected ? this.stateManager.findParent(selected.id) : null;
-      targetLayerId = parent ? parent.id : this.stateManager.getState().children[0]?.id;
-    }
-
-    if (!targetLayerId) {
+  public paste(): (Shape[] & Shape) | null {
+    if (!this._clipboard || !this._clipboardEntries || this._clipboardEntries.length === 0) {
       return null;
     }
 
     this._pasteCount++;
     const offset = this._pasteCount * 10;
+    const doc = this.stateManager.getState();
+    const defaultLayerId = doc.children[0]?.id;
 
-    return this.insertClonedShape(this._clipboard, targetLayerId, offset, offset, undefined);
+    const clonedShapes: Shape[] = [];
+    const commands: AddShapeCommand[] = [];
+
+    for (const entry of this._clipboardEntries) {
+      let targetLayerId = entry.layerId;
+      if (!this.stateManager.findNode(targetLayerId)) {
+        targetLayerId = defaultLayerId;
+      }
+      if (!targetLayerId) {
+        continue;
+      }
+
+      const cloned = cloneShape(entry.shape, { dx: offset, dy: offset });
+      clonedShapes.push(cloned);
+      commands.push(new AddShapeCommand(this.stateManager, targetLayerId, cloned));
+    }
+
+    if (commands.length === 0) {
+      return null;
+    }
+
+    if (commands.length === 1) {
+      this.commandManager.executeCommand(commands[0]);
+    } else {
+      const batch = new BatchCommand(commands, 'Paste Shapes');
+      this.commandManager.executeCommand(batch);
+    }
+
+    this.stateManager.setSelection(clonedShapes.map((s) => s.id));
+    return asShapeArray(clonedShapes);
   }
 
   /**
-   * Elimina la figura actualmente seleccionada del Scene Graph mediante DeleteCommand.
-   * Registra la acción en el CommandManager para permitir deshacer/rehacer.
+   * Elimina todas las figuras seleccionadas del Scene Graph mediante DeleteCommand.
+   * Al deshacer, las restaura en sus posiciones e índices originales dentro de su capa.
+   * Registra UNA sola entrada en el historial de comandos (DeleteCommand o BatchCommand).
    *
-   * @returns true si se eliminó una figura, false si no había figura seleccionada o no pudo eliminarse
+   * @returns true si se eliminaron figuras, false si no había selección
    */
   public deleteSelected(): boolean {
-    const selected = this.stateManager.getSelectedNode();
-    if (!selected || !isShape(selected)) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
     }
 
-    const parent = this.stateManager.findParent(selected.id);
-    if (!parent) {
+    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
+    for (const shape of selectedNodes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        let list = layerMap.get(parent.id);
+        if (!list) {
+          list = [];
+          layerMap.set(parent.id, list);
+        }
+        const index = parent.children.findIndex((s) => s.id === shape.id);
+        list.push({ shape, index });
+      }
+    }
+
+    if (layerMap.size === 0) {
       return false;
     }
 
-    const command = new DeleteCommand(this.stateManager, selected, parent.id);
-    this.commandManager.executeCommand(command);
+    const commands: DeleteCommand[] = [];
+
+    for (const [layerId, items] of layerMap.entries()) {
+      // Orden descendente de índice para que la eliminación no altere los índices inferiores
+      items.sort((a, b) => b.index - a.index);
+      for (const item of items) {
+        commands.push(new DeleteCommand(this.stateManager, item.shape, layerId, item.index));
+      }
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    if (commands.length === 1) {
+      this.commandManager.executeCommand(commands[0]);
+    } else {
+      const batch = new BatchCommand(commands, 'Delete Shapes');
+      this.commandManager.executeCommand(batch);
+    }
+
+    this.stateManager.setSelection([]);
     return true;
   }
 
   /**
-   * Mueve la figura actualmente seleccionada por un desplazamiento relativo (dx, dy).
-   * Solo opera si la herramienta activa es 'select' y la figura no está bloqueada (locked).
-   * Fusiona comandos consecutivos en el CommandManager si ocurren dentro de un intervalo corto (400 ms).
+   * Mueve todas las figuras seleccionadas por un desplazamiento relativo (dx, dy).
+   * Solo opera si la herramienta activa es 'select' y omite figuras bloqueadas (locked).
+   * Fusiona comandos consecutivos en el CommandManager (BatchCommand.mergeWith) dentro de un intervalo corto (400 ms).
    *
    * @param dx Desplazamiento horizontal en píxeles
    * @param dy Desplazamiento vertical en píxeles
    * @param timestamp Marca temporal opcional (para pruebas deterministas o repetición)
-   * @returns true si la figura fue movida, false en caso contrario
+   * @returns true si las figuras fueron movidas, false en caso contrario
    */
   public moveSelection(dx: number, dy: number, timestamp?: number): boolean {
     if (this._currentTool !== 'select') {
@@ -1707,30 +2274,48 @@ export class InputController {
       return false;
     }
 
-    const selectedShape = this.stateManager.getSelectedNode();
-    if (!selectedShape || selectedShape.locked === true) {
+    const selectedShapes = this.stateManager.getSelectedNodes().filter((s) => !s.locked);
+    if (selectedShapes.length === 0) {
       return false;
     }
 
-    const currentX = selectedShape.x;
-    const currentY = selectedShape.y;
-    const targetX = currentX + dx;
-    const targetY = currentY + dy;
+    const now = timestamp ?? Date.now();
 
-    const command = new TranslateCommand(
-      this.stateManager,
-      selectedShape.id,
-      currentX,
-      currentY,
-      targetX,
-      targetY,
-      {
-        timestamp: timestamp ?? Date.now(),
-        mergeTimeout: 400,
-      }
-    );
+    if (selectedShapes.length === 1) {
+      const shape = selectedShapes[0];
+      const command = new TranslateCommand(
+        this.stateManager,
+        shape.id,
+        shape.x,
+        shape.y,
+        shape.x + dx,
+        shape.y + dy,
+        {
+          timestamp: now,
+          mergeTimeout: 400,
+        }
+      );
+      this.commandManager.executeCommand(command);
+      return true;
+    }
 
-    this.commandManager.executeCommand(command);
+    const commands = selectedShapes.map((shape) => {
+      return new TranslateCommand(
+        this.stateManager,
+        shape.id,
+        shape.x,
+        shape.y,
+        shape.x + dx,
+        shape.y + dy,
+        {
+          timestamp: now,
+          mergeTimeout: 400,
+        }
+      );
+    });
+
+    const batch = new BatchCommand(commands, 'Translate Shapes');
+    this.commandManager.executeCommand(batch);
     return true;
   }
 
@@ -1776,8 +2361,10 @@ export class InputController {
   private resetDrag(): void {
     this._isDragging = false;
     this.dragOrigin = null;
-    this.initialShapePosition = null;
-    this.draggedShapeId = null;
+    this.initialShapesPositions = null;
+    this.pendingSingleSelectionId = null;
+    this.dragStartScreen = null;
+    this.hasMovedPastThreshold = false;
   }
 
   private resetResize(): void {
@@ -1814,6 +2401,12 @@ export class InputController {
    * control (AABB de 10x10px), marca ese vértice o manejador específico como _draggedPointIndex u objetivo de arrastre.
    */
   private handleDirectSelectMouseDown(x: number, y: number): void {
+    const selection = this.stateManager.getSelection();
+    if (selection.length !== 1) {
+      this.resetDirectSelect();
+      return;
+    }
+
     const selectedNode = this.stateManager.getSelectedNode();
     if (!selectedNode || selectedNode.type !== 'path') {
       this.resetDirectSelect();
@@ -1908,13 +2501,16 @@ export class InputController {
       return;
     }
 
-    const selectedNode = this.stateManager.getSelectedNode();
-    if (selectedNode && selectedNode.type === 'path') {
-      const hit = this.findPathPointHit(selectedNode as Path, x, y);
-      this.canvas.style.cursor = hit ? 'pointer' : 'default';
-    } else {
-      this.canvas.style.cursor = 'default';
+    const selection = this.stateManager.getSelection();
+    if (selection.length === 1) {
+      const selectedNode = this.stateManager.getSelectedNode();
+      if (selectedNode && selectedNode.type === 'path') {
+        const hit = this.findPathPointHit(selectedNode as Path, x, y);
+        this.canvas.style.cursor = hit ? 'pointer' : 'default';
+        return;
+      }
     }
+    this.canvas.style.cursor = 'default';
   }
 
   /**

@@ -6,9 +6,10 @@ import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
 import { StyleCommand } from './commands/StyleCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
+import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
-import type { Path, Shape } from './types/scene-graph.ts';
+import type { Path } from './types/scene-graph.ts';
 
 console.log('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
@@ -116,6 +117,7 @@ export function setupUIBindings(
   const viewportManager = inputController.viewportManager ?? new ViewportManager();
 
   // Controles del Panel de Propiedades
+  const panelTitle = document.querySelector<HTMLElement>('#panel-title, .panel-title');
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
   const selectionState = document.querySelector<HTMLElement>('#selection-state');
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
@@ -234,9 +236,10 @@ export function setupUIBindings(
       statusShapesCount.textContent = count === 1 ? '1 figura' : `${count} figuras`;
     }
 
-    const selectedShape = stateManager.getSelectedNode();
+    const selectedNodes = stateManager.getSelectedNodes();
     if (statusSelectionInfo) {
-      if (selectedShape) {
+      if (selectedNodes.length === 1) {
+        const selectedShape = selectedNodes[0];
         const typeLabels: Record<string, string> = {
           rectangle: 'Rectángulo',
           ellipse: 'Elipse',
@@ -244,6 +247,14 @@ export function setupUIBindings(
         };
         const typeName = typeLabels[selectedShape.type] || selectedShape.type;
         statusSelectionInfo.textContent = `${selectedShape.name} (${typeName})`;
+        if (statusSelectionInfo.style) {
+          statusSelectionInfo.style.display = 'inline';
+        }
+        if (statusSelectionSeparator && statusSelectionSeparator.style) {
+          statusSelectionSeparator.style.display = 'inline';
+        }
+      } else if (selectedNodes.length > 1) {
+        statusSelectionInfo.textContent = `${selectedNodes.length} figuras seleccionadas`;
         if (statusSelectionInfo.style) {
           statusSelectionInfo.style.display = 'inline';
         }
@@ -299,8 +310,7 @@ export function setupUIBindings(
       menuItemRedo.setAttribute('aria-disabled', String(!canRedo));
     }
 
-    const selectedShape = stateManager.getSelectedNode();
-    const hasSelection = selectedShape !== null;
+    const hasSelection = stateManager.getSelection().length > 0;
 
     if (menuItemCopy) {
       menuItemCopy.disabled = !hasSelection;
@@ -468,25 +478,31 @@ export function setupUIBindings(
   fileImportInput?.addEventListener('change', onFileChange);
 
   // 5. Panel de Propiedades de Figuras (Observabilidad de Selección & Edición Reactiva)
-  let initialStyleSnapshot: Partial<Shape> | null = null;
-  let editingShapeId: string | null = null;
+  interface StyleSnapshot {
+    readonly fill?: string;
+    readonly stroke?: string;
+    readonly strokeWidth?: number;
+  }
+  let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
 
   const captureInitialStyle = () => {
-    const selected = stateManager.getSelectedNode();
-    if (selected) {
-      editingShapeId = selected.id;
-      initialStyleSnapshot = {
-        fill: selected.fill,
-        stroke: selected.stroke,
-        strokeWidth: selected.strokeWidth,
-      };
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length > 0) {
+      initialStyleSnapshots = new Map();
+      for (const shape of selectedNodes) {
+        initialStyleSnapshots.set(shape.id, {
+          fill: shape.fill,
+          stroke: shape.stroke,
+          strokeWidth: shape.strokeWidth,
+        });
+      }
     }
   };
 
   const syncPropertiesPanel = () => {
-    const selectedShape = stateManager.getSelectedNode();
+    const selectedNodes = stateManager.getSelectedNodes();
 
-    if (selectedShape) {
+    if (selectedNodes.length > 0) {
       if (selectionState) {
         selectionState.style.display = 'block';
       }
@@ -494,15 +510,21 @@ export function setupUIBindings(
         noSelectionState.style.display = 'none';
       }
 
-      const isEditing = editingShapeId !== null;
+      if (panelTitle) {
+        panelTitle.textContent =
+          selectedNodes.length === 1 ? 'PROPIEDADES' : `${selectedNodes.length} figuras seleccionadas`;
+      }
+
+      const firstShape = selectedNodes[0];
+      const isEditing = initialStyleSnapshots !== null;
       if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
-        inputFill.value = toValidHexColor(selectedShape.fill, '#000000');
+        inputFill.value = toValidHexColor(firstShape.fill, '#000000');
       }
       if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
-        inputStroke.value = toValidHexColor(selectedShape.stroke, '#000000');
+        inputStroke.value = toValidHexColor(firstShape.stroke, '#000000');
       }
       if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
-        inputStrokeWidth.value = String(selectedShape.strokeWidth ?? 1);
+        inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
       }
     } else {
       if (selectionState) {
@@ -511,8 +533,10 @@ export function setupUIBindings(
       if (noSelectionState) {
         noSelectionState.style.display = 'block';
       }
-      initialStyleSnapshot = null;
-      editingShapeId = null;
+      if (panelTitle) {
+        panelTitle.textContent = 'PROPIEDADES';
+      }
+      initialStyleSnapshots = null;
     }
 
     syncMenuItems();
@@ -523,6 +547,9 @@ export function setupUIBindings(
   const unsubscribeState = stateManager.subscribe(() => {
     syncPropertiesPanel();
   });
+
+  // Inicializar estado del panel de propiedades, menú y barra de estado
+  syncPropertiesPanel();
 
   // Capturar estilos iniciales al iniciar interacción (mousedown, click, focus)
   const onInputStart = () => {
@@ -543,32 +570,40 @@ export function setupUIBindings(
 
   // Previsualización en vivo (evento 'input'): actualiza directamente en StateManager sin registrar comando
   const onFillInput = () => {
-    const selected = stateManager.getSelectedNode();
-    if (!selected || !inputFill) return;
-    if (!initialStyleSnapshot) {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputFill) return;
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
-    stateManager.updateShape(selected.id, { fill: inputFill.value });
+    const val = inputFill.value;
+    for (const shape of selectedNodes) {
+      stateManager.updateShape(shape.id, { fill: val });
+    }
   };
 
   const onStrokeInput = () => {
-    const selected = stateManager.getSelectedNode();
-    if (!selected || !inputStroke) return;
-    if (!initialStyleSnapshot) {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputStroke) return;
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
-    stateManager.updateShape(selected.id, { stroke: inputStroke.value });
+    const val = inputStroke.value;
+    for (const shape of selectedNodes) {
+      stateManager.updateShape(shape.id, { stroke: val });
+    }
   };
 
   const onStrokeWidthInput = () => {
-    const selected = stateManager.getSelectedNode();
-    if (!selected || !inputStrokeWidth) return;
-    if (!initialStyleSnapshot) {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputStrokeWidth) return;
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
     const parsed = parseFloat(inputStrokeWidth.value);
     const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
-    stateManager.updateShape(selected.id, { strokeWidth });
+    for (const shape of selectedNodes) {
+      stateManager.updateShape(shape.id, { strokeWidth });
+    }
   };
 
   inputFill?.addEventListener('input', onFillInput);
@@ -577,86 +612,112 @@ export function setupUIBindings(
 
   // Consolidación final (evento 'change'): genera StyleCommand y registra en CommandManager
   const onFillChange = () => {
-    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
-    if (!shapeId || !inputFill) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputFill) return;
 
-    if (!initialStyleSnapshot) {
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
 
-    const initialVal = initialStyleSnapshot?.fill;
     const finalVal = inputFill.value;
+    const commands: StyleCommand[] = [];
 
-    stateManager.updateShape(shapeId, { fill: finalVal });
+    for (const shape of selectedNodes) {
+      const initialVal = initialStyleSnapshots?.get(shape.id)?.fill ?? shape.fill;
+      stateManager.updateShape(shape.id, { fill: finalVal });
 
-    if (initialVal !== finalVal) {
-      const command = new StyleCommand(
-        stateManager,
-        shapeId,
-        { fill: initialVal },
-        { fill: finalVal }
-      );
-      commandManager.recordCommand(command);
+      if (initialVal !== finalVal) {
+        commands.push(
+          new StyleCommand(
+            stateManager,
+            shape.id,
+            { fill: initialVal },
+            { fill: finalVal }
+          )
+        );
+      }
     }
 
-    initialStyleSnapshot = null;
-    editingShapeId = null;
+    if (commands.length === 1) {
+      commandManager.recordCommand(commands[0]);
+    } else if (commands.length > 1) {
+      commandManager.recordCommand(new BatchCommand(commands, 'Style Fill'));
+    }
+
+    initialStyleSnapshots = null;
   };
 
   const onStrokeChange = () => {
-    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
-    if (!shapeId || !inputStroke) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputStroke) return;
 
-    if (!initialStyleSnapshot) {
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
 
-    const initialVal = initialStyleSnapshot?.stroke;
     const finalVal = inputStroke.value;
+    const commands: StyleCommand[] = [];
 
-    stateManager.updateShape(shapeId, { stroke: finalVal });
+    for (const shape of selectedNodes) {
+      const initialVal = initialStyleSnapshots?.get(shape.id)?.stroke ?? shape.stroke;
+      stateManager.updateShape(shape.id, { stroke: finalVal });
 
-    if (initialVal !== finalVal) {
-      const command = new StyleCommand(
-        stateManager,
-        shapeId,
-        { stroke: initialVal },
-        { stroke: finalVal }
-      );
-      commandManager.recordCommand(command);
+      if (initialVal !== finalVal) {
+        commands.push(
+          new StyleCommand(
+            stateManager,
+            shape.id,
+            { stroke: initialVal },
+            { stroke: finalVal }
+          )
+        );
+      }
     }
 
-    initialStyleSnapshot = null;
-    editingShapeId = null;
+    if (commands.length === 1) {
+      commandManager.recordCommand(commands[0]);
+    } else if (commands.length > 1) {
+      commandManager.recordCommand(new BatchCommand(commands, 'Style Stroke'));
+    }
+
+    initialStyleSnapshots = null;
   };
 
   const onStrokeWidthChange = () => {
-    const shapeId = editingShapeId || stateManager.getSelectedNode()?.id;
-    if (!shapeId || !inputStrokeWidth) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0 || !inputStrokeWidth) return;
 
-    if (!initialStyleSnapshot) {
+    if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
 
     const parsed = parseFloat(inputStrokeWidth.value);
-    const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
-    const initialVal = initialStyleSnapshot?.strokeWidth;
-    const finalVal = strokeWidth;
+    const finalVal = isNaN(parsed) ? 1 : Math.max(0, parsed);
+    const commands: StyleCommand[] = [];
 
-    stateManager.updateShape(shapeId, { strokeWidth: finalVal });
+    for (const shape of selectedNodes) {
+      const initialVal = initialStyleSnapshots?.get(shape.id)?.strokeWidth ?? shape.strokeWidth;
+      stateManager.updateShape(shape.id, { strokeWidth: finalVal });
 
-    if (initialVal !== finalVal) {
-      const command = new StyleCommand(
-        stateManager,
-        shapeId,
-        { strokeWidth: initialVal },
-        { strokeWidth: finalVal }
-      );
-      commandManager.recordCommand(command);
+      if (initialVal !== finalVal) {
+        commands.push(
+          new StyleCommand(
+            stateManager,
+            shape.id,
+            { strokeWidth: initialVal },
+            { strokeWidth: finalVal }
+          )
+        );
+      }
     }
 
-    initialStyleSnapshot = null;
-    editingShapeId = null;
+    if (commands.length === 1) {
+      commandManager.recordCommand(commands[0]);
+    } else if (commands.length > 1) {
+      commandManager.recordCommand(new BatchCommand(commands, 'Style Stroke Width'));
+    }
+
+    initialStyleSnapshots = null;
   };
 
   inputFill?.addEventListener('change', onFillChange);
@@ -684,7 +745,7 @@ export function setupUIBindings(
 
   // Botón de eliminar figura seleccionada en panel de acciones
   const onDeleteSelectionClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       inputController.deleteSelected();
     }
   };
@@ -1007,7 +1068,7 @@ export function setupUIBindings(
   };
 
   const onMenuCopyClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       closeAllMenus();
       inputController.copy();
       syncMenuItems();
@@ -1025,7 +1086,7 @@ export function setupUIBindings(
   };
 
   const onMenuDuplicateClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       closeAllMenus();
       inputController.duplicate();
       syncMenuItems();
@@ -1034,7 +1095,7 @@ export function setupUIBindings(
   };
 
   const onMenuDeleteClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       closeAllMenus();
       inputController.deleteSelected();
       syncMenuItems();
@@ -1043,7 +1104,7 @@ export function setupUIBindings(
   };
 
   const onMenuBringToFrontClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       closeAllMenus();
       inputController.bringToFront();
       canvas?.focus?.();
@@ -1051,7 +1112,7 @@ export function setupUIBindings(
   };
 
   const onMenuSendToBackClick = () => {
-    if (stateManager.getSelectedNode()) {
+    if (stateManager.getSelection().length > 0) {
       closeAllMenus();
       inputController.sendToBack();
       canvas?.focus?.();
@@ -1462,9 +1523,11 @@ if (typeof document !== 'undefined') {
 
 // 5. Suscripción para depuración de selección
 stateManager.subscribe(() => {
-  const selectedShape = stateManager.getSelectedNode();
-  if (selectedShape) {
-    console.log(`🔷 [Nodo Seleccionado]: "${selectedShape.name}" (${selectedShape.type})`, selectedShape);
+  const selectedNodes = stateManager.getSelectedNodes();
+  if (selectedNodes.length === 1) {
+    console.log(`🔷 [Nodo Seleccionado]: "${selectedNodes[0].name}" (${selectedNodes[0].type})`, selectedNodes[0]);
+  } else if (selectedNodes.length > 1) {
+    console.log(`🔷 [Selección Múltiple]: ${selectedNodes.length} figuras seleccionadas`);
   }
 });
 
