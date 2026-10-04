@@ -366,6 +366,8 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
       id: 'doc-imported',
       type: 'document',
       name: 'Imported Scene',
+      width: 1920,
+      height: 1080,
       children: [
         {
           id: 'layer-imported',

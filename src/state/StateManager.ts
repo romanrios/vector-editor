@@ -26,6 +26,7 @@ export type StateListener = (state: Readonly<Document>) => void;
  */
 export class StateManager {
   private _state: Readonly<Document>;
+  private _selectedIds: readonly string[] = [];
   private _listeners: Set<StateListener> = new Set();
   private _isDirty: boolean = true;
   private commandManager: CommandManager | null = null;
@@ -37,7 +38,6 @@ export class StateManager {
       name: 'Nuevo Documento',
       width: 1920,
       height: 1080,
-      isDirty: true,
       children: [
         {
           id: 'layer-default',
@@ -48,9 +48,10 @@ export class StateManager {
       ],
     };
 
-    const initial = initialState ? { ...structuredClone(initialState), isDirty: initialState.isDirty ?? true } : defaultState;
-    this._isDirty = initial.isDirty ?? true;
+    const initial = initialState ? structuredClone(initialState) : defaultState;
+    this._isDirty = true;
     this._state = deepFreeze(initial);
+    this._selectedIds = Object.freeze([]);
     if (commandManager) {
       this.commandManager = commandManager;
     }
@@ -60,33 +61,23 @@ export class StateManager {
    * Indica si el estado ha cambiado y requiere redibujado (flag isDirty).
    */
   public get isDirty(): boolean {
-    return this._isDirty || Boolean(this._state.isDirty);
+    return this._isDirty;
   }
 
   /**
    * Marca explícitamente el estado como "sucio" para forzar un nuevo renderizado.
+   * NO modifica la referencia del Documento (getState() preserva su identidad).
    */
   public markDirty(): void {
     this._isDirty = true;
-    if (!this._state.isDirty) {
-      this._state = deepFreeze({
-        ...this._state,
-        isDirty: true,
-      });
-    }
   }
 
   /**
    * Limpia el flag isDirty tras completar un ciclo de dibujado.
+   * NO modifica la referencia del Documento (getState() preserva su identidad).
    */
   public clearDirty(): void {
     this._isDirty = false;
-    if (this._state.isDirty) {
-      this._state = deepFreeze({
-        ...this._state,
-        isDirty: false,
-      });
-    }
   }
 
   /**
@@ -126,10 +117,11 @@ export class StateManager {
 
     this._isDirty = true;
     const cloned = structuredClone(newState);
-    this._state = deepFreeze({
-      ...cloned,
-      isDirty: true,
-    });
+    this._state = deepFreeze(cloned);
+
+    // Purgar de _selectedIds cualquier ID que no exista en el nuevo estado
+    const validSelectedIds = this._selectedIds.filter((id) => this.findNode(id) !== null);
+    this._selectedIds = Object.freeze(validSelectedIds);
 
     this.notify();
   }
@@ -159,10 +151,14 @@ export class StateManager {
    */
   private setState(nextState: Document): void {
     this._isDirty = true;
-    this._state = deepFreeze({
-      ...nextState,
-      isDirty: true,
-    });
+    this._state = deepFreeze(nextState);
+
+    // Purgar IDs seleccionados que ya no existan en nextState
+    const validSelectedIds = this._selectedIds.filter((id) => this.findNode(id) !== null);
+    if (validSelectedIds.length !== this._selectedIds.length) {
+      this._selectedIds = Object.freeze(validSelectedIds);
+    }
+
     this.notify();
   }
 
@@ -557,59 +553,81 @@ export class StateManager {
   }
 
   /**
-   * Marca un nodo como seleccionado (selected: true) y deselecciona los demás en el Scene Graph de forma inmutable.
-   * Si targetNodeId es null, deselecciona todos los nodos.
-   *
-   * @param targetNodeId ID de la figura a seleccionar, o null para deseleccionar todo
+   * Retorna una lista inmutable con los IDs de las figuras actualmente seleccionadas.
    */
-  public selectNode(targetNodeId: string | null): void {
-    let changed = false;
-
-    const nextLayers = this._state.children.map((layer) => {
-      let layerChanged = false;
-      const nextShapes = layer.children.map((shape) => {
-        const isTarget = shape.id === targetNodeId;
-        const wasSelected = Boolean(shape.selected);
-        if (isTarget !== wasSelected) {
-          layerChanged = true;
-          changed = true;
-          return {
-            ...shape,
-            selected: isTarget,
-          };
-        }
-        return shape;
-      });
-
-      if (layerChanged) {
-        return {
-          ...layer,
-          children: nextShapes,
-        };
-      }
-      return layer;
-    });
-
-    if (changed) {
-      this.setState({
-        ...this._state,
-        children: nextLayers,
-      });
-    }
+  public getSelection(): readonly string[] {
+    return this._selectedIds;
   }
 
   /**
-   * Retorna la figura actualmente seleccionada en el Scene Graph, o null si ninguna lo está.
+   * Retorna un array con las figuras (Shape) actualmente seleccionadas en el Scene Graph.
    */
-  public getSelectedNode(): Shape | null {
-    for (const layer of this._state.children) {
-      for (const shape of layer.children) {
-        if (shape.selected) {
-          return shape;
+  public getSelectedNodes(): Shape[] {
+    const nodes: Shape[] = [];
+    for (const id of this._selectedIds) {
+      const node = this.findNode(id);
+      if (node && isShape(node)) {
+        nodes.push(node);
+      }
+    }
+    return nodes;
+  }
+
+  /**
+   * Comprueba si un nodo con el ID dado está actualmente seleccionado.
+   */
+  public isSelected(id: string): boolean {
+    return this._selectedIds.includes(id);
+  }
+
+  /**
+   * Establece la selección a partir de un array de IDs.
+   * Valida que los IDs existan y correspondan a figuras (Shape) en el Documento,
+   * eliminando duplicados e IDs inexistentes.
+   * NO modifica la referencia del Documento (getState() conserva su identidad).
+   * Marca el estado como sucio (markDirty) y notifica a los suscriptores si la selección cambió.
+   */
+  public setSelection(ids: readonly string[]): void {
+    const seen = new Set<string>();
+    const validIds: string[] = [];
+
+    for (const id of ids) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        const node = this.findNode(id);
+        if (node && isShape(node)) {
+          validIds.push(id);
         }
       }
     }
-    return null;
+
+    // Verificar si la selección cambió
+    const isSame =
+      validIds.length === this._selectedIds.length &&
+      validIds.every((id, idx) => id === this._selectedIds[idx]);
+
+    if (isSame) {
+      return;
+    }
+
+    this._selectedIds = Object.freeze(validIds);
+    this.markDirty();
+    this.notify();
+  }
+
+  /**
+   * Wrapper de compatibilidad para selección única.
+   * Selecciona el nodo especificado o deselecciona todo si targetNodeId es null.
+   */
+  public selectNode(targetNodeId: string | null): void {
+    this.setSelection(targetNodeId ? [targetNodeId] : []);
+  }
+
+  /**
+   * Wrapper de compatibilidad: retorna la primera figura seleccionada o null si no hay ninguna.
+   */
+  public getSelectedNode(): Shape | null {
+    return this.getSelectedNodes()[0] ?? null;
   }
 
   /**

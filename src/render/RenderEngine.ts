@@ -1,7 +1,7 @@
 import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import { getPathBaseAABB, getShapeAABB } from '../utils/geometry.ts';
-import type { InputController, ShapePreview } from '../input/InputController.ts';
+import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 
 export interface RenderEngineOptions {
@@ -15,10 +15,6 @@ export interface RenderEngineOptions {
    * Si es undefined, el lienzo se limpia de forma transparente.
    */
   backgroundColor?: string;
-  /**
-   * Instancia opcional de InputController para consultar la vista previa activa.
-   */
-  inputController?: InputController;
   /**
    * Proveedor funcional opcional de la vista previa de figuras en creación.
    */
@@ -47,8 +43,6 @@ export class RenderEngine {
   private _renderCount: number = 0;
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private inputController: InputController | null = null;
-  private preview: ShapePreview | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -91,20 +85,6 @@ export class RenderEngine {
    */
   public get renderCount(): number {
     return this._renderCount;
-  }
-
-  /**
-   * Establece o desvincula la instancia de InputController para la vista previa de creación.
-   */
-  public setInputController(controller: InputController | null): void {
-    this.inputController = controller;
-  }
-
-  /**
-   * Permite fijar o limpiar directamente una vista previa para testing o renderizado manual.
-   */
-  public setPreview(preview: ShapePreview | null): void {
-    this.preview = preview;
   }
 
   /**
@@ -159,7 +139,7 @@ export class RenderEngine {
     const frame = () => {
       if (!this.isRunning) return;
 
-      const isStateDirty = this.stateManager.isDirty || Boolean(this.stateManager.getState().isDirty);
+      const isStateDirty = this.stateManager.isDirty;
 
       if (isStateDirty) {
         this.render();
@@ -243,13 +223,7 @@ export class RenderEngine {
     this.renderSelectionOverlay(documentState, zoom);
 
     // Dibujar vista previa de creación de figura (trazo punteado y semitransparente)
-    const activePreview =
-      this.preview ??
-      this.options.previewProvider?.() ??
-      this.options.inputController?.shapePreview ??
-      this.inputController?.shapePreview ??
-      (this.canvas as any).__inputController?.shapePreview ??
-      null;
+    const activePreview = this.options.previewProvider?.() ?? null;
 
     if (activePreview) {
       this.renderShapePreview(activePreview, zoom);
@@ -442,7 +416,7 @@ export class RenderEngine {
       }
 
       for (const shape of layer.children) {
-        if (shape.visible === false || !shape.selected) {
+        if (shape.visible === false || !this.stateManager.isSelected(shape.id)) {
           continue;
         }
 
@@ -545,8 +519,8 @@ export class RenderEngine {
         this.ctx.beginPath();
         if (typeof this.ctx.arc === 'function') {
           this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
-        } else if (typeof (this.ctx as any).ellipse === 'function') {
-          (this.ctx as any).ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
+        } else if (typeof this.ctx.ellipse === 'function') {
+          this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
         }
         this.ctx.fillStyle = '#10b981'; // Verde para diferenciarlo visualmente de las esquinas azules
         this.ctx.fill();
@@ -621,7 +595,7 @@ export class RenderEngine {
     }
 
     // Si el trazado está seleccionado, dibujar sus puntos de ancla y manejadores de control Bézier
-    if (path.selected) {
+    if (this.stateManager.isSelected(path.id)) {
       this.renderPathControls(path, zoom);
     }
 

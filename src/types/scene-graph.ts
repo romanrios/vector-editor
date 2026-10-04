@@ -46,7 +46,6 @@ export interface BaseNode {
   readonly name: string;
   readonly visible?: boolean;
   readonly locked?: boolean;
-  readonly selected?: boolean;
   readonly zIndex?: number;
 }
 
@@ -117,7 +116,6 @@ export interface Document extends BaseNode {
   readonly width: number;
   readonly height: number;
   readonly children: readonly Layer[];
-  readonly isDirty?: boolean;
 }
 
 /**

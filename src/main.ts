@@ -86,7 +86,7 @@ export function setupUIBindings(
     return { cleanup: () => {} };
   }
 
-  const stateManager = stateManagerInstance ?? (inputController as any).stateManager ?? moduleStateManager;
+  const stateManager = stateManagerInstance ?? inputController.stateManager ?? moduleStateManager;
 
   const btnSelect = document.querySelector<HTMLButtonElement>('#tool-select');
   const btnDirectSelect = document.querySelector<HTMLButtonElement>('#tool-direct-select');
@@ -328,7 +328,7 @@ export function setupUIBindings(
       menuBtnObject.setAttribute('aria-disabled', String(!hasSelection));
     }
 
-    const hasClipboard = (inputController as any).clipboard !== null;
+    const hasClipboard = inputController.clipboard !== null;
     if (menuItemPaste) {
       menuItemPaste.disabled = !hasClipboard;
       menuItemPaste.setAttribute('aria-disabled', String(!hasClipboard));
@@ -442,16 +442,20 @@ export function setupUIBindings(
 
     if (typeof FileReader !== 'undefined') {
       readWithFileReader(file);
-    } else if (typeof (file as any).text === 'function') {
+    } else if (typeof file.text === 'function') {
       (async () => {
         try {
-          const text = await (file as any).text();
+          const text = await file.text();
           const doc = await Serializer.parseDocument(text);
           stateManager.loadState(doc);
           commandManager.clear();
           inputController.zoomFit();
+          console.log('📂 [Serializer] Documento importado y cargado con éxito:', doc);
         } catch (error) {
           console.error('❌ Error al importar documento JSON:', error);
+          if (typeof alert !== 'undefined') {
+            alert(`Error al importar el archivo JSON: ${error instanceof Error ? error.message : String(error)}`);
+          }
         } finally {
           target.value = '';
         }
@@ -484,11 +488,9 @@ export function setupUIBindings(
 
     if (selectedShape) {
       if (selectionState) {
-        if (!selectionState.style) (selectionState as any).style = {};
         selectionState.style.display = 'block';
       }
       if (noSelectionState) {
-        if (!noSelectionState.style) (noSelectionState as any).style = {};
         noSelectionState.style.display = 'none';
       }
 
@@ -504,11 +506,9 @@ export function setupUIBindings(
       }
     } else {
       if (selectionState) {
-        if (!selectionState.style) (selectionState as any).style = {};
         selectionState.style.display = 'none';
       }
       if (noSelectionState) {
-        if (!noSelectionState.style) (noSelectionState as any).style = {};
         noSelectionState.style.display = 'block';
       }
       initialStyleSnapshot = null;
@@ -714,7 +714,7 @@ export function setupUIBindings(
       if (typeof sessionStorage !== 'undefined') {
         const saved = sessionStorage.getItem(`panel-section-${section.id}`);
         if (saved !== null && 'open' in section) {
-          (section as any).open = saved === 'true';
+          (section as HTMLDetailsElement).open = saved === 'true';
         }
       }
     } catch (_) {}
@@ -722,7 +722,7 @@ export function setupUIBindings(
     const onToggle = () => {
       try {
         if (typeof sessionStorage !== 'undefined' && 'open' in section) {
-          sessionStorage.setItem(`panel-section-${section.id}`, String((section as any).open));
+          sessionStorage.setItem(`panel-section-${section.id}`, String((section as HTMLDetailsElement).open));
         }
       } catch (_) {}
     };
@@ -926,7 +926,7 @@ export function setupUIBindings(
   });
 
   const onDocumentClick = (e: MouseEvent) => {
-    const target = e.target as any;
+    const target = e.target as Node | null;
     if (isZoomMenuOpen) {
       const isInsideZoom = (statusZoomBtn && (statusZoomBtn === target || statusZoomBtn.contains?.(target))) ||
                            (zoomDropdown && (zoomDropdown === target || zoomDropdown.contains?.(target)));
@@ -947,7 +947,7 @@ export function setupUIBindings(
           isInside = true;
           break;
         }
-        if (entry.dropdown && typeof (entry.dropdown as any).contains === 'function' && (entry.dropdown as any).contains(target)) {
+        if (entry.dropdown && typeof entry.dropdown.contains === 'function' && entry.dropdown.contains(target)) {
           isInside = true;
           break;
         }
@@ -1016,7 +1016,7 @@ export function setupUIBindings(
   };
 
   const onMenuPasteClick = () => {
-    if ((inputController as any).clipboard) {
+    if (inputController.clipboard) {
       closeAllMenus();
       inputController.paste();
       syncMenuItems();
@@ -1086,7 +1086,7 @@ export function setupUIBindings(
     if (!shortcutsDialogList) return;
     const shortcuts = typeof inputController.getShortcuts === 'function'
       ? inputController.getShortcuts()
-      : (InputController as any).SHORTCUTS ?? [];
+      : InputController.SHORTCUTS;
 
     shortcutsDialogList.innerHTML = '';
     if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
@@ -1127,8 +1127,9 @@ export function setupUIBindings(
       shortcutsDialog.showModal();
     } else {
       shortcutsDialog.setAttribute('open', '');
-      (shortcutsDialog as any).style = (shortcutsDialog as any).style || {};
-      (shortcutsDialog as any).style.display = 'block';
+      if (shortcutsDialog.style) {
+        shortcutsDialog.style.display = 'block';
+      }
     }
   };
 
@@ -1138,8 +1139,9 @@ export function setupUIBindings(
       shortcutsDialog.close();
     } else {
       shortcutsDialog.removeAttribute('open');
-      (shortcutsDialog as any).style = (shortcutsDialog as any).style || {};
-      (shortcutsDialog as any).style.display = 'none';
+      if (shortcutsDialog.style) {
+        shortcutsDialog.style.display = 'none';
+      }
     }
     menuBtnHelp?.focus?.();
   };
@@ -1430,18 +1432,19 @@ if (typeof document !== 'undefined') {
   const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 
   if (canvas) {
+    // Controlador de Entrada con herramientas de Selección y Pluma
+    inputController = new InputController(canvas, stateManager, commandManager, {
+      viewportManager,
+    });
+
     // Motor de Renderizado
     renderEngine = new RenderEngine(canvas, stateManager, {
       highDpi: true,
       backgroundColor: '#141416',
       viewportManager,
+      previewProvider: () => inputController?.shapePreview ?? null,
     });
     renderEngine.start();
-
-    // Controlador de Entrada con herramientas de Selección y Pluma
-    inputController = new InputController(canvas, stateManager, commandManager, {
-      viewportManager,
-    });
 
     // Sistema de observabilidad DOM <-> Estado
     uiBindings = setupUIBindings(inputController, commandManager, stateManager);

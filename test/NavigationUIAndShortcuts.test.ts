@@ -464,6 +464,9 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     const fakeDoc = {
       id: 'doc-imported',
       type: 'document',
+      name: 'Doc Importado',
+      width: 1920,
+      height: 1080,
       version: 1,
       children: [
         {

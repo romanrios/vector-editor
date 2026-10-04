@@ -9,6 +9,12 @@ export interface Command {
   readonly name: string;
 
   /**
+   * Indica si la figura ya se encuentra en el destino deseado antes de la ejecución.
+   * Si es true, CommandManager omite registrar el comando en el historial.
+   */
+  readonly isAlreadyAtTarget?: boolean;
+
+  /**
    * Aplica o rehace la acción del comando sobre el estado.
    */
   execute(): void;

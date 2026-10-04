@@ -156,14 +156,15 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
   it('dibuja la vista previa con trazo punteado y relleno semitransparente cuando hay una previsualización activa', () => {
     const { canvas, calls } = createMockCanvas();
     const manager = new StateManager();
-    const engine = new RenderEngine(canvas, manager, { highDpi: false });
-
-    engine.setPreview({
-      type: 'rectangle',
-      x: 50,
-      y: 50,
-      width: 100,
-      height: 80,
+    const engine = new RenderEngine(canvas, manager, {
+      highDpi: false,
+      previewProvider: () => ({
+        type: 'rectangle',
+        x: 50,
+        y: 50,
+        width: 100,
+        height: 80,
+      }),
     });
 
     engine.render();

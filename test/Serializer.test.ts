@@ -27,7 +27,8 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
     manager.addShape(manager.getState().children[0].id, samplePath);
 
     const docState = manager.getState();
-    assert.equal(docState.isDirty, true, 'El documento original tiene isDirty = true');
+    assert.equal(manager.isDirty, true, 'El manager tiene isDirty = true');
+    assert.equal((docState as any).isDirty, undefined, 'El Document no debe tener propiedad isDirty');
 
     const jsonString = serializeDocument(docState);
     assert.equal(typeof jsonString, 'string');
@@ -242,6 +243,323 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
         return true;
       }
     );
+  });
+
+  it('parseDocument: lanza DocumentParseError si una capa no tiene children o no es un array', async () => {
+    const json = JSON.stringify({
+      id: 'doc-1',
+      type: 'document',
+      name: 'Doc',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          // falta children
+        },
+      ],
+    });
+    await assert.rejects(
+      async () => {
+        await parseDocument(json);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match((err as Error).message, /children\[0\]\.children debe ser un array/);
+        return true;
+      }
+    );
+  });
+
+  it('parseDocument: lanza DocumentParseError si un path no tiene points o no es un array', async () => {
+    const json = JSON.stringify({
+      id: 'doc-1',
+      type: 'document',
+      name: 'Doc',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [
+            {
+              id: 'path-1',
+              type: 'path',
+              name: 'Trazado',
+              x: 10,
+              y: 20,
+              // falta points
+            },
+          ],
+        },
+      ],
+    });
+    await assert.rejects(
+      async () => {
+        await parseDocument(json);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.points debe ser un array/);
+        return true;
+      }
+    );
+  });
+
+  it('parseDocument: lanza DocumentParseError con ruta exacta si width de figura no es un número finito', async () => {
+    const json = JSON.stringify({
+      id: 'doc-1',
+      type: 'document',
+      name: 'Doc',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [
+            {
+              id: 'rect-1',
+              type: 'rectangle',
+              name: 'Rect 1',
+              x: 0,
+              y: 0,
+              width: 50,
+              height: 50,
+            },
+            {
+              id: 'rect-2',
+              type: 'rectangle',
+              name: 'Rect 2',
+              x: 0,
+              y: 0,
+              width: 50,
+              height: 50,
+            },
+            {
+              id: 'rect-3',
+              type: 'rectangle',
+              name: 'Rect 3',
+              x: 10,
+              y: 20,
+              width: 'not-a-number',
+              height: 100,
+            },
+          ],
+        },
+      ],
+    });
+    await assert.rejects(
+      async () => {
+        await parseDocument(json);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match((err as Error).message, /children\[0\]\.children\[2\]\.width debe ser un número finito/);
+        return true;
+      }
+    );
+  });
+
+  it('parseDocument: lanza DocumentParseError si el tipo de figura es desconocido', async () => {
+    const json = JSON.stringify({
+      id: 'doc-1',
+      type: 'document',
+      name: 'Doc',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [
+            {
+              id: 'poly-1',
+              type: 'polygon',
+              name: 'Polígono',
+            },
+          ],
+        },
+      ],
+    });
+    await assert.rejects(
+      async () => {
+        await parseDocument(json);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.type debe ser 'rectangle', 'ellipse' o 'path'/);
+        return true;
+      }
+    );
+  });
+
+  it('parseDocument: lanza DocumentParseError si existen IDs duplicados en el documento', async () => {
+    const json = JSON.stringify({
+      id: 'doc-1',
+      type: 'document',
+      name: 'Doc',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [
+            {
+              id: 'duplicate-id',
+              type: 'rectangle',
+              name: 'Rect 1',
+              x: 0,
+              y: 0,
+              width: 50,
+              height: 50,
+            },
+            {
+              id: 'duplicate-id',
+              type: 'ellipse',
+              name: 'Elipse 1',
+              x: 100,
+              y: 100,
+              radiusX: 20,
+              radiusY: 20,
+            },
+          ],
+        },
+      ],
+    });
+    await assert.rejects(
+      async () => {
+        await parseDocument(json);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match((err as Error).message, /ID duplicado 'duplicate-id'/);
+        return true;
+      }
+    );
+  });
+
+  it('selected e isDirty se eliminan al exportar con serializeDocument y al importar con parseDocument', async () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+    const firstShapeId = manager.getState().children[0].children[0].id;
+    manager.selectNode(firstShapeId);
+
+    const docWithSelection = manager.getState();
+    assert.equal(manager.isSelected(firstShapeId), true);
+    assert.equal((docWithSelection.children[0].children[0] as any).selected, undefined);
+
+    // 1. serializeDocument no debe incluir 'selected' ni 'isDirty'
+    const exportedJson = serializeDocument(docWithSelection);
+    assert.ok(!exportedJson.includes('"selected"'), 'El JSON exportado no debe contener "selected"');
+    assert.ok(!exportedJson.includes('"isDirty"'), 'El JSON exportado no debe contener "isDirty"');
+
+    // 2. parseDocument debe eliminar 'selected' e 'isDirty' incluso si vienen en un JSON antiguo
+    const legacyJson = JSON.stringify({
+      id: 'doc-legacy',
+      type: 'document',
+      name: 'Legacy Doc',
+      width: 800,
+      height: 600,
+      isDirty: true,
+      selected: true,
+      children: [
+        {
+          id: 'layer-legacy',
+          type: 'layer',
+          name: 'Capa',
+          isDirty: true,
+          selected: true,
+          children: [
+            {
+              id: 'rect-legacy',
+              type: 'rectangle',
+              name: 'Rect',
+              x: 10,
+              y: 20,
+              width: 100,
+              height: 50,
+              isDirty: true,
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    const importedDoc = await parseDocument(legacyJson);
+    assert.equal((importedDoc as any).isDirty, undefined);
+    assert.equal((importedDoc as any).selected, undefined);
+    assert.equal((importedDoc.children[0] as any).isDirty, undefined);
+    assert.equal((importedDoc.children[0] as any).selected, undefined);
+    assert.equal((importedDoc.children[0].children[0] as any).isDirty, undefined);
+    assert.equal((importedDoc.children[0].children[0] as any).selected, undefined);
+  });
+
+  it('ciclo roundtrip: exportar -> importar devuelve un documento equivalente', async () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+    const samplePath: Path = {
+      id: 'path-roundtrip',
+      type: 'path',
+      name: 'Path Curvo',
+      x: 50,
+      y: 50,
+      points: [
+        { x: 50, y: 50, handleOut: { x: 75, y: 60 } },
+        { x: 120, y: 120, handleIn: { x: 100, y: 90 }, handleOut: { x: 140, y: 150 } },
+        { x: 200, y: 200 },
+      ],
+      closed: true,
+      fill: '#38bdf8',
+      stroke: '#0284c7',
+      strokeWidth: 3,
+      rotation: 15,
+      opacity: 0.9,
+    };
+    manager.addShape(manager.getState().children[0].id, samplePath);
+
+    const originalDoc = manager.getState();
+    const exportedJson = serializeDocument(originalDoc);
+    const reimportedDoc = await parseDocument(exportedJson);
+
+    assert.equal(reimportedDoc.id, originalDoc.id);
+    assert.equal(reimportedDoc.name, originalDoc.name);
+    assert.equal(reimportedDoc.width, originalDoc.width);
+    assert.equal(reimportedDoc.height, originalDoc.height);
+    assert.equal(reimportedDoc.children.length, originalDoc.children.length);
+
+    // Comprobar shapes y propiedades
+    const origShapes = originalDoc.children[0].children;
+    const reimpShapes = reimportedDoc.children[0].children;
+    assert.equal(reimpShapes.length, origShapes.length);
+
+    for (let i = 0; i < origShapes.length; i++) {
+      const o = origShapes[i];
+      const r = reimpShapes[i];
+      assert.equal(r.id, o.id);
+      assert.equal(r.type, o.type);
+      assert.equal(r.name, o.name);
+      assert.equal(r.x, o.x);
+      assert.equal(r.y, o.y);
+    }
+
+    const reimpPath = reimportedDoc.children[0].children.find((s) => s.id === 'path-roundtrip') as Path;
+    assert.ok(reimpPath);
+    assert.equal(reimpPath.points.length, 3);
+    assert.deepEqual(reimpPath.points, samplePath.points);
+    assert.equal(reimpPath.closed, true);
+    assert.equal(reimpPath.strokeWidth, 3);
+    assert.equal(reimpPath.rotation, 15);
+    assert.equal(reimpPath.opacity, 0.9);
   });
 });
 

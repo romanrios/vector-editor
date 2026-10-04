@@ -105,7 +105,7 @@ describe('Función pura cloneShape', () => {
     assert.equal(cloned.width, 120);
     assert.equal(cloned.height, 60);
     assert.equal(cloned.fill, '#ff0000');
-    assert.equal(cloned.selected, false);
+    assert.equal((cloned as any).selected, undefined);
     assert.ok(Object.isFrozen(cloned));
   });
 
@@ -131,7 +131,7 @@ describe('Función pura cloneShape', () => {
     assert.equal(cloned.y, 90);
     assert.equal(cloned.radiusX, 40);
     assert.equal(cloned.radiusY, 30);
-    assert.equal(cloned.selected, false);
+    assert.equal((cloned as any).selected, undefined);
     assert.ok(Object.isFrozen(cloned));
   });
 

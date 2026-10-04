@@ -161,9 +161,9 @@ describe('Integración de Vista (Viewport, Zoom y Pan)', () => {
         width: 200,
         height: 100,
         fill: '#38bdf8',
-        selected: true,
       };
       stateManager.addShape(targetLayer.id, rect);
+      stateManager.selectNode(rect.id);
 
       const zoom = 4;
       const viewportManager = new ViewportManager({ zoom, panX: 0, panY: 0 });
@@ -269,9 +269,9 @@ describe('Integración de Vista (Viewport, Zoom y Pan)', () => {
         width: 100,
         height: 100,
         fill: '#38bdf8',
-        selected: true,
       };
       stateManager.addShape(targetLayer.id, rect);
+      stateManager.selectNode(rect.id);
 
       // Con zoom 4, el tirador de rotación está a 30 / 4 = 7.5 unidades arriba del borde superior
       const zoom = 4;
@@ -306,9 +306,9 @@ describe('Integración de Vista (Viewport, Zoom y Pan)', () => {
         width: 50,
         height: 50,
         fill: '#38bdf8',
-        selected: true,
       };
       stateManager.addShape(targetLayer.id, rect);
+      stateManager.selectNode(rect.id);
 
       const zoom = 2;
       const viewportManager = new ViewportManager({ zoom, panX: 50, panY: 50 });
@@ -379,9 +379,9 @@ describe('Integración de Vista (Viewport, Zoom y Pan)', () => {
         width: 50,
         height: 50,
         fill: '#38bdf8',
-        selected: true,
       };
       stateManager.addShape(targetLayer.id, rect);
+      stateManager.selectNode(rect.id);
 
       const viewportManager = new ViewportManager({ zoom: 5, panX: 200, panY: 200 });
       const controller = new InputController(canvas, stateManager, undefined, {

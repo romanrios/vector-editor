@@ -157,7 +157,7 @@ describe('InputController & Hit-testing AABB', () => {
     const selected = manager.getSelectedNode();
     assert.ok(selected !== null);
     assert.equal(selected!.id, 'target-shape');
-    assert.equal(selected!.selected, true);
+    assert.equal(manager.isSelected('target-shape'), true);
 
     // Simular mousedown en espacio vacío (50, 50) -> deselecciona
     canvas.dispatchSimulatedEvent('mousedown', {
@@ -263,7 +263,6 @@ describe('InputController & Hit-testing AABB', () => {
       y: 200,
       width: 100,
       height: 100,
-      selected: true,
     };
 
     manager.addNode(layerId, rect);
@@ -867,7 +866,7 @@ describe('InputController & Hit-testing AABB', () => {
     assert.equal(createdRect.name, 'Rectángulo 1');
 
     // Tras crear la figura: seleccionada y retorna a herramienta 'select'
-    assert.equal(createdRect.selected, true);
+    assert.equal(stateManager.isSelected(createdRect.id), true);
     assert.equal(stateManager.getSelectedNode()?.id, createdRect.id);
     assert.equal(controller.currentTool, 'select');
     assert.equal(controller.shapePreview, null);
@@ -918,7 +917,7 @@ describe('InputController & Hit-testing AABB', () => {
     assert.equal(createdEllipse.fill, '#38bdf8');
     assert.equal(createdEllipse.stroke, '#0284c7');
     assert.equal(createdEllipse.name, 'Elipse 1');
-    assert.equal(createdEllipse.selected, true);
+    assert.equal(stateManager.isSelected(createdEllipse.id), true);
 
     assert.equal(controller.currentTool, 'select');
     assert.equal(controller.shapePreview, null);

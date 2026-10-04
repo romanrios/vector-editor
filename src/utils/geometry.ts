@@ -211,6 +211,98 @@ export function isPointInAABB(px: number, py: number, aabb: AABB): boolean {
 }
 
 /**
+ * Determina de forma pura si un punto (x, y) en coordenadas del mundo colisiona
+ * con una figura de tipo Rectangle o Ellipse, considerando su geometría exacta,
+ * su rotación centrada y un margen de tolerancia opcional.
+ *
+ * - Fase rápida: descarta con el AABB de la figura ampliado por la tolerancia.
+ * - Si la figura tiene rotación, transforma el punto al espacio local invirtiendo
+ *   la rotación respecto al centro geométrico (la misma convención que RenderEngine).
+ * - Para Rectangle: evalúa si el punto local cae dentro del rectángulo ampliado por la tolerancia.
+ * - Para Ellipse: evalúa la ecuación normalizada con radios ampliados por la tolerancia:
+ *   ((localX - cx) / (rx + t))^2 + ((localY - cy) / (ry + t))^2 <= 1, manejando radios cero sin dividir por cero.
+ */
+export function isPointInShape(
+  x: number,
+  y: number,
+  shape: Rectangle | Ellipse,
+  tolerance: number = 0
+): boolean {
+  if (shape.type !== 'rectangle' && shape.type !== 'ellipse') {
+    return false;
+  }
+
+  const t = Math.max(0, tolerance);
+
+  // 1. Fase rápida: descarte mediante AABB ampliado con tolerancia
+  const aabb = shape.type === 'rectangle' ? getRectangleAABB(shape) : getEllipseAABB(shape);
+  if (
+    x < aabb.minX - t ||
+    x > aabb.maxX + t ||
+    y < aabb.minY - t ||
+    y > aabb.maxY + t
+  ) {
+    return false;
+  }
+
+  // 2. Transformar el punto al espacio local si hay rotación
+  let localX = x;
+  let localY = y;
+
+  const rotation = shape.rotation ?? 0;
+  if (rotation !== 0) {
+    const cx = shape.type === 'rectangle' ? shape.x + shape.width / 2 : shape.x;
+    const cy = shape.type === 'rectangle' ? shape.y + shape.height / 2 : shape.y;
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const dx = x - cx;
+    const dy = y - cy;
+    // Rotación inversa alrededor de (cx, cy): R(-θ)
+    localX = cx + dx * cos + dy * sin;
+    localY = cy - dx * sin + dy * cos;
+  }
+
+  // 3. Evaluación según el tipo de figura en espacio local
+  if (shape.type === 'rectangle') {
+    const minX = Math.min(shape.x, shape.x + shape.width) - t;
+    const maxX = Math.max(shape.x, shape.x + shape.width) + t;
+    const minY = Math.min(shape.y, shape.y + shape.height) - t;
+    const maxY = Math.max(shape.y, shape.y + shape.height) + t;
+
+    return (
+      localX >= minX - 1e-9 &&
+      localX <= maxX + 1e-9 &&
+      localY >= minY - 1e-9 &&
+      localY <= maxY + 1e-9
+    );
+  }
+
+  // Ellipse:
+  const cx = shape.x;
+  const cy = shape.y;
+  const rx = Math.abs(shape.radiusX);
+  const ry = Math.abs(shape.radiusY);
+  const effRx = rx + t;
+  const effRy = ry + t;
+
+  if (effRx <= 0 && effRy <= 0) {
+    return Math.abs(localX - cx) <= 1e-9 && Math.abs(localY - cy) <= 1e-9;
+  }
+  if (effRx <= 0) {
+    return Math.abs(localX - cx) <= 1e-9 && Math.abs(localY - cy) <= effRy + 1e-9;
+  }
+  if (effRy <= 0) {
+    return Math.abs(localY - cy) <= 1e-9 && Math.abs(localX - cx) <= effRx + 1e-9;
+  }
+
+  const normX = (localX - cx) / effRx;
+  const normY = (localY - cy) / effRy;
+  return normX * normX + normY * normY <= 1 + 1e-9;
+}
+
+/**
  * Tipos de manejadores de esquina y rotación
  */
 export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | 'rotation-handle';

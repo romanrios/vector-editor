@@ -38,7 +38,6 @@ export function cloneShape<T extends Shape>(shape: T, options?: CloneShapeOption
       name,
       x: shape.x + dx,
       y: shape.y + dy,
-      selected: false,
     };
     return deepFreeze(rect) as unknown as T;
   }
@@ -50,7 +49,6 @@ export function cloneShape<T extends Shape>(shape: T, options?: CloneShapeOption
       name,
       x: shape.x + dx,
       y: shape.y + dy,
-      selected: false,
     };
     return deepFreeze(ellipse) as unknown as T;
   }
@@ -77,10 +75,9 @@ export function cloneShape<T extends Shape>(shape: T, options?: CloneShapeOption
       x: shape.x + dx,
       y: shape.y + dy,
       points,
-      selected: false,
     };
     return deepFreeze(path) as unknown as T;
   }
 
-  throw new Error(`[cloneShape] Tipo de figura no soportado: ${(shape as any)?.type}`);
+  throw new Error(`[cloneShape] Tipo de figura no soportado: ${(shape as Shape).type}`);
 }

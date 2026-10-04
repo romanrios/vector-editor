@@ -7,6 +7,7 @@ import {
   getShapeAABB,
   isPointInAABB,
   isPointInPath,
+  isPointInShape,
   normalizeShapeBounds,
   type HandleType,
 } from '../utils/geometry.ts';
@@ -118,7 +119,7 @@ export interface InputControllerOptions {
  */
 export class InputController {
   private readonly canvas: HTMLCanvasElement;
-  private readonly stateManager: StateManager;
+  public readonly stateManager: StateManager;
   public readonly commandManager: CommandManager;
   private readonly options: InputControllerOptions;
   public readonly viewportManager: ViewportManager;
@@ -207,8 +208,6 @@ export class InputController {
       ...options,
     };
     this.viewportManager = options.viewportManager ?? new ViewportManager();
-
-    (this.canvas as any).__inputController = this;
 
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
@@ -457,10 +456,6 @@ export class InputController {
       }
     }
 
-    if ((this.canvas as any).__inputController === this) {
-      delete (this.canvas as any).__inputController;
-    }
-
     this._isPanning = false;
     this._isSpacePressed = false;
     this._panStartScreen = null;
@@ -657,15 +652,9 @@ export class InputController {
             return shape;
           }
         } else {
-          // Hit-testing AABB para rectángulos y elipses con tolerancia en pantalla
-          const aabb = getShapeAABB(shape);
+          // Hit-testing geométrico exacto para rectángulos y elipses con tolerancia en pantalla
           const tolerance = 4 / zoom;
-          if (
-            x >= aabb.minX - tolerance &&
-            x <= aabb.maxX + tolerance &&
-            y >= aabb.minY - tolerance &&
-            y <= aabb.maxY + tolerance
-          ) {
+          if (isPointInShape(x, y, shape, tolerance)) {
             return shape;
           }
         }
@@ -810,7 +799,7 @@ export class InputController {
     const hitShape = this.hitTest(x, y);
 
     if (hitShape) {
-      if (!hitShape.selected) {
+      if (!this.stateManager.isSelected(hitShape.id)) {
         this.stateManager.selectNode(hitShape.id);
       }
 
@@ -861,10 +850,10 @@ export class InputController {
         stroke: '#38bdf8', // Celeste vector
         strokeWidth: 2.5,
         fill: 'transparent',
-        selected: true,
       };
 
       this.stateManager.addShape(targetLayer.id, newPath);
+      this.stateManager.selectNode(newPathId);
       this.activePathId = newPathId;
       this.isCreatingAnchor = true;
       this.currentAnchorIndex = 0;
@@ -1035,7 +1024,7 @@ export class InputController {
     this._hoveredShapeId = hitShape ? hitShape.id : null;
 
     if (hitShape) {
-      this.canvas.style.cursor = hitShape.selected ? 'move' : 'pointer';
+      this.canvas.style.cursor = this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer';
     } else {
       this.canvas.style.cursor = 'default';
     }
@@ -1234,7 +1223,7 @@ export class InputController {
       this.resetRotate();
       const { x, y } = this.getLocalCoordinates(event);
       const hitShape = this.hitTest(x, y);
-      this.canvas.style.cursor = hitShape ? (hitShape.selected ? 'move' : 'pointer') : 'default';
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
       return;
     }
 
@@ -1272,7 +1261,7 @@ export class InputController {
       this.resetResize();
       const { x, y } = this.getLocalCoordinates(event);
       const hitShape = this.hitTest(x, y);
-      this.canvas.style.cursor = hitShape ? (hitShape.selected ? 'move' : 'pointer') : 'default';
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
       return;
     }
 
@@ -1307,7 +1296,7 @@ export class InputController {
     this.resetDrag();
 
     const hitShape = this.hitTest(x, y);
-    this.canvas.style.cursor = hitShape ? (hitShape.selected ? 'move' : 'pointer') : 'default';
+    this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
   }
 
   /**
@@ -1471,7 +1460,8 @@ export class InputController {
       else if (key === 'ArrowLeft' || key === 'Left') dx = -step;
       else if (key === 'ArrowRight' || key === 'Right') dx = step;
 
-      const customTimestamp = (event as any).customTimestamp ?? (event as any).time;
+      const customEvent = event as KeyboardEvent & { customTimestamp?: number; time?: number };
+      const customTimestamp = customEvent.customTimestamp ?? customEvent.time;
       this.moveSelection(dx, dy, customTimestamp);
       return;
     }
