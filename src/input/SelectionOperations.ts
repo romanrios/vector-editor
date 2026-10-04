@@ -61,14 +61,14 @@ export function asShapeArray(shapes: readonly SelectableNode[]): Shape[] & Shape
       id: { get: () => arr[0]?.id, configurable: true },
       name: { get: () => arr[0]?.name, configurable: true },
       type: { get: () => arr[0]?.type, configurable: true },
-      x: { get: () => ('x' in first ? (first as any).x : undefined), configurable: true },
-      y: { get: () => ('y' in first ? (first as any).y : undefined), configurable: true },
-      stroke: { get: () => ('stroke' in first ? (first as any).stroke : undefined), configurable: true },
-      fill: { get: () => ('fill' in first ? (first as any).fill : undefined), configurable: true },
-      strokeWidth: { get: () => ('strokeWidth' in first ? (first as any).strokeWidth : undefined), configurable: true },
+      x: { get: () => (isShape(first) ? first.x : undefined), configurable: true },
+      y: { get: () => (isShape(first) ? first.y : undefined), configurable: true },
+      stroke: { get: () => (isShape(first) ? first.stroke : undefined), configurable: true },
+      fill: { get: () => (isShape(first) ? first.fill : undefined), configurable: true },
+      strokeWidth: { get: () => (isShape(first) ? first.strokeWidth : undefined), configurable: true },
       visible: { get: () => arr[0]?.visible, configurable: true },
       locked: { get: () => arr[0]?.locked, configurable: true },
-      rotation: { get: () => ('rotation' in first ? (first as any).rotation : undefined), configurable: true },
+      rotation: { get: () => (isShape(first) ? first.rotation : undefined), configurable: true },
     });
   }
   return arr;

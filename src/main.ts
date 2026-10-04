@@ -271,15 +271,20 @@ export function setupUIBindings(
 
     if (statusSelectionInfo) {
       if (selectedNodes.length === 1) {
-        const selectedShape = selectedNodes[0];
-        const typeLabels: Record<string, string> = {
-          rectangle: 'Rectángulo',
-          ellipse: 'Elipse',
-          path: 'Trazado',
-          group: 'Grupo',
-        };
-        const typeName = typeLabels[selectedShape.type] || selectedShape.type;
-        statusSelectionInfo.textContent = `${selectedShape.name} (${typeName})`;
+        const node = selectedNodes[0];
+        if (isGroup(node)) {
+          const directCount = node.children.length;
+          const countLabel = directCount === 1 ? '1 elemento' : `${directCount} elementos`;
+          statusSelectionInfo.textContent = `${node.name} (${countLabel})`;
+        } else {
+          const typeLabels: Record<string, string> = {
+            rectangle: 'Rectángulo',
+            ellipse: 'Elipse',
+            path: 'Trazado',
+          };
+          const typeName = typeLabels[node.type] || node.type;
+          statusSelectionInfo.textContent = `${node.name} (${typeName})`;
+        }
         if (statusSelectionInfo.style) {
           statusSelectionInfo.style.display = 'inline';
         }
@@ -599,7 +604,7 @@ export function setupUIBindings(
       if (panelTitle) {
         if (selectedNodes.length === 1) {
           const single = selectedNodes[0];
-          panelTitle.textContent = isGroup(single) ? (single.name || 'Grupo') : 'PROPIEDADES';
+          panelTitle.textContent = isGroup(single) ? 'Grupo' : 'PROPIEDADES';
         } else {
           const hasGroup = selectedNodes.some(isGroup);
           panelTitle.textContent = hasGroup
@@ -960,6 +965,8 @@ export function setupUIBindings(
       items: [
         menuItemBringToFront,
         menuItemSendToBack,
+        menuItemGroup,
+        menuItemUngroup,
         menuItemAlign,
         menuItemDistribute,
       ],

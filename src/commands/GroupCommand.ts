@@ -5,6 +5,7 @@ import {
   type Document,
   type Group,
   type Layer,
+  type ParentNode,
   type SceneNode,
   type SelectableNode,
 } from '../types/scene-graph.ts';
@@ -144,6 +145,34 @@ export class GroupCommand implements Command {
       }
     }
     this.targetIndex = calculatedTargetIndex;
+
+    // Validar profundidad máxima de anidamiento (límite 32)
+    function getNodeSubtreeDepth(n: SelectableNode): number {
+      if (!isGroup(n)) return 1;
+      let maxChild = 0;
+      for (const child of n.children) {
+        maxChild = Math.max(maxChild, getNodeSubtreeDepth(child));
+      }
+      return 1 + maxChild;
+    }
+
+    let parentDepth = 0;
+    let curr: ParentNode | null = targetParent;
+    while (curr) {
+      if (isGroup(curr)) {
+        parentDepth++;
+      }
+      curr = this.stateManager.findParent(curr.id);
+    }
+
+    let maxSubtree = 0;
+    for (const node of sortedNodes) {
+      maxSubtree = Math.max(maxSubtree, getNodeSubtreeDepth(node));
+    }
+
+    if (parentDepth + 1 + maxSubtree > 32) {
+      throw new Error('[GroupCommand] Se excedió el límite máximo de profundidad de anidamiento (32).');
+    }
 
     // Crear el nuevo grupo con los hijos ordenados relativamente
     this.newGroup = deepFreeze({
