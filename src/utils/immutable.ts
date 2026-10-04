@@ -1,4 +1,5 @@
-import type { Document, ParentNode, SceneNode } from '../types/scene-graph.ts';
+import type { Document, LayerChildNode, ParentNode, SceneNode } from '../types/scene-graph.ts';
+import { isGroup } from '../types/scene-graph.ts';
 
 /**
  * Congela profundamente un objeto o array para garantizar inmutabilidad en tiempo de ejecución.
@@ -70,14 +71,30 @@ export function findNodeById(root: Document, id: string): SceneNode | null {
     return root;
   }
 
-  for (const layer of root.children) {
+  function searchChildren(children: readonly LayerChildNode[]): SceneNode | null {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child.id === id) {
+        return child;
+      }
+      if (isGroup(child)) {
+        const found = searchChildren(child.children);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+
+  for (let i = 0; i < root.children.length; i++) {
+    const layer = root.children[i];
     if (layer.id === id) {
       return layer;
     }
-    for (const shape of layer.children) {
-      if (shape.id === id) {
-        return shape;
-      }
+    const found = searchChildren(layer.children);
+    if (found) {
+      return found;
     }
   }
 
@@ -85,19 +102,37 @@ export function findNodeById(root: Document, id: string): SceneNode | null {
 }
 
 /**
- * Encuentra el nodo padre que contiene al nodo hijo con el id especificado.
+ * Encuentra el nodo padre que contiene al nodo hijo con el id especificado de forma recursiva.
  */
 export function findParentOfNode(root: Document, childId: string): ParentNode | null {
-  // Las capas tienen como padre al Document
-  for (const layer of root.children) {
+  for (let i = 0; i < root.children.length; i++) {
+    const layer = root.children[i];
     if (layer.id === childId) {
       return root;
     }
-    // Las figuras tienen como padre a su Layer
-    for (const shape of layer.children) {
-      if (shape.id === childId) {
-        return layer;
+  }
+
+  function searchInParent(parent: ParentNode, children: readonly LayerChildNode[]): ParentNode | null {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child.id === childId) {
+        return parent;
       }
+      if (isGroup(child)) {
+        const found = searchInParent(child, child.children);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+
+  for (let i = 0; i < root.children.length; i++) {
+    const layer = root.children[i];
+    const found = searchInParent(layer, layer.children);
+    if (found) {
+      return found;
     }
   }
 

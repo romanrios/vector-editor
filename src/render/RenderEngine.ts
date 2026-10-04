@@ -1,4 +1,4 @@
-import type { Document, Ellipse, Layer, Path, Rectangle, Shape } from '../types/scene-graph.ts';
+import { isShape, type Document, type Ellipse, type Layer, type Path, type Rectangle, type Shape } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import { getPathBaseAABB, getSelectionBounds, getShapeAABB } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
@@ -304,7 +304,9 @@ export class RenderEngine {
       if (shape.visible === false) {
         continue;
       }
-      this.renderShape(shape, zoom);
+      if (isShape(shape)) {
+        this.renderShape(shape, zoom);
+      }
     }
 
     this.ctx.restore();
@@ -417,7 +419,7 @@ export class RenderEngine {
         if (shape.visible === false) {
           continue;
         }
-        if (this.stateManager.isSelected(shape.id)) {
+        if (isShape(shape) && this.stateManager.isSelected(shape.id)) {
           selectedShapes.push(shape);
         }
       }

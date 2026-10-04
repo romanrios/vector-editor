@@ -9,7 +9,7 @@ import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
-import type { Path, Shape } from './types/scene-graph.ts';
+import { isShape, type Path, type Shape } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 
 function debug(...args: unknown[]): void {
@@ -255,7 +255,7 @@ export function setupUIBindings(
     syncStatusBar();
   };
 
-  const syncStatusBar = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
+  const syncStatusBar = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)) => {
     if (statusShapesCount) {
       let count = 0;
       const doc = stateManager.getState();
@@ -329,7 +329,7 @@ export function setupUIBindings(
   syncToolButtons(inputController.currentTool);
 
   // Sincronización del estado de los ítems de menú desplegable
-  function syncMenuItems(selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()): void {
+  function syncMenuItems(selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)): void {
     const canUndo = commandManager.canUndo();
     const canRedo = commandManager.canRedo();
 
@@ -430,7 +430,7 @@ export function setupUIBindings(
   }
 
   // 2. Sincronización de historial (CommandManager Event Emitter -> DOM)
-  const syncHistoryButtons = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
+  const syncHistoryButtons = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)) => {
     const canUndo = commandManager.canUndo();
     const canRedo = commandManager.canRedo();
 
@@ -556,7 +556,7 @@ export function setupUIBindings(
   let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
 
   const captureInitialStyle = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
+    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
     if (selectedNodes.length > 0) {
       initialStyleSnapshots = new Map();
       for (const shape of selectedNodes) {
@@ -569,7 +569,7 @@ export function setupUIBindings(
     }
   };
 
-  const syncPropertiesPanel = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
+  const syncPropertiesPanel = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)) => {
     if (selectedNodes.length > 0) {
       if (selectionState) {
         selectionState.style.display = 'block';
@@ -648,7 +648,7 @@ export function setupUIBindings(
 
   // Suscripción al StateManager para sincronizar selección y estilos
   const unsubscribeState = stateManager.subscribe(() => {
-    const selectedNodes = stateManager.getSelectedNodes();
+    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
     syncPropertiesPanel(selectedNodes);
   });
 
@@ -716,7 +716,7 @@ export function setupUIBindings(
 
   // Consolidación final (evento 'change'): genera StyleCommand y registra en CommandManager
   const onFillChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
+    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
     if (selectedNodes.length === 0 || !inputFill) return;
 
     if (!initialStyleSnapshots) {
@@ -752,7 +752,7 @@ export function setupUIBindings(
   };
 
   const onStrokeChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
+    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
     if (selectedNodes.length === 0 || !inputStroke) return;
 
     if (!initialStyleSnapshots) {
@@ -788,7 +788,7 @@ export function setupUIBindings(
   };
 
   const onStrokeWidthChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
+    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
     if (selectedNodes.length === 0 || !inputStrokeWidth) return;
 
     if (!initialStyleSnapshots) {

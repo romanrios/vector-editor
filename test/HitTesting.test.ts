@@ -4,7 +4,7 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
 import { isPointInShape, getShapeAABB, getSelectionHandles } from '../src/utils/geometry.ts';
-import type { Rectangle, Ellipse } from '../src/types/scene-graph.ts';
+import type { Rectangle, Ellipse, Shape } from '../src/types/scene-graph.ts';
 
 interface MockCanvas extends HTMLCanvasElement {
   dispatchSimulatedEvent(type: string, event: unknown): void;
@@ -478,7 +478,7 @@ describe('InputController.hitTest con detección exacta de figuras', () => {
 
     // 3. Seleccionar la elipse: getSelectionHandles devuelve 5 manejadores válidos
     stateManager.selectNode(ellipse.id);
-    const selected = stateManager.getSelectedNode()!;
+    const selected = stateManager.getSelectedNode() as Shape;
     const handles = getSelectionHandles(selected, 8, 30);
     assert.equal(handles.length, 5);
     assert.equal(handles[4].type, 'rotation-handle');

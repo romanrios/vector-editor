@@ -6,7 +6,7 @@ import { InputController } from '../src/input/InputController.ts';
 import { AddShapeCommand } from '../src/commands/AddShapeCommand.ts';
 import { cloneShape, generateClonedShapeId } from '../src/utils/cloneShape.ts';
 import { setupUIBindings } from '../src/main.ts';
-import type { Rectangle, Ellipse, Path, PathPoint, Layer } from '../src/types/scene-graph.ts';
+import type { Rectangle, Ellipse, Path, PathPoint, Layer, Shape } from '../src/types/scene-graph.ts';
 
 // Mock simple de canvas para Node.js
 function createMockCanvas(): HTMLCanvasElement {
@@ -568,7 +568,7 @@ describe('Botón Duplicar en Panel de Propiedades (setupUIBindings)', () => {
     // Clic en Duplicar
     btnDuplicate.click();
     assert.equal(commandManager.undoCount, 1);
-    const selected = stateManager.getSelectedNode();
+    const selected = stateManager.getSelectedNode() as Shape | null;
     assert.notEqual(selected?.id, 'r1');
     assert.equal(selected?.name, 'R1 copia');
     assert.equal(selected?.x, 30);

@@ -1,4 +1,5 @@
-import type { AABB, Ellipse, Path, Rectangle, Shape, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, Rectangle, SelectableNode, Shape, Vector2D } from '../types/scene-graph.ts';
+import { isShape } from '../types/scene-graph.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
 
 /**
@@ -327,6 +328,73 @@ export function getShapeAABB(shape: Shape): AABB {
     return getEllipseAABB(shape);
   }
   return getPathAABB(shape);
+}
+
+/**
+ * Cache WeakMap para las envolventes AABB de grupos.
+ * Se invalida automáticamente ante modificaciones estructurales del Scene Graph
+ * porque cualquier cambio en un descendiente crea nuevas referencias inmutables de grupo.
+ */
+export const groupAABBCache = new WeakMap<Group, AABB>();
+
+/**
+ * Calcula el AABB unificado de un Grupo a partir de las envolventes de sus hijos directos.
+ * Utiliza groupAABBCache (WeakMap) para garantizar O(1) en consultas sucesivas sobre la misma referencia.
+ */
+export function getGroupAABB(group: Group): AABB {
+  const cached = groupAABBCache.get(group);
+  if (cached) {
+    return cached;
+  }
+
+  if (!group.children || group.children.length === 0) {
+    const emptyAABB: AABB = {
+      minX: 0,
+      minY: 0,
+      maxX: 0,
+      maxY: 0,
+      width: 0,
+      height: 0,
+    };
+    groupAABBCache.set(group, emptyAABB);
+    return emptyAABB;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < group.children.length; i++) {
+    const child = group.children[i];
+    const aabb = getNodeAABB(child);
+    if (aabb.minX < minX) minX = aabb.minX;
+    if (aabb.minY < minY) minY = aabb.minY;
+    if (aabb.maxX > maxX) maxX = aabb.maxX;
+    if (aabb.maxY > maxY) maxY = aabb.maxY;
+  }
+
+  const aabb: AABB = {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+
+  groupAABBCache.set(group, aabb);
+  return aabb;
+}
+
+/**
+ * Obtiene el AABB (Axis-Aligned Bounding Box) de cualquier nodo seleccionable (figura o grupo).
+ */
+export function getNodeAABB(node: SelectableNode): AABB {
+  if (isShape(node)) {
+    return getShapeAABB(node);
+  }
+  return getGroupAABB(node);
 }
 
 /**
@@ -925,12 +993,12 @@ export interface RectLike {
 }
 
 /**
- * Calcula el Axis-Aligned Bounding Box (AABB) unificado que envuelve a todas las
- * figuras provistas (considerando su rotación exacta).
- * Retorna null si la lista está vacía o no contiene figuras con dimensiones finitas.
+ * Calcula el Axis-Aligned Bounding Box (AABB) unificado que envuelve a todos los
+ * nodos seleccionables provistos (figuras o grupos, considerando su geometría exacta).
+ * Retorna null si la lista está vacía o no contiene elementos con dimensiones finitas.
  */
-export function getSelectionBounds(shapes: readonly Shape[]): AABB | null {
-  if (!shapes || shapes.length === 0) {
+export function getSelectionBounds(nodes: readonly SelectableNode[]): AABB | null {
+  if (!nodes || nodes.length === 0) {
     return null;
   }
 
@@ -939,8 +1007,8 @@ export function getSelectionBounds(shapes: readonly Shape[]): AABB | null {
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const shape of shapes) {
-    const aabb = getShapeAABB(shape);
+  for (const node of nodes) {
+    const aabb = getNodeAABB(node);
     if (aabb.minX < minX) minX = aabb.minX;
     if (aabb.minY < minY) minY = aabb.minY;
     if (aabb.maxX > maxX) maxX = aabb.maxX;
@@ -962,15 +1030,16 @@ export function getSelectionBounds(shapes: readonly Shape[]): AABB | null {
 }
 
 /**
- * Filtra y retorna las figuras cuyo AABB intersecta con el rectángulo provisto.
+ * Filtra y retorna los nodos seleccionables cuyo AABB intersecta con el rectángulo provisto.
+ * Un grupo es incluido si su AABB intersecta el rectángulo de selección.
  * Normaliza el rectángulo para tolerar cualquier dirección de arrastre
  * (anchos o alturas negativos, o extremos min/max invertidos).
  */
-export function getShapesIntersectingRect(
-  shapes: readonly Shape[],
+export function getShapesIntersectingRect<T extends SelectableNode = SelectableNode>(
+  nodes: readonly T[],
   rect: RectLike | AABB
-): Shape[] {
-  if (!shapes || shapes.length === 0) {
+): T[] {
+  if (!nodes || nodes.length === 0) {
     return [];
   }
 
@@ -995,8 +1064,8 @@ export function getShapesIntersectingRect(
     rMaxY = Math.max(rect.minY, rect.maxY);
   }
 
-  return shapes.filter((shape) => {
-    const aabb = getShapeAABB(shape);
+  return nodes.filter((node) => {
+    const aabb = getNodeAABB(node);
     return (
       aabb.minX <= rMaxX &&
       aabb.maxX >= rMinX &&

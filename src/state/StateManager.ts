@@ -1,13 +1,16 @@
 import type {
   Document,
+  Group,
   Layer,
+  LayerChildNode,
   ParentNode,
   SceneNode,
+  SelectableNode,
   Shape,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
-import { isDocument, isLayer, isShape } from '../types/scene-graph.ts';
+import { isDocument, isGroup, isLayer, isSelectable, isShape } from '../types/scene-graph.ts';
 import {
   deepFreeze,
   insertAt,
@@ -30,22 +33,79 @@ export interface DocumentIndex {
 
 export const documentIndexCache = new WeakMap<Document, DocumentIndex>();
 
+/**
+ * Helper puro que expande una colección de nodos seleccionables (figuras o grupos),
+ * resolviendo recursivamente todos los grupos a sus figuras hoja (Shape),
+ * eliminando duplicados y preservando el orden de apilado.
+ */
+export function getLeafShapes(nodes: readonly SelectableNode[]): Shape[] {
+  const result: Shape[] = [];
+  const seen = new Set<string>();
+
+  function collect(node: SelectableNode) {
+    if (isShape(node)) {
+      if (!seen.has(node.id)) {
+        seen.add(node.id);
+        result.push(node);
+      }
+    } else if (isGroup(node)) {
+      for (let i = 0; i < node.children.length; i++) {
+        collect(node.children[i]);
+      }
+    }
+  }
+
+  for (let i = 0; i < nodes.length; i++) {
+    collect(nodes[i]);
+  }
+
+  return result;
+}
+
+/**
+ * Determina si un nodo childId es descendiente de potentialAncestorId en el árbol del documento.
+ */
+function isDescendantOf(
+  childId: string,
+  potentialAncestorId: string,
+  parentMap: Map<string, ParentNode>
+): boolean {
+  let current: ParentNode | undefined = parentMap.get(childId);
+  while (current && current.type !== 'document') {
+    if (current.id === potentialAncestorId) {
+      return true;
+    }
+    current = parentMap.get(current.id);
+  }
+  return false;
+}
+
+/**
+ * Construye de forma recursiva el índice de búsqueda plana (id -> nodo e id -> padre)
+ * para todo el Scene Graph (Document > Layer > Group* > Shape).
+ */
 export function buildDocumentIndex(doc: Document): DocumentIndex {
   const nodeMap = new Map<string, SceneNode>();
   const parentMap = new Map<string, ParentNode>();
 
   nodeMap.set(doc.id, doc);
 
+  function indexChildren(parent: ParentNode, children: readonly LayerChildNode[]) {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      nodeMap.set(child.id, child);
+      parentMap.set(child.id, parent);
+      if (isGroup(child)) {
+        indexChildren(child, child.children);
+      }
+    }
+  }
+
   for (let i = 0; i < doc.children.length; i++) {
     const layer = doc.children[i];
     nodeMap.set(layer.id, layer);
     parentMap.set(layer.id, doc);
-
-    for (let j = 0; j < layer.children.length; j++) {
-      const shape = layer.children[j];
-      nodeMap.set(shape.id, shape);
-      parentMap.set(shape.id, layer);
-    }
+    indexChildren(layer, layer.children);
   }
 
   return { nodeMap, parentMap };
@@ -201,13 +261,13 @@ export class StateManager {
     this._isDirty = true;
     this._state = deepFreeze(nextState);
 
-    // Purgar IDs seleccionados que ya no existan como figuras (Shape) en nextState
+    // Purgar IDs seleccionados que ya no existan en nextState
     if (this._selectedIds.length > 0) {
       const index = getDocumentIndex(this._state);
       let needsPurge = false;
       for (let i = 0; i < this._selectedIds.length; i++) {
         const node = index.nodeMap.get(this._selectedIds[i]);
-        if (!node || !isShape(node)) {
+        if (!node || !isSelectable(node)) {
           needsPurge = true;
           break;
         }
@@ -216,7 +276,7 @@ export class StateManager {
       if (needsPurge) {
         const validSelectedIds = this._selectedIds.filter((id) => {
           const node = index.nodeMap.get(id);
-          return node !== null && node !== undefined && isShape(node);
+          return node !== null && node !== undefined && isSelectable(node);
         });
         this._selectedIds = Object.freeze(validSelectedIds);
         this._selectedSet = new Set(validSelectedIds);
@@ -227,7 +287,7 @@ export class StateManager {
   }
 
   /**
-   * Busca un nodo por su identificador único.
+   * Busca un nodo por su identificador único en O(1).
    */
   public findNode(id: string): SceneNode | null {
     const index = getDocumentIndex(this._state);
@@ -235,7 +295,7 @@ export class StateManager {
   }
 
   /**
-   * Encuentra el nodo contenedor padre del elemento solicitado.
+   * Encuentra el nodo contenedor padre del elemento solicitado en O(1).
    */
   public findParent(childId: string): ParentNode | null {
     const index = getDocumentIndex(this._state);
@@ -243,14 +303,66 @@ export class StateManager {
   }
 
   /**
-   * Agrega un nodo hijo (Layer o Shape) dentro del nodo padre especificado.
+   * Helper privado para reconstrucción inmutable de la jerarquía de grupos/capas.
+   * Aplica una transformación sobre los hijos de `targetParentId`, preservando
+   * la identidad estructural de todas las ramas no modificadas.
+   */
+  private updateHierarchy(
+    targetParentId: string,
+    action: (children: readonly LayerChildNode[]) => readonly LayerChildNode[]
+  ): Document | null {
+    function updateChildren(
+      containerId: string,
+      children: readonly LayerChildNode[]
+    ): { updatedChildren: readonly LayerChildNode[]; changed: boolean } {
+      if (containerId === targetParentId) {
+        const next = action(children);
+        return { updatedChildren: next, changed: next !== children };
+      }
+
+      let changed = false;
+      const nextChildren: LayerChildNode[] = [];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isGroup(child)) {
+          const res = updateChildren(child.id, child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren.push({ ...child, children: res.updatedChildren });
+            continue;
+          }
+        }
+        nextChildren.push(child);
+      }
+
+      return { updatedChildren: changed ? nextChildren : children, changed };
+    }
+
+    let docChanged = false;
+    const nextLayers: Layer[] = [];
+    for (let i = 0; i < this._state.children.length; i++) {
+      const layer = this._state.children[i];
+      const res = updateChildren(layer.id, layer.children);
+      if (res.changed) {
+        docChanged = true;
+        nextLayers.push({ ...layer, children: res.updatedChildren });
+      } else {
+        nextLayers.push(layer);
+      }
+    }
+
+    return docChanged ? { ...this._state, children: nextLayers } : null;
+  }
+
+  /**
+   * Agrega un nodo hijo (Layer, Group o Shape) dentro del nodo padre especificado.
    * Mantiene la inmutabilidad creando nuevas referencias solo en el camino afectado.
    *
-   * @param parentId ID del nodo padre contenedor (Document para Layers, Layer para Shapes)
+   * @param parentId ID del nodo padre contenedor (Document para Layers; Layer o Group para Shapes/Groups)
    * @param node Nodo a agregar
    * @param index Posición opcional en el array de hijos (por defecto al final)
    */
-  public addNode(parentId: string, node: Layer | Shape, index?: number): void {
+  public addNode(parentId: string, node: Layer | LayerChildNode, index?: number): void {
     const parent = this.findNode(parentId);
 
     if (!parent) {
@@ -275,31 +387,18 @@ export class StateManager {
       return;
     }
 
-    // Regla 2: Un Layer solo puede tener Shapes como hijos directos
-    if (isLayer(parent)) {
-      if (!isShape(node)) {
+    // Regla 2: Un Layer o Group puede tener Shapes o Groups como hijos directos
+    if (isLayer(parent) || isGroup(parent)) {
+      if (!isSelectable(node)) {
         throw new Error(
-          `[StateManager] Un nodo de tipo "${node.type}" no puede agregarse a una Layer. Solo se admiten figuras (Shape).`
+          `[StateManager] Un nodo de tipo "${node.type}" no puede agregarse a un contenedor ${parent.type}. Solo se admiten figuras (Shape) o grupos (Group).`
         );
       }
 
-      const updatedLayerChildren = insertAt(parent.children, node, index);
-      const updatedLayer: Layer = {
-        ...parent,
-        children: updatedLayerChildren,
-      };
-
-      // Reconstrucción estructural del Documento
-      const nextLayers = this._state.children.map((layer) =>
-        layer.id === parent.id ? updatedLayer : layer
-      );
-
-      const nextState: Document = {
-        ...this._state,
-        children: nextLayers,
-      };
-
-      this.setState(nextState);
+      const nextState = this.updateHierarchy(parent.id, (children) => insertAt(children, node, index));
+      if (nextState) {
+        this.setState(nextState);
+      }
       return;
     }
 
@@ -309,7 +408,8 @@ export class StateManager {
   }
 
   /**
-   * Elimina un nodo (Layer o Shape) a partir de su ID.
+   * Elimina un nodo (Layer, Group o Shape) a partir de su ID.
+   * NO poda grupos por sí mismo (ajuste de diseño 1).
    * Retorna true si el elemento fue encontrado y eliminado, o false en caso contrario.
    *
    * @param nodeId ID del nodo a eliminar
@@ -325,7 +425,6 @@ export class StateManager {
     }
 
     if (isDocument(parent)) {
-      // Eliminar una capa del Documento
       const index = parent.children.findIndex((layer) => layer.id === nodeId);
       if (index === -1) return false;
 
@@ -339,89 +438,18 @@ export class StateManager {
       return true;
     }
 
-    if (isLayer(parent)) {
-      // Eliminar una figura de la capa
-      const index = parent.children.findIndex((shape) => shape.id === nodeId);
-      if (index === -1) return false;
+    const nextState = this.updateHierarchy(parent.id, (children) => {
+      const index = children.findIndex((c) => c.id === nodeId);
+      if (index === -1) return children;
+      return removeAt(children, index);
+    });
 
-      const updatedShapes = removeAt(parent.children, index);
-      const updatedLayer: Layer = {
-        ...parent,
-        children: updatedShapes,
-      };
-
-      const nextLayers = this._state.children.map((layer) =>
-        layer.id === parent.id ? updatedLayer : layer
-      );
-
-      const nextState: Document = {
-        ...this._state,
-        children: nextLayers,
-      };
-
+    if (nextState) {
       this.setState(nextState);
       return true;
     }
 
     return false;
-  }
-
-  /**
-   * Reordena los nodos hijos dentro del array del contenedor padre.
-   *
-   * @param parentId ID del contenedor padre (Document o Layer)
-   * @param fromIndex Posición de origen del elemento
-   * @param toIndex Posición de destino deseada
-   */
-  public reorderNodes(parentId: string, fromIndex: number, toIndex: number): void {
-    const parent = this.findNode(parentId);
-
-    if (!parent) {
-      throw new Error(`[StateManager] Nodo padre con id "${parentId}" no encontrado.`);
-    }
-
-    if (isDocument(parent)) {
-      const reorderedLayers = moveItem(parent.children, fromIndex, toIndex);
-      if (reorderedLayers === parent.children) {
-        return; // Sin cambios
-      }
-
-      const nextState: Document = {
-        ...parent,
-        children: reorderedLayers,
-      };
-
-      this.setState(nextState);
-      return;
-    }
-
-    if (isLayer(parent)) {
-      const reorderedShapes = moveItem(parent.children, fromIndex, toIndex);
-      if (reorderedShapes === parent.children) {
-        return; // Sin cambios
-      }
-
-      const updatedLayer: Layer = {
-        ...parent,
-        children: reorderedShapes,
-      };
-
-      const nextLayers = this._state.children.map((layer) =>
-        layer.id === parent.id ? updatedLayer : layer
-      );
-
-      const nextState: Document = {
-        ...this._state,
-        children: nextLayers,
-      };
-
-      this.setState(nextState);
-      return;
-    }
-
-    throw new Error(
-      `[StateManager] El nodo "${parentId}" de tipo "${parent.type}" no posee una lista de nodos hijos reordenables.`
-    );
   }
 
   /**
@@ -446,33 +474,124 @@ export class StateManager {
   }
 
   /**
-   * Atajo para agregar una figura a una capa específica.
+   * Reordena los nodos hijos dentro del array del contenedor padre (Document, Layer o Group).
+   *
+   * @param parentId ID del contenedor padre
+   * @param fromIndex Posición de origen del elemento
+   * @param toIndex Posición de destino deseada
    */
-  public addShape(layerId: string, shape: Shape, index?: number): void {
-    this.addNode(layerId, shape, index);
+  public reorderNodes(parentId: string, fromIndex: number, toIndex: number): void {
+    const parent = this.findNode(parentId);
+
+    if (!parent) {
+      throw new Error(`[StateManager] Nodo padre con id "${parentId}" no encontrado.`);
+    }
+
+    if (isDocument(parent)) {
+      const reorderedLayers = moveItem(parent.children, fromIndex, toIndex);
+      if (reorderedLayers === parent.children) {
+        return;
+      }
+
+      const nextState: Document = {
+        ...parent,
+        children: reorderedLayers,
+      };
+
+      this.setState(nextState);
+      return;
+    }
+
+    const nextState = this.updateHierarchy(parent.id, (children) => moveItem(children, fromIndex, toIndex));
+    if (nextState) {
+      this.setState(nextState);
+    }
   }
 
   /**
-   * Atajo para eliminar una figura por su ID.
+   * Determina la lista de grupos que quedarían completamente vacíos al retirar los IDs especificados.
+   * Retorna los grupos en orden ascendente (de abajo hacia arriba en la jerarquía).
+   * No muta el estado del Scene Graph.
+   */
+  public getEmptiedAncestors(removedIds: readonly string[]): Group[] {
+    const docIndex = getDocumentIndex(this._state);
+    const removedSet = new Set(removedIds);
+    const emptiedGroups: Group[] = [];
+    const emptiedSet = new Set<string>();
+
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const [id, node] of docIndex.nodeMap.entries()) {
+        if (isGroup(node) && !removedSet.has(id) && !emptiedSet.has(id)) {
+          const allChildrenRemoved =
+            node.children.length > 0 &&
+            node.children.every((c) => removedSet.has(c.id) || emptiedSet.has(c.id));
+          if (allChildrenRemoved) {
+            emptiedGroups.push(node);
+            emptiedSet.add(id);
+            progress = true;
+          }
+        }
+      }
+    }
+
+    return emptiedGroups;
+  }
+
+  /**
+   * Determina si un nodo es efectivamente visible considerando su propio flag y el de todos sus ancestros.
+   */
+  public isEffectivelyVisible(id: string): boolean {
+    const docIndex = getDocumentIndex(this._state);
+    let current: SceneNode | null = docIndex.nodeMap.get(id) ?? null;
+    while (current) {
+      if (current.visible === false) {
+        return false;
+      }
+      current = docIndex.parentMap.get(current.id) ?? null;
+    }
+    return true;
+  }
+
+  /**
+   * Determina si un nodo está efectivamente bloqueado considerando su propio flag y el de todos sus ancestros.
+   */
+  public isEffectivelyLocked(id: string): boolean {
+    const docIndex = getDocumentIndex(this._state);
+    let current: SceneNode | null = docIndex.nodeMap.get(id) ?? null;
+    while (current) {
+      if (current.locked === true) {
+        return true;
+      }
+      current = docIndex.parentMap.get(current.id) ?? null;
+    }
+    return false;
+  }
+
+  /**
+   * Atajo para añadir una figura a una capa o grupo.
+   */
+  public addShape(layerOrGroupId: string, shape: Shape, index?: number): void {
+    this.addNode(layerOrGroupId, shape, index);
+  }
+
+  /**
+   * Atajo para eliminar una figura o grupo del Scene Graph.
    */
   public removeShape(shapeId: string): boolean {
     return this.removeNode(shapeId);
   }
 
   /**
-   * Atajo para reordenar figuras dentro de una capa.
+   * Atajo para reordenar elementos dentro de una capa o grupo.
    */
   public reorderShapes(layerId: string, fromIndex: number, toIndex: number): void {
     this.reorderNodes(layerId, fromIndex, toIndex);
   }
 
   /**
-   * Mueve una figura (o capa) al frente de su contenedor (última posición visual en el array)
-   * y recalcula un valor discreto de zIndex (0, 1, 2, ...) para todos los elementos hermanos
-   * a fin de facilitar futuros cómputos asíncronos y ordenamientos independientes.
-   *
-   * @param shapeId ID de la figura o elemento a traer al frente
-   * @returns true si el elemento fue encontrado y reordenado, false en caso contrario
+   * Mueve un elemento (figura, grupo o capa) al frente de su contenedor.
    */
   public bringToFront(shapeId: string): boolean {
     const parent = this.findParent(shapeId);
@@ -480,39 +599,28 @@ export class StateManager {
       return false;
     }
 
-    if (isLayer(parent)) {
-      const shapes = parent.children;
-      const currentIndex = shapes.findIndex((s) => s.id === shapeId);
+    if (isLayer(parent) || isGroup(parent)) {
+      const children = parent.children;
+      const currentIndex = children.findIndex((s) => s.id === shapeId);
       if (currentIndex === -1) {
         return false;
       }
 
-      // Mover al final del array
-      const targetShape = shapes[currentIndex];
-      const filtered = shapes.filter((_, idx) => idx !== currentIndex);
-      const reordered = [...filtered, targetShape];
+      const targetChild = children[currentIndex];
+      const filtered = children.filter((_, idx) => idx !== currentIndex);
+      const reordered = [...filtered, targetChild];
 
-      // Recalcular valor discreto de zIndex para todos los elementos hermanos
-      const updatedShapes = reordered.map((shape, index) => ({
-        ...shape,
+      const updatedChildren = reordered.map((child, index) => ({
+        ...child,
         zIndex: index,
       }));
 
-      const updatedLayer: Layer = {
-        ...parent,
-        children: updatedShapes,
-      };
-
-      const nextLayers = this._state.children.map((layer) =>
-        layer.id === parent.id ? updatedLayer : layer
-      );
-
-      this.setState({
-        ...this._state,
-        children: nextLayers,
-      });
-
-      return true;
+      const nextState = this.updateHierarchy(parent.id, () => updatedChildren);
+      if (nextState) {
+        this.setState(nextState);
+        return true;
+      }
+      return false;
     }
 
     if (isDocument(parent)) {
@@ -543,12 +651,7 @@ export class StateManager {
   }
 
   /**
-   * Mueve una figura (o capa) al fondo de su contenedor (primera posición visual en el array)
-   * y recalcula un valor discreto de zIndex (0, 1, 2, ...) para todos los elementos hermanos
-   * a fin de facilitar futuros cómputos asíncronos y ordenamientos independientes.
-   *
-   * @param shapeId ID de la figura o elemento a enviar al fondo
-   * @returns true si el elemento fue encontrado y reordenado, false en caso contrario
+   * Mueve un elemento (figura, grupo o capa) al fondo de su contenedor.
    */
   public sendToBack(shapeId: string): boolean {
     const parent = this.findParent(shapeId);
@@ -556,39 +659,28 @@ export class StateManager {
       return false;
     }
 
-    if (isLayer(parent)) {
-      const shapes = parent.children;
-      const currentIndex = shapes.findIndex((s) => s.id === shapeId);
+    if (isLayer(parent) || isGroup(parent)) {
+      const children = parent.children;
+      const currentIndex = children.findIndex((s) => s.id === shapeId);
       if (currentIndex === -1) {
         return false;
       }
 
-      // Mover al inicio del array
-      const targetShape = shapes[currentIndex];
-      const filtered = shapes.filter((_, idx) => idx !== currentIndex);
-      const reordered = [targetShape, ...filtered];
+      const targetChild = children[currentIndex];
+      const filtered = children.filter((_, idx) => idx !== currentIndex);
+      const reordered = [targetChild, ...filtered];
 
-      // Recalcular valor discreto de zIndex para todos los elementos hermanos
-      const updatedShapes = reordered.map((shape, index) => ({
-        ...shape,
+      const updatedChildren = reordered.map((child, index) => ({
+        ...child,
         zIndex: index,
       }));
 
-      const updatedLayer: Layer = {
-        ...parent,
-        children: updatedShapes,
-      };
-
-      const nextLayers = this._state.children.map((layer) =>
-        layer.id === parent.id ? updatedLayer : layer
-      );
-
-      this.setState({
-        ...this._state,
-        children: nextLayers,
-      });
-
-      return true;
+      const nextState = this.updateHierarchy(parent.id, () => updatedChildren);
+      if (nextState) {
+        this.setState(nextState);
+        return true;
+      }
+      return false;
     }
 
     if (isDocument(parent)) {
@@ -619,14 +711,14 @@ export class StateManager {
   }
 
   /**
-   * Retorna una lista inmutable con los IDs de las figuras actualmente seleccionadas.
+   * Retorna una lista inmutable con los IDs de los nodos (figuras o grupos) actualmente seleccionados.
    */
   public getSelection(): readonly string[] {
     if (this._selectedIds.length > 0) {
       const index = getDocumentIndex(this._state);
       const sanitized = this._selectedIds.filter((id) => {
         const node = index.nodeMap.get(id);
-        return node !== null && node !== undefined && isShape(node);
+        return node !== null && node !== undefined && isSelectable(node);
       });
       if (sanitized.length !== this._selectedIds.length) {
         this._selectedIds = Object.freeze(sanitized);
@@ -637,14 +729,14 @@ export class StateManager {
   }
 
   /**
-   * Retorna un array con las figuras (Shape) actualmente seleccionadas en el Scene Graph.
+   * Retorna un array con los nodos seleccionables (Shape | Group) actualmente seleccionados.
    */
-  public getSelectedNodes(): Shape[] {
+  public getSelectedNodes(): SelectableNode[] {
     const index = getDocumentIndex(this._state);
-    const nodes: Shape[] = [];
+    const nodes: SelectableNode[] = [];
     for (const id of this._selectedIds) {
       const node = index.nodeMap.get(id);
-      if (node && isShape(node)) {
+      if (node && isSelectable(node)) {
         nodes.push(node);
       }
     }
@@ -659,11 +751,13 @@ export class StateManager {
   }
 
   /**
-   * Establece la selección a partir de un array de IDs.
-   * Valida que los IDs existan y correspondan a figuras (Shape) en el Documento,
-   * eliminando duplicados e IDs inexistentes.
-   * NO modifica la referencia del Documento (getState() conserva su identidad).
-   * Marca el estado como sucio (markDirty) y notifica a los suscriptores si la selección cambió.
+   * Establece la selección a partir de un array de IDs (figuras o grupos).
+   *
+   * Normalización de jerarquía (Ajuste de diseño 2):
+   * Garantiza que no coexistan un nodo y alguno de sus ancestros.
+   * Si en el conjunto coexisten un ancestro y un descendiente, el ancestro prevalece
+   * y el descendiente es descartado de la selección.
+   * Si se intenta seleccionar un descendiente cuyo ancestro ya está seleccionado, se ignora.
    */
   public setSelection(ids: readonly string[]): void {
     const seen = new Set<string>();
@@ -674,58 +768,82 @@ export class StateManager {
       if (!seen.has(id)) {
         seen.add(id);
         const node = index.nodeMap.get(id);
-        if (node && isShape(node)) {
+        if (node && isSelectable(node)) {
           validIds.push(id);
         }
       }
     }
 
+    // Normalización: descartar descendientes si alguno de sus ancestros está en la selección
+    const normalizedIds = validIds.filter(
+      (id) => !validIds.some((otherId) => otherId !== id && isDescendantOf(id, otherId, index.parentMap))
+    );
+
     // Verificar si la selección cambió
     const isSame =
-      validIds.length === this._selectedIds.length &&
-      validIds.every((id, idx) => id === this._selectedIds[idx]);
+      normalizedIds.length === this._selectedIds.length &&
+      normalizedIds.every((id, idx) => id === this._selectedIds[idx]);
 
     if (isSame) {
       return;
     }
 
-    this._selectedIds = Object.freeze(validIds);
-    this._selectedSet = new Set(validIds);
+    this._selectedIds = Object.freeze(normalizedIds);
+    this._selectedSet = new Set(normalizedIds);
     this.markDirty();
     this.notify();
   }
 
   /**
    * Wrapper de compatibilidad para selección única.
-   * Selecciona el nodo especificado o deselecciona todo si targetNodeId es null.
    */
   public selectNode(targetNodeId: string | null): void {
     this.setSelection(targetNodeId ? [targetNodeId] : []);
   }
 
   /**
-   * Wrapper de compatibilidad: retorna la primera figura seleccionada o null si no hay ninguna.
+   * Wrapper de compatibilidad: retorna el primer nodo seleccionado o null si no hay ninguno.
    */
-  public getSelectedNode(): Shape | null {
+  public getSelectedNode(): SelectableNode | null {
     return this.getSelectedNodes()[0] ?? null;
   }
 
   /**
-   * Conmuta la presencia de una figura en la selección activa.
-   * Si ya está seleccionada, la remueve; si no lo está, la añade.
-   * Implementado sobre setSelection con las mismas garantías de validación y notificación única.
+   * Conmuta la presencia de un nodo (figura o grupo) en la selección activa.
+   * Si ya está seleccionado, lo remueve.
+   * Si no está seleccionado:
+   * - Si un ancestro ya está seleccionado, se ignora (comportamiento normalizado).
+   * - Si el nodo es ancestro de elementos seleccionados, se descartan esos descendientes y se añade el ancestro.
    */
   public toggleInSelection(id: string): void {
+    const index = getDocumentIndex(this._state);
+    const node = index.nodeMap.get(id);
+    if (!node || !isSelectable(node)) {
+      return;
+    }
+
     if (this.isSelected(id)) {
       this.setSelection(this._selectedIds.filter((selId) => selId !== id));
-    } else {
-      this.setSelection([...this._selectedIds, id]);
+      return;
     }
+
+    // Si un ancestro de este nodo ya está seleccionado, se ignora
+    const hasSelectedAncestor = this._selectedIds.some((selId) =>
+      isDescendantOf(id, selId, index.parentMap)
+    );
+    if (hasSelectedAncestor) {
+      return;
+    }
+
+    // Si este nodo es ancestro de elementos actualmente seleccionados, descartar esos descendientes
+    const remaining = this._selectedIds.filter(
+      (selId) => !isDescendantOf(selId, id, index.parentMap)
+    );
+    this.setSelection([...remaining, id]);
   }
 
   /**
-   * Añade una lista de IDs a la selección actual, eliminando duplicados e ignorando IDs inválidos.
-   * Si no se añade ningún ID nuevo y válido, no produce cambios ni notificaciones.
+   * Añade una lista de IDs a la selección actual, respetando la normalización de ancestros/descendientes.
    */
   public addToSelection(ids: readonly string[]): void {
     this.setSelection([...this._selectedIds, ...ids]);
@@ -733,7 +851,6 @@ export class StateManager {
 
   /**
    * Remueve una lista de IDs de la selección actual.
-   * Si ninguno de los IDs provistos estaba seleccionado, no produce cambios ni notificaciones.
    */
   public removeFromSelection(ids: readonly string[]): void {
     const toRemove = new Set(ids);
@@ -741,8 +858,8 @@ export class StateManager {
   }
 
   /**
-   * Selecciona todas las figuras del documento que sean visibles y no estén bloqueadas,
-   * siempre que sus capas contenedoras también sean visibles y no estén bloqueadas.
+   * Selecciona los elementos de primer nivel de cada capa (un grupo cuenta como una unidad),
+   * excluyendo aquellos efectivamente ocultos o bloqueados (Ajuste de diseño 3).
    */
   public selectAll(): void {
     const selectableIds: string[] = [];
@@ -750,23 +867,23 @@ export class StateManager {
       if (layer.visible === false || layer.locked === true) {
         continue;
       }
-      for (const shape of layer.children) {
-        if (shape.visible === false || shape.locked === true) {
+      for (const child of layer.children) {
+        if (!this.isEffectivelyVisible(child.id) || this.isEffectivelyLocked(child.id)) {
           continue;
         }
-        selectableIds.push(shape.id);
+        selectableIds.push(child.id);
       }
     }
     this.setSelection(selectableIds);
   }
 
   /**
-   * Actualiza la posición de múltiples figuras en UNA sola actualización de estado
+   * Actualiza la posición de múltiples figuras hoja en UNA sola actualización de estado
    * y emite UNA sola notificación a los suscriptores.
-   * Reutiliza la misma lógica geométrica de traslación, incluyendo el desplazamiento
-   * relativo de los puntos de control y ancla en trazados Path.
+   * Recibe posiciones absolutas SOLO de figuras hoja (Shape). Reconstruye de forma inmutable
+   * toda la cadena de grupos hacia arriba compartiendo referencias de lo no modificado.
    *
-   * @param entries Array de actualizaciones { id, x, y }
+   * @param entries Array de actualizaciones { id, x, y } de figuras hoja
    * @returns true si al menos una figura cambió de posición, false en caso contrario
    */
   public updateShapesPosition(entries: readonly ShapePositionEntry[]): boolean {
@@ -775,22 +892,96 @@ export class StateManager {
     }
 
     const posMap = new Map<string, { x: number; y: number }>();
-    const affectedLayerIds = new Set<string>();
-    const docIndex = getDocumentIndex(this._state);
-
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       posMap.set(entry.id, { x: entry.x, y: entry.y });
-      const parent = docIndex.parentMap.get(entry.id);
-      if (parent && isLayer(parent)) {
-        affectedLayerIds.add(parent.id);
+    }
+
+    const docIndex = getDocumentIndex(this._state);
+    const affectedLayerIds = new Set<string>();
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      let current: ParentNode | undefined = docIndex.parentMap.get(entry.id);
+      while (current && current.type !== 'layer') {
+        current = docIndex.parentMap.get(current.id);
+      }
+      if (current && isLayer(current)) {
+        affectedLayerIds.add(current.id);
       }
     }
 
-    let updated = false;
+    if (affectedLayerIds.size === 0) {
+      return false;
+    }
+
+    let anyMoved = false;
+
+    function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
+      let changed = false;
+      const nextChildren: LayerChildNode[] = new Array(children.length);
+
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isGroup(child)) {
+          const res = updateTree(child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren[i] = {
+              ...child,
+              children: res.updated,
+            };
+          } else {
+            nextChildren[i] = child;
+          }
+        } else if (isShape(child)) {
+          const targetPos = posMap.get(child.id);
+          if (!targetPos || (child.x === targetPos.x && child.y === targetPos.y)) {
+            nextChildren[i] = child;
+            continue;
+          }
+
+          changed = true;
+          anyMoved = true;
+
+          if (child.type === 'path') {
+            const dx = targetPos.x - child.x;
+            const dy = targetPos.y - child.y;
+            const pts = child.points;
+            const pLen = pts.length;
+            const updatedPoints = new Array(pLen);
+            for (let p = 0; p < pLen; p++) {
+              const pt = pts[p];
+              updatedPoints[p] = {
+                x: pt.x + dx,
+                y: pt.y + dy,
+                handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
+                handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
+              };
+            }
+            nextChildren[i] = {
+              ...child,
+              x: targetPos.x,
+              y: targetPos.y,
+              points: updatedPoints,
+            };
+          } else {
+            nextChildren[i] = {
+              ...child,
+              x: targetPos.x,
+              y: targetPos.y,
+            };
+          }
+        } else {
+          nextChildren[i] = child;
+        }
+      }
+
+      return { updated: changed ? nextChildren : children, changed };
+    }
 
     const layers = this._state.children;
-    const nextLayers: typeof layers[number][] = new Array(layers.length);
+    const nextLayers: Layer[] = new Array(layers.length);
 
     for (let l = 0; l < layers.length; l++) {
       const layer = layers[l];
@@ -799,63 +990,18 @@ export class StateManager {
         continue;
       }
 
-      let layerChanged = false;
-      const shapes = layer.children;
-      const sLen = shapes.length;
-      const nextShapes: typeof shapes[number][] = new Array(sLen);
-
-      for (let s = 0; s < sLen; s++) {
-        const shape = shapes[s];
-        const targetPos = posMap.get(shape.id);
-        if (!targetPos || (shape.x === targetPos.x && shape.y === targetPos.y)) {
-          nextShapes[s] = shape;
-          continue;
-        }
-
-        layerChanged = true;
-        updated = true;
-
-        if (shape.type === 'path') {
-          const dx = targetPos.x - shape.x;
-          const dy = targetPos.y - shape.y;
-          const pts = shape.points;
-          const pLen = pts.length;
-          const updatedPoints = new Array(pLen);
-          for (let p = 0; p < pLen; p++) {
-            const pt = pts[p];
-            updatedPoints[p] = {
-              x: pt.x + dx,
-              y: pt.y + dy,
-              handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
-              handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
-            };
-          }
-          nextShapes[s] = {
-            ...shape,
-            x: targetPos.x,
-            y: targetPos.y,
-            points: updatedPoints,
-          };
-        } else {
-          nextShapes[s] = {
-            ...shape,
-            x: targetPos.x,
-            y: targetPos.y,
-          };
-        }
-      }
-
-      if (layerChanged) {
+      const res = updateTree(layer.children);
+      if (res.changed) {
         nextLayers[l] = {
           ...layer,
-          children: nextShapes,
+          children: res.updated,
         };
       } else {
         nextLayers[l] = layer;
       }
     }
 
-    if (!updated) {
+    if (!anyMoved) {
       return false;
     }
 
@@ -869,130 +1015,141 @@ export class StateManager {
 
   /**
    * Actualiza la posición (x, y) de una figura en el Scene Graph de forma inmutable.
-   * Produce una nueva copia estructural y marca el estado como sucio (isDirty = true).
    */
   public updateShapePosition(shapeId: string, x: number, y: number): boolean {
     return this.updateShapesPosition([{ id: shapeId, x, y }]);
   }
 
   /**
-   * Actualiza las dimensiones espaciales y/o radios de una figura (width/height para Rectangle,
-   * radiusX/radiusY para Ellipse) de forma inmutable en el Scene Graph.
-   * Produce una nueva copia estructural y marca el estado como sucio (isDirty = true).
-   *
-   * @param shapeId ID de la figura a redimensionar
-   * @param dimensions Nuevas dimensiones espaciales y/o radios
-   * @returns true si la figura fue encontrada y modificada, false en caso contrario
+   * Actualiza las dimensiones espaciales y/o radios de una figura existente (incluso dentro de grupos).
    */
   public updateShapeDimensions(shapeId: string, dimensions: ShapeDimensions): boolean {
     let updated = false;
 
-    const nextLayers = this._state.children.map((layer) => {
-      let layerChanged = false;
-      const nextShapes = layer.children.map((shape) => {
-        if (shape.id === shapeId) {
-          if (shape.type === 'rectangle') {
-            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
-            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
+    function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
+      let changed = false;
+      const nextChildren: LayerChildNode[] = new Array(children.length);
+
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isGroup(child)) {
+          const res = updateTree(child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren[i] = { ...child, children: res.updated };
+          } else {
+            nextChildren[i] = child;
+          }
+        } else if (isShape(child) && child.id === shapeId) {
+          if (child.type === 'rectangle') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
             const nextW =
               dimensions.width !== undefined
                 ? dimensions.width
                 : dimensions.radiusX !== undefined
                 ? dimensions.radiusX * 2
-                : shape.width;
+                : child.width;
             const nextH =
               dimensions.height !== undefined
                 ? dimensions.height
                 : dimensions.radiusY !== undefined
                 ? dimensions.radiusY * 2
-                : shape.height;
+                : child.height;
 
             if (
-              nextX === shape.x &&
-              nextY === shape.y &&
-              nextW === shape.width &&
-              nextH === shape.height
+              nextX === child.x &&
+              nextY === child.y &&
+              nextW === child.width &&
+              nextH === child.height
             ) {
-              return shape;
+              nextChildren[i] = child;
+              continue;
             }
 
-            layerChanged = true;
+            changed = true;
             updated = true;
-            return {
-              ...shape,
+            nextChildren[i] = {
+              ...child,
               x: nextX,
               y: nextY,
               width: nextW,
               height: nextH,
             };
-          }
-
-          if (shape.type === 'ellipse') {
-            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
-            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
+          } else if (child.type === 'ellipse') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
             const nextRx =
               dimensions.radiusX !== undefined
                 ? dimensions.radiusX
                 : dimensions.width !== undefined
                 ? dimensions.width / 2
-                : shape.radiusX;
+                : child.radiusX;
             const nextRy =
               dimensions.radiusY !== undefined
                 ? dimensions.radiusY
                 : dimensions.height !== undefined
                 ? dimensions.height / 2
-                : shape.radiusY;
+                : child.radiusY;
 
             if (
-              nextX === shape.x &&
-              nextY === shape.y &&
-              nextRx === shape.radiusX &&
-              nextRy === shape.radiusY
+              nextX === child.x &&
+              nextY === child.y &&
+              nextRx === child.radiusX &&
+              nextRy === child.radiusY
             ) {
-              return shape;
+              nextChildren[i] = child;
+              continue;
             }
 
-            layerChanged = true;
+            changed = true;
             updated = true;
-            return {
-              ...shape,
+            nextChildren[i] = {
+              ...child,
               x: nextX,
               y: nextY,
               radiusX: nextRx,
               radiusY: nextRy,
             };
-          }
-
-          if (shape.type === 'path') {
-            const nextX = dimensions.x !== undefined ? dimensions.x : shape.x;
-            const nextY = dimensions.y !== undefined ? dimensions.y : shape.y;
-            const nextPoints = dimensions.points !== undefined ? dimensions.points : shape.points;
+          } else if (child.type === 'path') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
+            const nextPoints = dimensions.points !== undefined ? dimensions.points : child.points;
 
             if (
-              nextX === shape.x &&
-              nextY === shape.y &&
-              nextPoints === shape.points
+              nextX === child.x &&
+              nextY === child.y &&
+              nextPoints === child.points
             ) {
-              return shape;
+              nextChildren[i] = child;
+              continue;
             }
 
-            layerChanged = true;
+            changed = true;
             updated = true;
-            return {
-              ...shape,
+            nextChildren[i] = {
+              ...child,
               x: nextX,
               y: nextY,
               points: nextPoints,
             };
+          } else {
+            nextChildren[i] = child;
           }
+        } else {
+          nextChildren[i] = child;
         }
-        return shape;
-      });
+      }
 
-      if (layerChanged) {
+      return { updated: changed ? nextChildren : children, changed };
+    }
+
+    const nextLayers = this._state.children.map((layer) => {
+      const res = updateTree(layer.children);
+      if (res.changed) {
         return {
           ...layer,
-          children: nextShapes,
+          children: res.updated,
         };
       }
       return layer;
@@ -1016,22 +1173,39 @@ export class StateManager {
   public updateShape<T extends Shape>(shapeId: string, updater: Partial<Shape> | Partial<T> | ((current: T) => T)): boolean {
     let updated = false;
 
-    const nextLayers = this._state.children.map((layer) => {
-      let layerChanged = false;
-      const nextShapes = layer.children.map((shape) => {
-        if (shape.id === shapeId) {
-          layerChanged = true;
-          updated = true;
-          const nextVal = (typeof updater === 'function' ? updater(shape as T) : { ...shape, ...updater }) as Shape;
-          return nextVal;
-        }
-        return shape;
-      });
+    function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
+      let changed = false;
+      const nextChildren: LayerChildNode[] = new Array(children.length);
 
-      if (layerChanged) {
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isGroup(child)) {
+          const res = updateTree(child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren[i] = { ...child, children: res.updated };
+          } else {
+            nextChildren[i] = child;
+          }
+        } else if (isShape(child) && child.id === shapeId) {
+          changed = true;
+          updated = true;
+          const nextVal = (typeof updater === 'function' ? updater(child as T) : { ...child, ...updater }) as Shape;
+          nextChildren[i] = nextVal;
+        } else {
+          nextChildren[i] = child;
+        }
+      }
+
+      return { updated: changed ? nextChildren : children, changed };
+    }
+
+    const nextLayers = this._state.children.map((layer) => {
+      const res = updateTree(layer.children);
+      if (res.changed) {
         return {
           ...layer,
-          children: nextShapes,
+          children: res.updated,
         };
       }
       return layer;

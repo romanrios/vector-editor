@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { injectSampleShapes } from '../src/state/injectSampleShapes.ts';
 import { serializeDocument, downloadJson, parseDocument, DocumentParseError } from '../src/state/Serializer.ts';
-import type { Document, Path } from '../src/types/scene-graph.ts';
+import type { Document, Path, Shape } from '../src/types/scene-graph.ts';
 
 describe('Serializer (serializeDocument & downloadJson)', () => {
   it('serializeDocument convierte el estado en JSON puro omitiendo propiedades computadas como isDirty', () => {
@@ -543,8 +543,8 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
     assert.equal(reimpShapes.length, origShapes.length);
 
     for (let i = 0; i < origShapes.length; i++) {
-      const o = origShapes[i];
-      const r = reimpShapes[i];
+      const o = origShapes[i] as Shape;
+      const r = reimpShapes[i] as Shape;
       assert.equal(r.id, o.id);
       assert.equal(r.type, o.type);
       assert.equal(r.name, o.name);

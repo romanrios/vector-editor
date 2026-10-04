@@ -1,4 +1,4 @@
-import type { Document, Layer, Path, PathPoint, Rectangle, Ellipse, Shape } from '../types/scene-graph.ts';
+import type { Document, Group, Layer, LayerChildNode, Path, PathPoint, Rectangle, Ellipse } from '../types/scene-graph.ts';
 
 /**
  * Serializa el estado completo del Scene Graph (Document) en un string JSON puro.
@@ -76,9 +76,230 @@ function isFiniteNumber(val: unknown): val is number {
   return typeof val === 'number' && Number.isFinite(val);
 }
 
+function parseLayerChild(
+  child: unknown,
+  childPath: string,
+  seenIds: Set<string>,
+  depth: number
+): LayerChildNode {
+  if (depth > 32) {
+    throw new DocumentParseError(
+      `Profundidad máxima de anidamiento (32) excedida en ${childPath}`
+    );
+  }
+
+  if (!isObject(child)) {
+    throw new DocumentParseError(`${childPath} debe ser un objeto`);
+  }
+
+  if (typeof child.id !== 'string' || child.id.trim() === '') {
+    throw new DocumentParseError(`${childPath}.id debe ser un string`);
+  }
+
+  if (seenIds.has(child.id)) {
+    throw new DocumentParseError(
+      `ID duplicado '${child.id}' en ${childPath}. Los ids deben ser únicos en todo el documento.`
+    );
+  }
+  seenIds.add(child.id);
+
+  if (typeof child.name !== 'string') {
+    throw new DocumentParseError(`${childPath}.name debe ser un string`);
+  }
+
+  if (child.type === 'group') {
+    if (!Array.isArray(child.children)) {
+      throw new DocumentParseError(`${childPath}.children debe ser un array`);
+    }
+
+    if (child.children.length === 0) {
+      throw new DocumentParseError(
+        `${childPath}.children no puede estar vacío (los grupos deben contener al menos un elemento)`
+      );
+    }
+
+    if (child.visible !== undefined && typeof child.visible !== 'boolean') {
+      throw new DocumentParseError(`${childPath}.visible debe ser un booleano`);
+    }
+
+    if (child.locked !== undefined && typeof child.locked !== 'boolean') {
+      throw new DocumentParseError(`${childPath}.locked debe ser un booleano`);
+    }
+
+    if (child.opacity !== undefined && !isFiniteNumber(child.opacity)) {
+      throw new DocumentParseError(`${childPath}.opacity debe ser un número finito`);
+    }
+
+    if (child.zIndex !== undefined && !isFiniteNumber(child.zIndex)) {
+      throw new DocumentParseError(`${childPath}.zIndex debe ser un número finito`);
+    }
+
+    const cleanGroupChildren: LayerChildNode[] = [];
+    for (let c = 0; c < child.children.length; c++) {
+      const grandChild = child.children[c];
+      const grandChildPath = `${childPath}.children[${c}]`;
+      cleanGroupChildren.push(
+        parseLayerChild(grandChild, grandChildPath, seenIds, depth + 1)
+      );
+    }
+
+    const { selected: _sel, isDirty: _dirty, children: _ch, ...restGroup } = child;
+    return {
+      ...(restGroup as unknown as Group),
+      children: cleanGroupChildren,
+    };
+  }
+
+  if (
+    child.type !== 'rectangle' &&
+    child.type !== 'ellipse' &&
+    child.type !== 'path'
+  ) {
+    throw new DocumentParseError(
+      `${childPath}.type debe ser 'rectangle', 'ellipse' o 'path' (o 'group')`
+    );
+  }
+
+  // Validar campos comunes opcionales de figuras
+  if (child.rotation !== undefined && !isFiniteNumber(child.rotation)) {
+    throw new DocumentParseError(`${childPath}.rotation debe ser un número finito`);
+  }
+  if (child.opacity !== undefined && !isFiniteNumber(child.opacity)) {
+    throw new DocumentParseError(`${childPath}.opacity debe ser un número finito`);
+  }
+  if (child.strokeWidth !== undefined && !isFiniteNumber(child.strokeWidth)) {
+    throw new DocumentParseError(`${childPath}.strokeWidth debe ser un número finito`);
+  }
+  if (child.fill !== undefined && typeof child.fill !== 'string') {
+    throw new DocumentParseError(`${childPath}.fill debe ser un string`);
+  }
+  if (child.stroke !== undefined && typeof child.stroke !== 'string') {
+    throw new DocumentParseError(`${childPath}.stroke debe ser un string`);
+  }
+  if (child.visible !== undefined && typeof child.visible !== 'boolean') {
+    throw new DocumentParseError(`${childPath}.visible debe ser un booleano`);
+  }
+  if (child.locked !== undefined && typeof child.locked !== 'boolean') {
+    throw new DocumentParseError(`${childPath}.locked debe ser un booleano`);
+  }
+  if (child.zIndex !== undefined && !isFiniteNumber(child.zIndex)) {
+    throw new DocumentParseError(`${childPath}.zIndex debe ser un número finito`);
+  }
+
+  if (child.type === 'rectangle') {
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.width)) {
+      throw new DocumentParseError(`${childPath}.width debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.height)) {
+      throw new DocumentParseError(`${childPath}.height debe ser un número finito`);
+    }
+    if (child.cornerRadius !== undefined && !isFiniteNumber(child.cornerRadius)) {
+      throw new DocumentParseError(`${childPath}.cornerRadius debe ser un número finito`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as Rectangle;
+  } else if (child.type === 'ellipse') {
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.radiusX)) {
+      throw new DocumentParseError(`${childPath}.radiusX debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.radiusY)) {
+      throw new DocumentParseError(`${childPath}.radiusY debe ser un número finito`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as Ellipse;
+  } else {
+    // path
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!Array.isArray(child.points)) {
+      throw new DocumentParseError(`${childPath}.points debe ser un array`);
+    }
+
+    const cleanPoints: PathPoint[] = [];
+
+    for (let k = 0; k < child.points.length; k++) {
+      const pt = child.points[k];
+      const ptPath = `${childPath}.points[${k}]`;
+
+      if (!isObject(pt)) {
+        throw new DocumentParseError(`${ptPath} debe ser un objeto`);
+      }
+      if (!isFiniteNumber(pt.x)) {
+        throw new DocumentParseError(`${ptPath}.x debe ser un número finito`);
+      }
+      if (!isFiniteNumber(pt.y)) {
+        throw new DocumentParseError(`${ptPath}.y debe ser un número finito`);
+      }
+
+      let cleanHandleIn: { x: number; y: number } | undefined;
+      if (pt.handleIn !== undefined) {
+        if (!isObject(pt.handleIn)) {
+          throw new DocumentParseError(`${ptPath}.handleIn debe ser un objeto`);
+        }
+        if (!isFiniteNumber(pt.handleIn.x)) {
+          throw new DocumentParseError(`${ptPath}.handleIn.x debe ser un número finito`);
+        }
+        if (!isFiniteNumber(pt.handleIn.y)) {
+          throw new DocumentParseError(`${ptPath}.handleIn.y debe ser un número finito`);
+        }
+        cleanHandleIn = { x: pt.handleIn.x, y: pt.handleIn.y };
+      }
+
+      let cleanHandleOut: { x: number; y: number } | undefined;
+      if (pt.handleOut !== undefined) {
+        if (!isObject(pt.handleOut)) {
+          throw new DocumentParseError(`${ptPath}.handleOut debe ser un objeto`);
+        }
+        if (!isFiniteNumber(pt.handleOut.x)) {
+          throw new DocumentParseError(`${ptPath}.handleOut.x debe ser un número finito`);
+        }
+        if (!isFiniteNumber(pt.handleOut.y)) {
+          throw new DocumentParseError(`${ptPath}.handleOut.y debe ser un número finito`);
+        }
+        cleanHandleOut = { x: pt.handleOut.x, y: pt.handleOut.y };
+      }
+
+      cleanPoints.push({
+        x: pt.x,
+        y: pt.y,
+        ...(cleanHandleIn ? { handleIn: cleanHandleIn } : {}),
+        ...(cleanHandleOut ? { handleOut: cleanHandleOut } : {}),
+      });
+    }
+
+    if (child.closed !== undefined && typeof child.closed !== 'boolean') {
+      throw new DocumentParseError(`${childPath}.closed debe ser un booleano`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, points: _pts, ...rest } = child;
+    return {
+      ...(rest as unknown as Path),
+      points: cleanPoints,
+    };
+  }
+}
+
 /**
  * Parsea y valida exhaustivamente un string JSON para reconstruir un objeto Document tipado.
- * Valida la estructura completa (Document > Layer > Shape), verifica unicidad de IDs y
+ * Valida la estructura completa (Document > Layer > Group* > Shape), verifica unicidad de IDs y
  * elimina cualquier propiedad transitoria de UI ('selected' e 'isDirty').
  * Si algo es inválido, lanza DocumentParseError con la ruta exacta del problema.
  *
@@ -179,177 +400,18 @@ export async function parseDocument(jsonString: string): Promise<Document> {
       throw new DocumentParseError(`${layerPath}.opacity debe ser un número finito`);
     }
 
-    const cleanShapes: Shape[] = [];
+    const cleanChildren: LayerChildNode[] = [];
 
     for (let j = 0; j < layer.children.length; j++) {
-      const shape = layer.children[j];
-      const shapePath = `children[${i}].children[${j}]`;
-
-      if (!isObject(shape)) {
-        throw new DocumentParseError(`${shapePath} debe ser un objeto`);
-      }
-
-      if (typeof shape.id !== 'string' || shape.id.trim() === '') {
-        throw new DocumentParseError(`${shapePath}.id debe ser un string`);
-      }
-
-      if (seenIds.has(shape.id)) {
-        throw new DocumentParseError(
-          `ID duplicado '${shape.id}' en ${shapePath}. Los ids deben ser únicos en todo el documento.`
-        );
-      }
-      seenIds.add(shape.id);
-
-      if (typeof shape.name !== 'string') {
-        throw new DocumentParseError(`${shapePath}.name debe ser un string`);
-      }
-
-      if (shape.type !== 'rectangle' && shape.type !== 'ellipse' && shape.type !== 'path') {
-        throw new DocumentParseError(
-          `${shapePath}.type debe ser 'rectangle', 'ellipse' o 'path'`
-        );
-      }
-
-      // Validar campos comunes opcionales
-      if (shape.rotation !== undefined && !isFiniteNumber(shape.rotation)) {
-        throw new DocumentParseError(`${shapePath}.rotation debe ser un número finito`);
-      }
-      if (shape.opacity !== undefined && !isFiniteNumber(shape.opacity)) {
-        throw new DocumentParseError(`${shapePath}.opacity debe ser un número finito`);
-      }
-      if (shape.strokeWidth !== undefined && !isFiniteNumber(shape.strokeWidth)) {
-        throw new DocumentParseError(`${shapePath}.strokeWidth debe ser un número finito`);
-      }
-      if (shape.fill !== undefined && typeof shape.fill !== 'string') {
-        throw new DocumentParseError(`${shapePath}.fill debe ser un string`);
-      }
-      if (shape.stroke !== undefined && typeof shape.stroke !== 'string') {
-        throw new DocumentParseError(`${shapePath}.stroke debe ser un string`);
-      }
-      if (shape.visible !== undefined && typeof shape.visible !== 'boolean') {
-        throw new DocumentParseError(`${shapePath}.visible debe ser un booleano`);
-      }
-      if (shape.locked !== undefined && typeof shape.locked !== 'boolean') {
-        throw new DocumentParseError(`${shapePath}.locked debe ser un booleano`);
-      }
-      if (shape.zIndex !== undefined && !isFiniteNumber(shape.zIndex)) {
-        throw new DocumentParseError(`${shapePath}.zIndex debe ser un número finito`);
-      }
-
-      if (shape.type === 'rectangle') {
-        if (!isFiniteNumber(shape.x)) {
-          throw new DocumentParseError(`${shapePath}.x debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.y)) {
-          throw new DocumentParseError(`${shapePath}.y debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.width)) {
-          throw new DocumentParseError(`${shapePath}.width debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.height)) {
-          throw new DocumentParseError(`${shapePath}.height debe ser un número finito`);
-        }
-        if (shape.cornerRadius !== undefined && !isFiniteNumber(shape.cornerRadius)) {
-          throw new DocumentParseError(`${shapePath}.cornerRadius debe ser un número finito`);
-        }
-
-        const { selected: _sel, isDirty: _dirty, ...rest } = shape;
-        cleanShapes.push(rest as unknown as Rectangle);
-      } else if (shape.type === 'ellipse') {
-        if (!isFiniteNumber(shape.x)) {
-          throw new DocumentParseError(`${shapePath}.x debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.y)) {
-          throw new DocumentParseError(`${shapePath}.y debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.radiusX)) {
-          throw new DocumentParseError(`${shapePath}.radiusX debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.radiusY)) {
-          throw new DocumentParseError(`${shapePath}.radiusY debe ser un número finito`);
-        }
-
-        const { selected: _sel, isDirty: _dirty, ...rest } = shape;
-        cleanShapes.push(rest as unknown as Ellipse);
-      } else if (shape.type === 'path') {
-        if (!isFiniteNumber(shape.x)) {
-          throw new DocumentParseError(`${shapePath}.x debe ser un número finito`);
-        }
-        if (!isFiniteNumber(shape.y)) {
-          throw new DocumentParseError(`${shapePath}.y debe ser un número finito`);
-        }
-        if (!Array.isArray(shape.points)) {
-          throw new DocumentParseError(`${shapePath}.points debe ser un array`);
-        }
-
-        const cleanPoints: PathPoint[] = [];
-
-        for (let k = 0; k < shape.points.length; k++) {
-          const pt = shape.points[k];
-          const ptPath = `${shapePath}.points[${k}]`;
-
-          if (!isObject(pt)) {
-            throw new DocumentParseError(`${ptPath} debe ser un objeto`);
-          }
-          if (!isFiniteNumber(pt.x)) {
-            throw new DocumentParseError(`${ptPath}.x debe ser un número finito`);
-          }
-          if (!isFiniteNumber(pt.y)) {
-            throw new DocumentParseError(`${ptPath}.y debe ser un número finito`);
-          }
-
-          let cleanHandleIn: { x: number; y: number } | undefined;
-          if (pt.handleIn !== undefined) {
-            if (!isObject(pt.handleIn)) {
-              throw new DocumentParseError(`${ptPath}.handleIn debe ser un objeto`);
-            }
-            if (!isFiniteNumber(pt.handleIn.x)) {
-              throw new DocumentParseError(`${ptPath}.handleIn.x debe ser un número finito`);
-            }
-            if (!isFiniteNumber(pt.handleIn.y)) {
-              throw new DocumentParseError(`${ptPath}.handleIn.y debe ser un número finito`);
-            }
-            cleanHandleIn = { x: pt.handleIn.x, y: pt.handleIn.y };
-          }
-
-          let cleanHandleOut: { x: number; y: number } | undefined;
-          if (pt.handleOut !== undefined) {
-            if (!isObject(pt.handleOut)) {
-              throw new DocumentParseError(`${ptPath}.handleOut debe ser un objeto`);
-            }
-            if (!isFiniteNumber(pt.handleOut.x)) {
-              throw new DocumentParseError(`${ptPath}.handleOut.x debe ser un número finito`);
-            }
-            if (!isFiniteNumber(pt.handleOut.y)) {
-              throw new DocumentParseError(`${ptPath}.handleOut.y debe ser un número finito`);
-            }
-            cleanHandleOut = { x: pt.handleOut.x, y: pt.handleOut.y };
-          }
-
-          cleanPoints.push({
-            x: pt.x,
-            y: pt.y,
-            ...(cleanHandleIn ? { handleIn: cleanHandleIn } : {}),
-            ...(cleanHandleOut ? { handleOut: cleanHandleOut } : {}),
-          });
-        }
-
-        if (shape.closed !== undefined && typeof shape.closed !== 'boolean') {
-          throw new DocumentParseError(`${shapePath}.closed debe ser un booleano`);
-        }
-
-        const { selected: _sel, isDirty: _dirty, points: _pts, ...rest } = shape;
-        cleanShapes.push({
-          ...(rest as unknown as Path),
-          points: cleanPoints,
-        });
-      }
+      const child = layer.children[j];
+      const childPath = `children[${i}].children[${j}]`;
+      cleanChildren.push(parseLayerChild(child, childPath, seenIds, 2));
     }
 
     const { selected: _sel, isDirty: _dirty, children: _ch, ...restLayer } = layer;
     cleanLayers.push({
       ...(restLayer as unknown as Layer),
-      children: cleanShapes,
+      children: cleanChildren,
     });
   }
 
