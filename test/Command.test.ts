@@ -386,6 +386,173 @@ describe('Patrón Command & Historial Deshacer/Rehacer', () => {
     controller.destroy();
   });
 
+  it('redimensionado manteniendo Shift escala un rectángulo proporcionalmente sin deformar', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const rect: Rectangle = {
+      id: 'shift-resize-rect',
+      type: 'rectangle',
+      name: 'Shift Resize Rect',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    };
+    manager.addShape(manager.getState().children[0].id, rect);
+    manager.selectNode('shift-resize-rect');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // 1. Esquina bottom-right en (300, 200)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 300, clientY: 200 });
+    assert.equal(controller.isResizing, true);
+
+    // 2. Mover ratón +40 en X y +10 en Y con shiftKey: true
+    // Ancho bruto = 240 (escala 1.2), alto bruto = 110 (escala 1.1)
+    // El eje dominante es X (escala 1.2), por lo que alto debe ser 100 * 1.2 = 120
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 340, clientY: 210, shiftKey: true });
+    let shape = manager.findNode('shift-resize-rect') as Rectangle;
+    assert.equal(shape.x, 100, 'X debe permanecer fijo al arrastrar bottom-right');
+    assert.equal(shape.y, 100, 'Y debe permanecer fijo al arrastrar bottom-right');
+    assert.equal(shape.width, 240, 'Width debe ser 240');
+    assert.equal(shape.height, 120, 'Height debe ser 120 (proporción 2:1 preservada)');
+
+    // 3. Mouseup con Shift
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 340, clientY: 210, shiftKey: true });
+    assert.equal(controller.isResizing, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // 4. Deshacer y rehacer
+    commandManager.undo();
+    shape = manager.findNode('shift-resize-rect') as Rectangle;
+    assert.equal(shape.width, 200);
+    assert.equal(shape.height, 100);
+
+    commandManager.redo();
+    shape = manager.findNode('shift-resize-rect') as Rectangle;
+    assert.equal(shape.width, 240);
+    assert.equal(shape.height, 120);
+
+    controller.destroy();
+  });
+
+  it('redimensionado con manejador top-left manteniendo Shift mantiene vértice opuesto fijo y preserva proporción', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const rect: Rectangle = {
+      id: 'shift-topleft-rect',
+      type: 'rectangle',
+      name: 'Shift TopLeft',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    };
+    manager.addShape(manager.getState().children[0].id, rect);
+    manager.selectNode('shift-topleft-rect');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Top-left en (100, 100), vértice opuesto bottom-right en (300, 200)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+
+    // Arrastrar top-left con deltaX = -40, deltaY = -10 y Shift activo
+    // Eje dominante X (+40/200 = 1.2), nuevo width = 240, nuevo height = 120
+    // El vértice opuesto (300, 200) debe mantenerse fijo:
+    // nuevo x = 300 - 240 = 60, nuevo y = 200 - 120 = 80
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 60, clientY: 90, shiftKey: true });
+    const shape = manager.findNode('shift-topleft-rect') as Rectangle;
+    assert.equal(shape.width, 240, 'Width debe ser 240');
+    assert.equal(shape.height, 120, 'Height debe ser 120');
+    assert.equal(shape.x, 60, 'X debe ser 60 para mantener el ancla');
+    assert.equal(shape.y, 80, 'Y debe ser 80 para mantener el ancla');
+    assert.equal(shape.x + shape.width, 300, 'Esquina inferior derecha debe seguir en X=300');
+    assert.equal(shape.y + shape.height, 200, 'Esquina inferior derecha debe seguir en Y=200');
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 60, clientY: 90, shiftKey: true });
+    controller.destroy();
+  });
+
+  it('alternar la tecla Shift (keydown/keyup) durante el redimensionado conmuta en vivo entre proporcional y libre', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const rect: Rectangle = {
+      id: 'dynamic-shift-rect',
+      type: 'rectangle',
+      name: 'Dynamic Shift',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    };
+    manager.addShape(manager.getState().children[0].id, rect);
+    manager.selectNode('dynamic-shift-rect');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Mousedown en bottom-right (300, 200)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 300, clientY: 200 });
+
+    // 1. Arrastrar a (340, 210) SIN Shift -> deformación libre (width: 240, height: 110)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 340, clientY: 210, shiftKey: false });
+    let shape = manager.findNode('dynamic-shift-rect') as Rectangle;
+    assert.equal(shape.width, 240);
+    assert.equal(shape.height, 110, 'Sin Shift la altura es libre (110)');
+
+    // 2. Presionar Shift en el teclado sin mover el ratón -> conmuta inmediatamente a proporcional (240x120)
+    controller.handleKeyDown({ key: 'Shift' } as KeyboardEvent);
+    shape = manager.findNode('dynamic-shift-rect') as Rectangle;
+    assert.equal(shape.width, 240);
+    assert.equal(shape.height, 120, 'Al presionar Shift conmuta inmediatamente a proporción 2:1 (120)');
+
+    // 3. Soltar Shift en el teclado sin mover el ratón -> regresa inmediatamente a libre (240x110)
+    controller.handleKeyUp({ key: 'Shift' } as KeyboardEvent);
+    shape = manager.findNode('dynamic-shift-rect') as Rectangle;
+    assert.equal(shape.width, 240);
+    assert.equal(shape.height, 110, 'Al soltar Shift vuelve a libre (110)');
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 340, clientY: 210 });
+    controller.destroy();
+  });
+
+  it('redimensionado de Elipse manteniendo Shift preserva la proporción entre radiusX y radiusY', () => {
+    const manager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+
+    const ellipse: Ellipse = {
+      id: 'shift-ellipse',
+      type: 'ellipse',
+      name: 'Shift Ellipse',
+      x: 200,
+      y: 200,
+      radiusX: 60, // ancho 120
+      radiusY: 30, // alto 60 (proporción 2:1)
+    };
+    manager.addShape(manager.getState().children[0].id, ellipse);
+    manager.selectNode('shift-ellipse');
+
+    const controller = new InputController(canvas, manager, commandManager);
+
+    // Bottom-right en (260, 230)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 260, clientY: 230 });
+
+    // Arrastrar +24 en X, +6 en Y con Shift: escala 1.2 (ancho: 144, alto: 72 -> radiusX: 72, radiusY: 36)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 284, clientY: 236, shiftKey: true });
+    const shape = manager.findNode('shift-ellipse') as Ellipse;
+    assert.equal(shape.radiusX, 72, 'radiusX debe escalar en 1.2');
+    assert.equal(shape.radiusY, 36, 'radiusY debe escalar en 1.2 preservando proporción 2:1');
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 284, clientY: 236, shiftKey: true });
+    controller.destroy();
+  });
+
   it('no registra ResizeCommand si se hace clic en un manejador sin arrastre', () => {
     const manager = new StateManager();
     const commandManager = new CommandManager();

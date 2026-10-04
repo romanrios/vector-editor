@@ -90,13 +90,14 @@ describe('Funciones Geométricas de Selección Múltiple', () => {
       assert.notEqual(bounds, null);
       // rect: [0, 50] x [0, 50]
       // ellipse: [170, 230] x [180, 220]
-      // path: minX=100, maxX=150, minY=300, maxY=350 (por el handleOut)
+      // path: minX=100, maxX=150, minY=300, maxY=~328.93 (limitado a la curva real, sin incluir el handleOut en 350)
       assert.equal(bounds!.minX, 0);
       assert.equal(bounds!.minY, 0);
       assert.equal(bounds!.maxX, 230);
-      assert.equal(bounds!.maxY, 350);
+      assert.ok(bounds!.maxY < 350, 'maxY no debe expandirse al handleOut en 350');
+      assert.ok(Math.abs(bounds!.maxY - 328.93) < 0.1, 'maxY debe limitarse al extremo de la curva');
       assert.equal(bounds!.width, 230);
-      assert.equal(bounds!.height, 350);
+      assert.ok(Math.abs(bounds!.height - 328.93) < 0.1, 'height debe limitarse a la curva');
     });
   });
 

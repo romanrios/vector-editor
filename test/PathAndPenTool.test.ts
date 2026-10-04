@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { RenderEngine } from '../src/render/RenderEngine.ts';
-import { isPointInPath, getPathAABB } from '../src/utils/geometry.ts';
+import { isPointInPath, getPathAABB, getPathBaseAABB, getSelectionHandles } from '../src/utils/geometry.ts';
 import type { Path } from '../src/types/scene-graph.ts';
 
 // Mock simple de Canvas para Node.js
@@ -74,7 +74,7 @@ function createMockCanvas(): HTMLCanvasElement & { dispatchSimulatedEvent: (type
 }
 
 describe('Primitiva Path, Herramienta Pluma y Hit-Testing No Rectangular', () => {
-  it('calcula AABB para un Path considerando puntos y manejadores Bézier', () => {
+  it('calcula AABB para un Path limitándose al objeto/curva sin incluir manejadores de vectores', () => {
     const path: Path = {
       id: 'p1',
       type: 'path',
@@ -92,8 +92,11 @@ describe('Primitiva Path, Herramienta Pluma y Hit-Testing No Rectangular', () =>
     const aabb = getPathAABB(path);
     assert.equal(aabb.minX, 100);
     assert.equal(aabb.maxX, 200);
-    assert.equal(aabb.minY, 50, 'Debe considerar el handleOut superior en Y: 50');
-    assert.equal(aabb.maxY, 160, 'Debe considerar el handleIn inferior en Y: 160');
+    // No debe expandirse hacia los manejadores (Y: 50 e Y: 160), sino ceñirse al objeto/curva real (~86.55 e ~118.44)
+    assert.ok(aabb.minY > 50, 'minY no debe incluir el handleOut superior en Y: 50');
+    assert.ok(aabb.maxY < 160, 'maxY no debe incluir el handleIn inferior en Y: 160');
+    assert.ok(Math.abs(aabb.minY - 86.55) < 0.1, 'minY debe coincidir con el extremo superior de la curva');
+    assert.ok(Math.abs(aabb.maxY - 118.44) < 0.1, 'maxY debe coincidir con el extremo inferior de la curva');
   });
 
   it('ejecuta Hit-Testing no rectangular distinguiendo la curva de su AABB vacío', () => {
@@ -274,5 +277,48 @@ describe('Primitiva Path, Herramienta Pluma y Hit-Testing No Rectangular', () =>
 
     // Un punto en (120, 150) estaba sobre la línea original NO rotada, pero NO sobre la rotada
     assert.equal(isPointInPath(120, 150, rotatedLine), false);
+  });
+
+  it('el cuadrado seleccionador y AABB de la forma vectorial se limita al objeto sin incluir manejadores', () => {
+    // Curva S idéntica a la figura de muestra del editor
+    const sCurve: Path = {
+      id: 's-curve-test',
+      type: 'path',
+      name: 'S Curve',
+      x: 120,
+      y: 450,
+      points: [
+        { x: 120, y: 480, handleOut: { x: 220, y: 390 } },
+        { x: 340, y: 480, handleIn: { x: 260, y: 570 }, handleOut: { x: 420, y: 390 } },
+        { x: 540, y: 480, handleIn: { x: 460, y: 570 } },
+      ],
+      stroke: '#38bdf8',
+      strokeWidth: 4,
+    };
+
+    const baseAABB = getPathBaseAABB(sCurve);
+    // Los puntos de ancla están en Y: 480.
+    // Los manejadores de control se extienden hasta Y: 390 e Y: 570.
+    // La curva real (el objeto) oscila entre ~454 y ~506 (altura ~52px).
+    assert.equal(baseAABB.minX, 120);
+    assert.equal(baseAABB.maxX, 540);
+    assert.ok(baseAABB.minY > 390, 'minY no debe incluir el handleOut en Y: 390');
+    assert.ok(baseAABB.maxY < 570, 'maxY no debe incluir el handleIn en Y: 570');
+    assert.ok(Math.abs(baseAABB.minY - 454.02) < 0.1, `minY (${baseAABB.minY}) debe ceñirse al pico superior de la curva (~454)`);
+    assert.ok(Math.abs(baseAABB.maxY - 505.98) < 0.1, `maxY (${baseAABB.maxY}) debe ceñirse al pico inferior de la curva (~506)`);
+    assert.ok(Math.abs(baseAABB.height - 51.96) < 0.1, 'la altura de la caja delimitadora debe ser ~52px, no 180px');
+
+    // Los manejadores del cuadrado seleccionador (getSelectionHandles) deben posicionarse en las esquinas de la curva real
+    const handles = getSelectionHandles(sCurve, 1);
+    const tl = handles.find((h) => h.type === 'top-left')!;
+    const br = handles.find((h) => h.type === 'bottom-right')!;
+
+    // Centro del manejador top-left en Y debe ser minY de la curva (~454)
+    const tlCenterY = tl.minY + tl.height / 2;
+    assert.ok(Math.abs(tlCenterY - 454.02) < 0.1, 'el manejador top-left debe ubicarse en el límite superior de la curva');
+
+    // Centro del manejador bottom-right en Y debe ser maxY de la curva (~506)
+    const brCenterY = br.minY + br.height / 2;
+    assert.ok(Math.abs(brCenterY - 505.98) < 0.1, 'el manejador bottom-right debe ubicarse en el límite inferior de la curva');
   });
 });

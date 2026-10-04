@@ -67,6 +67,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
   { key: 'Flechas', description: 'Mover figuras seleccionadas (1 px)', category: 'Transformación' },
   { key: 'Shift + Flechas', description: 'Mover figuras seleccionadas (10 px)', category: 'Transformación' },
+  { key: 'Shift (al redimensionar)', description: 'Escalar proporcionalmente sin deformar', category: 'Transformación' },
   { key: 'Shift (al arrastrar)', description: 'Restringir proporción 1:1', category: 'Dibujo' },
   { key: 'Escape', description: 'Cancelar creación/marquesina o deseleccionar', category: 'Navegación' },
   { key: 'Enter', description: 'Finalizar trazado Bézier activo', category: 'Dibujo' },
@@ -220,6 +221,7 @@ export class InputController {
   // Estado del redimensionado por manejadores de esquina (modo Selección)
   private _isResizing: boolean = false;
   private resizeOrigin: { x: number; y: number } | null = null;
+  private _lastResizeMousePos: { x: number; y: number } | null = null;
   private activeResizeHandle: HandleType | null = null;
   private resizingShapeId: string | null = null;
   private initialDimensions: ShapeDimensions | null = null;
@@ -869,6 +871,7 @@ export class InputController {
           this._isDragging = false;
           this._isRotating = false;
           this.resizeOrigin = { x, y };
+          this._lastResizeMousePos = { x, y };
           this.activeResizeHandle = hitHandle.type;
           this.resizingShapeId = selectedNode.id;
 
@@ -1225,6 +1228,7 @@ export class InputController {
         this.activeResizeHandle &&
         this.initialDimensions
       ) {
+        this._lastResizeMousePos = { x, y };
         const deltaX = x - this.resizeOrigin.x;
         const deltaY = y - this.resizeOrigin.y;
 
@@ -1232,7 +1236,8 @@ export class InputController {
           this.initialDimensions,
           this.activeResizeHandle,
           deltaX,
-          deltaY
+          deltaY,
+          Boolean(event.shiftKey)
         );
 
         this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
@@ -1487,7 +1492,8 @@ export class InputController {
           this.initialDimensions,
           this.activeResizeHandle,
           deltaX,
-          deltaY
+          deltaY,
+          Boolean(event.shiftKey)
         );
 
         this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
@@ -1760,11 +1766,35 @@ export class InputController {
       return;
     }
 
-    if (event.key === 'Shift' && this._isCreatingShape) {
-      this._creationShiftKey = true;
-      this.updateShapePreview(true);
-      this.stateManager.markDirty();
-      return;
+    if (event.key === 'Shift') {
+      if (this._isResizing) {
+        if (
+          this.resizingShapeId &&
+          this.resizeOrigin &&
+          this.activeResizeHandle &&
+          this.initialDimensions &&
+          this._lastResizeMousePos
+        ) {
+          const deltaX = this._lastResizeMousePos.x - this.resizeOrigin.x;
+          const deltaY = this._lastResizeMousePos.y - this.resizeOrigin.y;
+          const newDimensions = this.calculateResizedDimensions(
+            this.initialDimensions,
+            this.activeResizeHandle,
+            deltaX,
+            deltaY,
+            true
+          );
+          this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
+          this.stateManager.markDirty();
+        }
+        return;
+      }
+      if (this._isCreatingShape) {
+        this._creationShiftKey = true;
+        this.updateShapePreview(true);
+        this.stateManager.markDirty();
+        return;
+      }
     }
 
     const key = event.key;
@@ -1846,10 +1876,33 @@ export class InputController {
   }
 
   public handleKeyUp(event: KeyboardEvent): void {
-    if (event.key === 'Shift' && this._isCreatingShape) {
-      this._creationShiftKey = false;
-      this.updateShapePreview(false);
-      this.stateManager.markDirty();
+    if (event.key === 'Shift') {
+      if (this._isResizing) {
+        if (
+          this.resizingShapeId &&
+          this.resizeOrigin &&
+          this.activeResizeHandle &&
+          this.initialDimensions &&
+          this._lastResizeMousePos
+        ) {
+          const deltaX = this._lastResizeMousePos.x - this.resizeOrigin.x;
+          const deltaY = this._lastResizeMousePos.y - this.resizeOrigin.y;
+          const newDimensions = this.calculateResizedDimensions(
+            this.initialDimensions,
+            this.activeResizeHandle,
+            deltaX,
+            deltaY,
+            false
+          );
+          this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
+          this.stateManager.markDirty();
+        }
+      }
+      if (this._isCreatingShape) {
+        this._creationShiftKey = false;
+        this.updateShapePreview(false);
+        this.stateManager.markDirty();
+      }
     }
 
     if (event.code === 'Space' || event.key === ' ') {
@@ -2443,6 +2496,7 @@ export class InputController {
   private resetResize(): void {
     this._isResizing = false;
     this.resizeOrigin = null;
+    this._lastResizeMousePos = null;
     this.activeResizeHandle = null;
     this.resizingShapeId = null;
     this.initialDimensions = null;
@@ -2741,12 +2795,14 @@ export class InputController {
   /**
    * Calcula las dimensiones redimensionadas relativas a la esquina de manejador arrastrada,
    * manteniendo fijo el vértice opuesto (ancla) en espacio global y respetando la rotación de la figura.
+   * Si preserveAspectRatio es true (tecla Shift), escala proporcionalmente sin deformar.
    */
-  private calculateResizedDimensions(
+  public calculateResizedDimensions(
     initial: ShapeDimensions,
     handle: HandleType,
     dx: number,
-    dy: number
+    dy: number,
+    preserveAspectRatio: boolean = false
   ): ShapeDimensions {
     const rotation = initial.rotation ?? 0;
     const rad = (rotation * Math.PI) / 180;
@@ -2757,72 +2813,89 @@ export class InputController {
     const localDx = dx * cos + dy * sin;
     const localDy = -dx * sin + dy * cos;
 
+    let dxSign = 1;
+    let dySign = 1;
+    switch (handle) {
+      case 'bottom-right':
+        dxSign = 1;
+        dySign = 1;
+        break;
+      case 'bottom-left':
+        dxSign = -1;
+        dySign = 1;
+        break;
+      case 'top-right':
+        dxSign = 1;
+        dySign = -1;
+        break;
+      case 'top-left':
+        dxSign = -1;
+        dySign = -1;
+        break;
+    }
+
+    const computeSize = (
+      initW: number,
+      initH: number
+    ): { newW: number; newH: number; scaleX: number; scaleY: number } => {
+      const safeInitW = Math.max(1, initW);
+      const safeInitH = Math.max(1, initH);
+
+      if (!preserveAspectRatio) {
+        const newW = Math.max(5, initW + dxSign * localDx);
+        const newH = Math.max(5, initH + dySign * localDy);
+        return {
+          newW,
+          newH,
+          scaleX: newW / safeInitW,
+          scaleY: newH / safeInitH,
+        };
+      }
+
+      const rawNewW = initW + dxSign * localDx;
+      const rawNewH = initH + dySign * localDy;
+
+      let scale: number;
+      if (initW < 1) {
+        scale = rawNewH / safeInitH;
+      } else if (initH < 1) {
+        scale = rawNewW / safeInitW;
+      } else {
+        const sx = rawNewW / safeInitW;
+        const sy = rawNewH / safeInitH;
+        scale = Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy;
+      }
+
+      const minScale = Math.max(5 / safeInitW, 5 / safeInitH);
+      scale = Math.max(minScale, scale);
+
+      const newW = Math.max(5, initW * scale);
+      const newH = Math.max(5, initH * scale);
+
+      return {
+        newW,
+        newH,
+        scaleX: scale,
+        scaleY: scale,
+      };
+    };
+
     if (initial.points !== undefined && initial.points.length > 0) {
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
+      const baseAABB = getPathBaseAABB(initial as Path);
+      const minX = baseAABB.minX;
+      const minY = baseAABB.minY;
+      const maxX = baseAABB.maxX;
+      const maxY = baseAABB.maxY;
+      const initW = Math.max(1, baseAABB.width);
+      const initH = Math.max(1, baseAABB.height);
 
-      for (const pt of initial.points) {
-        const coords = [pt];
-        if (pt.handleIn) coords.push(pt.handleIn);
-        if (pt.handleOut) coords.push(pt.handleOut);
+      const { newW, newH, scaleX, scaleY } = computeSize(initW, initH);
 
-        for (const { x, y } of coords) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
+      const anchorX = dxSign > 0 ? minX : maxX;
+      const anchorY = dySign > 0 ? minY : maxY;
 
-      const initW = Math.max(1, maxX - minX);
-      const initH = Math.max(1, maxY - minY);
-
-      let newW = initW;
-      let newH = initH;
-      let anchorX = minX;
-      let anchorY = minY;
-      let localShiftX = 0;
-      let localShiftY = 0;
-
-      switch (handle) {
-        case 'bottom-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH + localDy);
-          anchorX = minX;
-          anchorY = minY;
-          localShiftX = (newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'bottom-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH + localDy);
-          anchorX = maxX;
-          anchorY = minY;
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'top-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH - localDy);
-          anchorX = minX;
-          anchorY = maxY;
-          localShiftX = (newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-        case 'top-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH - localDy);
-          anchorX = maxX;
-          anchorY = maxY;
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-      }
-
-      const scaleX = newW / initW;
-      const scaleY = newH / initH;
+      const localShiftX = (dxSign * (newW - initW)) / 2;
+      const localShiftY = (dySign * (newH - initH)) / 2;
 
       // Compensación de rotación para mantener fijo el punto ancla en coordenadas de pantalla:
       // T = (R(theta) - I) * localShift
@@ -2860,37 +2933,10 @@ export class InputController {
       const initW = initial.width;
       const initH = initial.height;
 
-      let newW = initW;
-      let newH = initH;
-      let localShiftX = 0;
-      let localShiftY = 0;
+      const { newW, newH } = computeSize(initW, initH);
 
-      switch (handle) {
-        case 'bottom-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH + localDy);
-          localShiftX = (newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'bottom-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH + localDy);
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'top-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH - localDy);
-          localShiftX = (newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-        case 'top-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH - localDy);
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-      }
+      const localShiftX = (dxSign * (newW - initW)) / 2;
+      const localShiftY = (dySign * (newH - initH)) / 2;
 
       const initCenterX = initX + initW / 2;
       const initCenterY = initY + initH / 2;
@@ -2916,37 +2962,10 @@ export class InputController {
       const initW = initRx * 2;
       const initH = initRy * 2;
 
-      let newW = initW;
-      let newH = initH;
-      let localShiftX = 0;
-      let localShiftY = 0;
+      const { newW, newH } = computeSize(initW, initH);
 
-      switch (handle) {
-        case 'bottom-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH + localDy);
-          localShiftX = (newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'bottom-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH + localDy);
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = (newH - initH) / 2;
-          break;
-        case 'top-right':
-          newW = Math.max(5, initW + localDx);
-          newH = Math.max(5, initH - localDy);
-          localShiftX = (newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-        case 'top-left':
-          newW = Math.max(5, initW - localDx);
-          newH = Math.max(5, initH - localDy);
-          localShiftX = -(newW - initW) / 2;
-          localShiftY = -(newH - initH) / 2;
-          break;
-      }
+      const localShiftX = (dxSign * (newW - initW)) / 2;
+      const localShiftY = (dySign * (newH - initH)) / 2;
 
       const newRx = newW / 2;
       const newRy = newH / 2;

@@ -362,9 +362,10 @@
       .header-btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        justify-content: center;
+        width: 24px;
         height: 24px;
-        padding: 0 8px;
+        padding: 0;
         border-radius: var(--radius-xs);
         border: 1px solid var(--border-subtle);
         background: var(--bg-control);
@@ -1106,13 +1107,12 @@
         </nav>
       </div>
 
-      <div class="header-actions" role="toolbar" aria-label="Acciones de archivo e historial">
+      <div class="header-actions" role="toolbar" aria-label="Historial">
         <button id="btn-undo" class="header-btn action-btn disabled" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 7v6h6"/>
             <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
           </svg>
-          <span>Deshacer</span>
         </button>
 
         <button id="btn-redo" class="header-btn action-btn disabled" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
@@ -1120,29 +1120,9 @@
             <path d="M21 7v6h-6"/>
             <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
           </svg>
-          <span>Rehacer</span>
         </button>
 
-        <div class="header-separator" aria-hidden="true"></div>
-
-        <button id="btn-import" class="header-btn" title="Importar Scene Graph desde JSON" aria-label="Importar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span>Importar</span>
-          <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;" aria-hidden="true" />
-        </button>
-
-        <button id="btn-export" class="header-btn" title="Exportar Scene Graph como archivo JSON" aria-label="Exportar JSON">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          <span>Exportar</span>
-        </button>
+        <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;" aria-hidden="true" />
 
         <button id="btn-toggle-panel" class="toggle-panel-btn" title="Alternar panel de propiedades" aria-label="Alternar panel de propiedades" aria-expanded="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

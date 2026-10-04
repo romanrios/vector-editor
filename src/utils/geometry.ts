@@ -94,8 +94,67 @@ export function getEllipseAABB(ellipse: Ellipse): AABB {
 }
 
 /**
+ * Evalúa el valor escalar de una curva de Bézier cúbica en 1D para el parámetro t en [0, 1].
+ */
+export function evalCubicBezier1D(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/**
+ * Calcula los valores mínimo y máximo exactos de un segmento de curva Bézier cúbica 1D para t en [0, 1].
+ * Evalúa los extremos en la frontera (t=0, t=1) y en los puntos críticos donde la derivada se anula.
+ */
+export function getCubicBezierSegmentExtrema1D(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number
+): { min: number; max: number } {
+  let min = Math.min(p0, p3);
+  let max = Math.max(p0, p3);
+
+  // Derivada de la curva Bézier cúbica dividida por 3: a*t^2 + b*t + c = 0
+  const a = p3 - 3 * p2 + 3 * p1 - p0;
+  const b = 2 * (p0 - 2 * p1 + p2);
+  const c = p1 - p0;
+
+  if (Math.abs(a) < 1e-9) {
+    if (Math.abs(b) > 1e-9) {
+      const t = -c / b;
+      if (t > 0 && t < 1) {
+        const val = evalCubicBezier1D(p0, p1, p2, p3, t);
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+    }
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc >= 0) {
+      const sqrtDisc = Math.sqrt(disc);
+      const t1 = (-b + sqrtDisc) / (2 * a);
+      const t2 = (-b - sqrtDisc) / (2 * a);
+
+      if (t1 > 0 && t1 < 1) {
+        const val = evalCubicBezier1D(p0, p1, p2, p3, t1);
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+      if (t2 > 0 && t2 < 1) {
+        const val = evalCubicBezier1D(p0, p1, p2, p3, t2);
+        if (val < min) min = val;
+        if (val > max) max = val;
+      }
+    }
+  }
+
+  return { min, max };
+}
+
+/**
  * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Path sin rotación.
- * Incluye los puntos de ancla y sus manejadores de control Bézier en espacio local.
+ * Se limita exclusivamente al objeto geométrico (la curva y sus puntos de ancla)
+ * sin expandirse hacia los manejadores de control Bézier (handleIn/handleOut).
  */
 export function getPathBaseAABB(path: Path): AABB {
   if (!path.points || path.points.length === 0) {
@@ -109,22 +168,52 @@ export function getPathBaseAABB(path: Path): AABB {
     };
   }
 
+  if (path.points.length === 1) {
+    const pt = path.points[0];
+    return {
+      minX: pt.x,
+      minY: pt.y,
+      maxX: pt.x,
+      maxY: pt.y,
+      width: 0,
+      height: 0,
+    };
+  }
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const pt of path.points) {
-    const checkCoords = [pt];
-    if (pt.handleIn) checkCoords.push(pt.handleIn);
-    if (pt.handleOut) checkCoords.push(pt.handleOut);
+  const points = path.points;
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1];
+    const p3 = points[i];
+    const p1 = p0.handleOut ?? p0;
+    const p2 = p3.handleIn ?? p3;
 
-    for (const { x, y } of checkCoords) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
+    const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
+    const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+
+    if (xExt.min < minX) minX = xExt.min;
+    if (xExt.max > maxX) maxX = xExt.max;
+    if (yExt.min < minY) minY = yExt.min;
+    if (yExt.max > maxY) maxY = yExt.max;
+  }
+
+  if (path.closed && points.length > 2) {
+    const p0 = points[points.length - 1];
+    const p3 = points[0];
+    const p1 = p0.handleOut ?? p0;
+    const p2 = p3.handleIn ?? p3;
+
+    const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
+    const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+
+    if (xExt.min < minX) minX = xExt.min;
+    if (xExt.max > maxX) maxX = xExt.max;
+    if (yExt.min < minY) minY = yExt.min;
+    if (yExt.max > maxY) maxY = yExt.max;
   }
 
   return {
@@ -139,13 +228,25 @@ export function getPathBaseAABB(path: Path): AABB {
 
 /**
  * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Path (trazado vectorial).
- * Incluye los puntos de ancla y sus manejadores de control Bézier, y aplica la
- * rotación centrada si está presente.
+ * Se limita exclusivamente al objeto geométrico (curva Bézier) sin incluir los
+ * manejadores de control, aplicando la rotación centrada si está presente.
  */
 export function getPathAABB(path: Path): AABB {
   const baseAABB = getPathBaseAABB(path);
   if (!path.rotation || !path.points || path.points.length === 0) {
     return baseAABB;
+  }
+
+  if (path.points.length === 1) {
+    const pt = path.points[0];
+    return {
+      minX: pt.x,
+      minY: pt.y,
+      maxX: pt.x,
+      maxY: pt.y,
+      width: 0,
+      height: 0,
+    };
   }
 
   const cx = (baseAABB.minX + baseAABB.maxX) / 2;
@@ -154,25 +255,55 @@ export function getPathAABB(path: Path): AABB {
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
 
+  const rotateCoord = (pt: { x: number; y: number }): { x: number; y: number } => ({
+    x: cx + (pt.x - cx) * cos - (pt.y - cy) * sin,
+    y: cy + (pt.x - cx) * sin + (pt.y - cy) * cos,
+  });
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const pt of path.points) {
-    const checkCoords = [pt];
-    if (pt.handleIn) checkCoords.push(pt.handleIn);
-    if (pt.handleOut) checkCoords.push(pt.handleOut);
+  const points = path.points;
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1];
+    const p3 = points[i];
+    const p1 = p0.handleOut ?? p0;
+    const p2 = p3.handleIn ?? p3;
 
-    for (const { x, y } of checkCoords) {
-      const rx = cx + (x - cx) * cos - (y - cy) * sin;
-      const ry = cy + (x - cx) * sin + (y - cy) * cos;
+    const rotP0 = rotateCoord(p0);
+    const rotP1 = rotateCoord(p1);
+    const rotP2 = rotateCoord(p2);
+    const rotP3 = rotateCoord(p3);
 
-      if (rx < minX) minX = rx;
-      if (rx > maxX) maxX = rx;
-      if (ry < minY) minY = ry;
-      if (ry > maxY) maxY = ry;
-    }
+    const xExt = getCubicBezierSegmentExtrema1D(rotP0.x, rotP1.x, rotP2.x, rotP3.x);
+    const yExt = getCubicBezierSegmentExtrema1D(rotP0.y, rotP1.y, rotP2.y, rotP3.y);
+
+    if (xExt.min < minX) minX = xExt.min;
+    if (xExt.max > maxX) maxX = xExt.max;
+    if (yExt.min < minY) minY = yExt.min;
+    if (yExt.max > maxY) maxY = yExt.max;
+  }
+
+  if (path.closed && points.length > 2) {
+    const p0 = points[points.length - 1];
+    const p3 = points[0];
+    const p1 = p0.handleOut ?? p0;
+    const p2 = p3.handleIn ?? p3;
+
+    const rotP0 = rotateCoord(p0);
+    const rotP1 = rotateCoord(p1);
+    const rotP2 = rotateCoord(p2);
+    const rotP3 = rotateCoord(p3);
+
+    const xExt = getCubicBezierSegmentExtrema1D(rotP0.x, rotP1.x, rotP2.x, rotP3.x);
+    const yExt = getCubicBezierSegmentExtrema1D(rotP0.y, rotP1.y, rotP2.y, rotP3.y);
+
+    if (xExt.min < minX) minX = xExt.min;
+    if (xExt.max > maxX) maxX = xExt.max;
+    if (yExt.min < minY) minY = yExt.min;
+    if (yExt.max > maxY) maxY = yExt.max;
   }
 
   return {
