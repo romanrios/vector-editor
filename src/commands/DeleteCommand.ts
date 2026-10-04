@@ -13,6 +13,10 @@ export class DeleteCommand implements Command {
   public readonly layerId: string;
   public readonly originalIndex?: number;
 
+  public get shapeId(): string {
+    return this.shape.id;
+  }
+
   constructor(stateManager: StateManager, shape: Shape, layerId: string, originalIndex?: number);
   constructor(stateManager: StateManager, layerId: string, shape: Shape, originalIndex?: number);
   constructor(

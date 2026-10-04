@@ -2,6 +2,8 @@ import type { StateManager, ShapePositionEntry } from '../state/StateManager.ts'
 import { isLayer, type AABB, type Ellipse, type Path, type PathPoint, type Rectangle, type Shape, type Vector2D } from '../types/scene-graph.ts';
 import { cloneShape } from '../utils/cloneShape.ts';
 import {
+  computeAlignment,
+  computeDistribution,
   getPathBaseAABB,
   getSelectionHandles,
   getShapeAABB,
@@ -10,6 +12,8 @@ import {
   isPointInPath,
   isPointInShape,
   normalizeShapeBounds,
+  type AlignmentMode,
+  type DistributionAxis,
   type HandleType,
 } from '../utils/geometry.ts';
 import { CommandManager } from '../commands/CommandManager.ts';
@@ -1857,6 +1861,39 @@ export class InputController {
   }
 
   /**
+   * Agrupa una colección de figuras (por defecto la selección activa) por capa contenedora,
+   * indexando su posición dentro de cada capa y ordenando los elementos por índice de forma ascendente.
+   * Reutilizado uniformemente por bringToFront, sendToBack, duplicate, copy, paste y deleteSelected.
+   */
+  private getSelectedShapesGroupedByLayer(
+    shapes: readonly Shape[] = this.stateManager.getSelectedNodes()
+  ): Map<string, { shape: Shape; index: number }[]> {
+    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
+    if (shapes.length === 0) {
+      return layerMap;
+    }
+
+    for (const shape of shapes) {
+      const parent = this.stateManager.findParent(shape.id);
+      if (parent && isLayer(parent)) {
+        let list = layerMap.get(parent.id);
+        if (!list) {
+          list = [];
+          layerMap.set(parent.id, list);
+        }
+        const index = parent.children.findIndex((s) => s.id === shape.id);
+        list.push({ shape, index });
+      }
+    }
+
+    for (const items of layerMap.values()) {
+      items.sort((a, b) => a.index - b.index);
+    }
+
+    return layerMap;
+  }
+
+  /**
    * Trae las figuras seleccionadas al frente de sus capas contenedoras conservando su orden relativo,
    * registrando una sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
    */
@@ -1885,18 +1922,9 @@ export class InputController {
     }
 
     // Varias figuras seleccionadas:
-    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
-    for (const shape of selectedNodes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        let list = layerMap.get(parent.id);
-        if (!list) {
-          list = [];
-          layerMap.set(parent.id, list);
-        }
-        const index = parent.children.findIndex((s) => s.id === shape.id);
-        list.push({ shape, index });
-      }
+    const layerMap = this.getSelectedShapesGroupedByLayer(selectedNodes);
+    if (layerMap.size === 0) {
+      return false;
     }
 
     let anyNeedsMove = false;
@@ -1904,7 +1932,6 @@ export class InputController {
       const parent = this.stateManager.findNode(layerId);
       if (parent && isLayer(parent)) {
         const total = parent.children.length;
-        items.sort((a, b) => a.index - b.index);
         const k = items.length;
         const alreadyAtTop = items.every((it, idx) => it.index === total - k + idx);
         if (!alreadyAtTop) {
@@ -1920,8 +1947,6 @@ export class InputController {
     const commands: ReorderCommand[] = [];
 
     for (const [layerId, items] of layerMap.entries()) {
-      items.sort((a, b) => a.index - b.index);
-
       for (const item of items) {
         const parent = this.stateManager.findNode(layerId);
         if (parent && isLayer(parent)) {
@@ -1971,25 +1996,15 @@ export class InputController {
     }
 
     // Varias figuras seleccionadas:
-    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
-    for (const shape of selectedNodes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        let list = layerMap.get(parent.id);
-        if (!list) {
-          list = [];
-          layerMap.set(parent.id, list);
-        }
-        const index = parent.children.findIndex((s) => s.id === shape.id);
-        list.push({ shape, index });
-      }
+    const layerMap = this.getSelectedShapesGroupedByLayer(selectedNodes);
+    if (layerMap.size === 0) {
+      return false;
     }
 
     let anyNeedsMove = false;
     for (const [layerId, items] of layerMap.entries()) {
       const parent = this.stateManager.findNode(layerId);
       if (parent && isLayer(parent)) {
-        items.sort((a, b) => a.index - b.index);
         const alreadyAtBottom = items.every((it, idx) => it.index === idx);
         if (!alreadyAtBottom) {
           anyNeedsMove = true;
@@ -2004,9 +2019,9 @@ export class InputController {
     const commands: ReorderCommand[] = [];
 
     for (const [layerId, items] of layerMap.entries()) {
-      items.sort((a, b) => b.index - a.index);
+      const reversed = [...items].reverse();
 
-      for (const item of items) {
+      for (const item of reversed) {
         const parent = this.stateManager.findNode(layerId);
         if (parent && isLayer(parent)) {
           const currentIndex = parent.children.findIndex((s) => s.id === item.shape.id);
@@ -2053,25 +2068,7 @@ export class InputController {
    * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
   public duplicate(): (Shape[] & Shape) | null {
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0) {
-      return null;
-    }
-
-    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
-    for (const shape of selectedNodes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        let list = layerMap.get(parent.id);
-        if (!list) {
-          list = [];
-          layerMap.set(parent.id, list);
-        }
-        const index = parent.children.findIndex((s) => s.id === shape.id);
-        list.push({ shape, index });
-      }
-    }
-
+    const layerMap = this.getSelectedShapesGroupedByLayer();
     if (layerMap.size === 0) {
       return null;
     }
@@ -2080,7 +2077,6 @@ export class InputController {
     const commands: AddShapeCommand[] = [];
 
     for (const [layerId, items] of layerMap.entries()) {
-      items.sort((a, b) => a.index - b.index);
       const maxIndex = Math.max(...items.map((it) => it.index));
 
       items.forEach((item, k) => {
@@ -2112,30 +2108,24 @@ export class InputController {
    * Retorna true si se copió con éxito o false si no había figuras seleccionadas.
    */
   public copy(): boolean {
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0) {
+    const layerMap = this.getSelectedShapesGroupedByLayer();
+    if (layerMap.size === 0) {
       return false;
     }
 
     const doc = this.stateManager.getState();
     const entries: ClipboardEntry[] = [];
 
-    for (const shape of selectedNodes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        const layerIndex = doc.children.findIndex((l) => l.id === parent.id);
-        const shapeIndex = parent.children.findIndex((s) => s.id === shape.id);
+    for (const [layerId, items] of layerMap.entries()) {
+      const layerIndex = doc.children.findIndex((l) => l.id === layerId);
+      for (const item of items) {
         entries.push({
-          shape,
-          layerId: parent.id,
+          shape: item.shape,
+          layerId,
           layerIndex,
-          shapeIndex,
+          shapeIndex: item.index,
         });
       }
-    }
-
-    if (entries.length === 0) {
-      return false;
     }
 
     entries.sort((a, b) => {
@@ -2207,25 +2197,7 @@ export class InputController {
    * @returns true si se eliminaron figuras, false si no había selección
    */
   public deleteSelected(): boolean {
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0) {
-      return false;
-    }
-
-    const layerMap = new Map<string, { shape: Shape; index: number }[]>();
-    for (const shape of selectedNodes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        let list = layerMap.get(parent.id);
-        if (!list) {
-          list = [];
-          layerMap.set(parent.id, list);
-        }
-        const index = parent.children.findIndex((s) => s.id === shape.id);
-        list.push({ shape, index });
-      }
-    }
-
+    const layerMap = this.getSelectedShapesGroupedByLayer();
     if (layerMap.size === 0) {
       return false;
     }
@@ -2234,8 +2206,8 @@ export class InputController {
 
     for (const [layerId, items] of layerMap.entries()) {
       // Orden descendente de índice para que la eliminación no altere los índices inferiores
-      items.sort((a, b) => b.index - a.index);
-      for (const item of items) {
+      const reversed = [...items].reverse();
+      for (const item of reversed) {
         commands.push(new DeleteCommand(this.stateManager, item.shape, layerId, item.index));
       }
     }
@@ -2315,6 +2287,107 @@ export class InputController {
     });
 
     const batch = new BatchCommand(commands, 'Translate Shapes');
+    this.commandManager.executeCommand(batch);
+    return true;
+  }
+
+  /**
+   * Alinea las figuras actualmente seleccionadas según el modo indicado.
+   * Si hay menos de 2 figuras seleccionadas y no bloqueadas, o si ninguna figura cambia de posición,
+   * no ejecuta nada ni registra historial.
+   * Toda la operación se encapsula en UN solo BatchCommand de TranslateCommand.
+   *
+   * @param mode Modo de alineación ('left', 'center-h', 'right', 'top', 'center-v', 'bottom')
+   * @returns true si se ejecutó y registró la alineación, false si no hubo cambios
+   */
+  public alignSelection(mode: AlignmentMode): boolean {
+    const selectedShapes = this.stateManager.getSelectedNodes().filter((s) => !s.locked);
+    if (selectedShapes.length < 2) {
+      return false;
+    }
+
+    const entries = computeAlignment(selectedShapes, mode);
+    if (entries.length === 0) {
+      return false;
+    }
+
+    const shapeMap = new Map(selectedShapes.map((s) => [s.id, s]));
+    const commands: TranslateCommand[] = [];
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const shape = shapeMap.get(entry.id);
+      if (!shape) continue;
+
+      commands.push(
+        new TranslateCommand(
+          this.stateManager,
+          entry.id,
+          shape.x,
+          shape.y,
+          entry.x,
+          entry.y,
+          { mergeTimeout: 0 }
+        )
+      );
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    const batch = new BatchCommand(commands, `Alinear (${mode})`);
+    this.commandManager.executeCommand(batch);
+    return true;
+  }
+
+  /**
+   * Distribuye las figuras actualmente seleccionadas uniformemente a lo largo del eje indicado,
+   * manteniendo iguales los espacios libres entre figuras contiguas y fijas la primera y última figura.
+   * Si hay menos de 3 figuras seleccionadas y no bloqueadas, o si ninguna figura cambia de posición,
+   * no ejecuta nada ni registra historial.
+   * Toda la operación se encapsula en UN solo BatchCommand de TranslateCommand.
+   *
+   * @param axis Eje de distribución ('horizontal' o 'vertical')
+   * @returns true si se ejecutó y registró la distribución, false si no hubo cambios
+   */
+  public distributeSelection(axis: DistributionAxis): boolean {
+    const selectedShapes = this.stateManager.getSelectedNodes().filter((s) => !s.locked);
+    if (selectedShapes.length < 3) {
+      return false;
+    }
+
+    const entries = computeDistribution(selectedShapes, axis);
+    if (entries.length === 0) {
+      return false;
+    }
+
+    const shapeMap = new Map(selectedShapes.map((s) => [s.id, s]));
+    const commands: TranslateCommand[] = [];
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const shape = shapeMap.get(entry.id);
+      if (!shape) continue;
+
+      commands.push(
+        new TranslateCommand(
+          this.stateManager,
+          entry.id,
+          shape.x,
+          shape.y,
+          entry.x,
+          entry.y,
+          { mergeTimeout: 0 }
+        )
+      );
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    const batch = new BatchCommand(commands, `Distribuir (${axis})`);
     this.commandManager.executeCommand(batch);
     return true;
   }

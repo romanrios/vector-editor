@@ -217,4 +217,29 @@ describe('BatchCommand (Comando Compuesto)', () => {
     ]);
     assert.equal(b1.mergeWith(bDiscontinuous), false);
   });
+
+  it('no produce ninguna fusión parcial si algún hijo rechaza la fusión', () => {
+    const stateManager = new StateManager();
+    const t0 = 1000;
+
+    const cmdA1 = new TranslateCommand(stateManager, 'a', 0, 0, 5, 0, { timestamp: t0, mergeTimeout: 400 });
+    const cmdB1 = new TranslateCommand(stateManager, 'b', 0, 0, 5, 0, { timestamp: t0, mergeTimeout: 400 });
+    const batch1 = new BatchCommand([cmdA1, cmdB1]);
+
+    // El primer hijo coincide y tiene continuidad, pero el segundo hijo tiene discontinuidad de coordenadas
+    const cmdA2 = new TranslateCommand(stateManager, 'a', 5, 0, 10, 0, { timestamp: t0 + 100, mergeTimeout: 400 });
+    const cmdB2Discontinuous = new TranslateCommand(stateManager, 'b', 99, 0, 105, 0, { timestamp: t0 + 100, mergeTimeout: 400 });
+    const batch2 = new BatchCommand([cmdA2, cmdB2Discontinuous]);
+
+    assert.equal(cmdA1.canMergeWith(cmdA2), true);
+    assert.equal(cmdB1.canMergeWith(cmdB2Discontinuous), false);
+    assert.equal(batch1.canMergeWith(batch2), false);
+
+    const merged = batch1.mergeWith(batch2);
+    assert.equal(merged, false);
+
+    // cmdA1 NO debe haberse modificado (no debe haber fusión parcial)
+    assert.equal(cmdA1.toX, 5, 'cmdA1 no debe haberse modificado parcialmente tras el rechazo de batch1.mergeWith');
+    assert.equal(cmdB1.toX, 5);
+  });
 });

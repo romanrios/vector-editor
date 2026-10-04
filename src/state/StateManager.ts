@@ -10,8 +10,6 @@ import type { CommandManager } from '../commands/CommandManager.ts';
 import { isDocument, isLayer, isShape } from '../types/scene-graph.ts';
 import {
   deepFreeze,
-  findNodeById,
-  findParentOfNode,
   insertAt,
   moveItem,
   removeAt,
@@ -25,6 +23,47 @@ export interface ShapePositionEntry {
   readonly y: number;
 }
 
+export interface DocumentIndex {
+  readonly nodeMap: Map<string, SceneNode>;
+  readonly parentMap: Map<string, ParentNode>;
+}
+
+export const documentIndexCache = new WeakMap<Document, DocumentIndex>();
+
+export function buildDocumentIndex(doc: Document): DocumentIndex {
+  const nodeMap = new Map<string, SceneNode>();
+  const parentMap = new Map<string, ParentNode>();
+
+  nodeMap.set(doc.id, doc);
+
+  for (let i = 0; i < doc.children.length; i++) {
+    const layer = doc.children[i];
+    nodeMap.set(layer.id, layer);
+    parentMap.set(layer.id, doc);
+
+    for (let j = 0; j < layer.children.length; j++) {
+      const shape = layer.children[j];
+      nodeMap.set(shape.id, shape);
+      parentMap.set(shape.id, layer);
+    }
+  }
+
+  return { nodeMap, parentMap };
+}
+
+export function getDocumentIndex(doc: Document): DocumentIndex {
+  let index = documentIndexCache.get(doc);
+  if (!index) {
+    index = buildDocumentIndex(doc);
+    documentIndexCache.set(doc, index);
+  }
+  return index;
+}
+
+export function hasCachedDocumentIndex(doc: Document): boolean {
+  return documentIndexCache.has(doc);
+}
+
 /**
  * Gestor de estado inmutable para el Scene Graph de un editor vectorial.
  * Toda modificación produce un nuevo estado a través de persistencia estructural,
@@ -33,6 +72,7 @@ export interface ShapePositionEntry {
 export class StateManager {
   private _state: Readonly<Document>;
   private _selectedIds: readonly string[] = [];
+  private _selectedSet: ReadonlySet<string> = new Set();
   private _listeners: Set<StateListener> = new Set();
   private _isDirty: boolean = true;
   private commandManager: CommandManager | null = null;
@@ -58,6 +98,7 @@ export class StateManager {
     this._isDirty = true;
     this._state = deepFreeze(initial);
     this._selectedIds = Object.freeze([]);
+    this._selectedSet = new Set();
     if (commandManager) {
       this.commandManager = commandManager;
     }
@@ -128,6 +169,7 @@ export class StateManager {
 
     // Al cargar un documento nuevo, la selección queda siempre vacía
     this._selectedIds = Object.freeze([]);
+    this._selectedSet = new Set();
 
     this.notify();
   }
@@ -160,12 +202,25 @@ export class StateManager {
     this._state = deepFreeze(nextState);
 
     // Purgar IDs seleccionados que ya no existan como figuras (Shape) en nextState
-    const validSelectedIds = this._selectedIds.filter((id) => {
-      const node = this.findNode(id);
-      return node !== null && isShape(node);
-    });
-    if (validSelectedIds.length !== this._selectedIds.length) {
-      this._selectedIds = Object.freeze(validSelectedIds);
+    if (this._selectedIds.length > 0) {
+      const index = getDocumentIndex(this._state);
+      let needsPurge = false;
+      for (let i = 0; i < this._selectedIds.length; i++) {
+        const node = index.nodeMap.get(this._selectedIds[i]);
+        if (!node || !isShape(node)) {
+          needsPurge = true;
+          break;
+        }
+      }
+
+      if (needsPurge) {
+        const validSelectedIds = this._selectedIds.filter((id) => {
+          const node = index.nodeMap.get(id);
+          return node !== null && node !== undefined && isShape(node);
+        });
+        this._selectedIds = Object.freeze(validSelectedIds);
+        this._selectedSet = new Set(validSelectedIds);
+      }
     }
 
     this.notify();
@@ -175,14 +230,16 @@ export class StateManager {
    * Busca un nodo por su identificador único.
    */
   public findNode(id: string): SceneNode | null {
-    return findNodeById(this._state, id);
+    const index = getDocumentIndex(this._state);
+    return index.nodeMap.get(id) ?? null;
   }
 
   /**
    * Encuentra el nodo contenedor padre del elemento solicitado.
    */
   public findParent(childId: string): ParentNode | null {
-    return findParentOfNode(this._state, childId);
+    const index = getDocumentIndex(this._state);
+    return index.parentMap.get(childId) ?? null;
   }
 
   /**
@@ -566,12 +623,14 @@ export class StateManager {
    */
   public getSelection(): readonly string[] {
     if (this._selectedIds.length > 0) {
+      const index = getDocumentIndex(this._state);
       const sanitized = this._selectedIds.filter((id) => {
-        const node = this.findNode(id);
-        return node !== null && isShape(node);
+        const node = index.nodeMap.get(id);
+        return node !== null && node !== undefined && isShape(node);
       });
       if (sanitized.length !== this._selectedIds.length) {
         this._selectedIds = Object.freeze(sanitized);
+        this._selectedSet = new Set(sanitized);
       }
     }
     return this._selectedIds;
@@ -581,9 +640,10 @@ export class StateManager {
    * Retorna un array con las figuras (Shape) actualmente seleccionadas en el Scene Graph.
    */
   public getSelectedNodes(): Shape[] {
+    const index = getDocumentIndex(this._state);
     const nodes: Shape[] = [];
     for (const id of this._selectedIds) {
-      const node = this.findNode(id);
+      const node = index.nodeMap.get(id);
       if (node && isShape(node)) {
         nodes.push(node);
       }
@@ -595,7 +655,7 @@ export class StateManager {
    * Comprueba si un nodo con el ID dado está actualmente seleccionado.
    */
   public isSelected(id: string): boolean {
-    return this._selectedIds.includes(id);
+    return this._selectedSet.has(id);
   }
 
   /**
@@ -608,11 +668,12 @@ export class StateManager {
   public setSelection(ids: readonly string[]): void {
     const seen = new Set<string>();
     const validIds: string[] = [];
+    const index = getDocumentIndex(this._state);
 
     for (const id of ids) {
       if (!seen.has(id)) {
         seen.add(id);
-        const node = this.findNode(id);
+        const node = index.nodeMap.get(id);
         if (node && isShape(node)) {
           validIds.push(id);
         }
@@ -629,6 +690,7 @@ export class StateManager {
     }
 
     this._selectedIds = Object.freeze(validIds);
+    this._selectedSet = new Set(validIds);
     this.markDirty();
     this.notify();
   }
@@ -713,22 +775,41 @@ export class StateManager {
     }
 
     const posMap = new Map<string, { x: number; y: number }>();
-    for (const entry of entries) {
+    const affectedLayerIds = new Set<string>();
+    const docIndex = getDocumentIndex(this._state);
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
       posMap.set(entry.id, { x: entry.x, y: entry.y });
+      const parent = docIndex.parentMap.get(entry.id);
+      if (parent && isLayer(parent)) {
+        affectedLayerIds.add(parent.id);
+      }
     }
 
     let updated = false;
 
-    const nextLayers = this._state.children.map((layer) => {
-      let layerChanged = false;
-      const nextShapes = layer.children.map((shape) => {
-        const targetPos = posMap.get(shape.id);
-        if (!targetPos) {
-          return shape;
-        }
+    const layers = this._state.children;
+    const nextLayers: typeof layers[number][] = new Array(layers.length);
 
-        if (shape.x === targetPos.x && shape.y === targetPos.y) {
-          return shape;
+    for (let l = 0; l < layers.length; l++) {
+      const layer = layers[l];
+      if (!affectedLayerIds.has(layer.id)) {
+        nextLayers[l] = layer;
+        continue;
+      }
+
+      let layerChanged = false;
+      const shapes = layer.children;
+      const sLen = shapes.length;
+      const nextShapes: typeof shapes[number][] = new Array(sLen);
+
+      for (let s = 0; s < sLen; s++) {
+        const shape = shapes[s];
+        const targetPos = posMap.get(shape.id);
+        if (!targetPos || (shape.x === targetPos.x && shape.y === targetPos.y)) {
+          nextShapes[s] = shape;
+          continue;
         }
 
         layerChanged = true;
@@ -737,35 +818,42 @@ export class StateManager {
         if (shape.type === 'path') {
           const dx = targetPos.x - shape.x;
           const dy = targetPos.y - shape.y;
-          const updatedPoints = shape.points.map((pt) => ({
-            x: pt.x + dx,
-            y: pt.y + dy,
-            handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
-            handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
-          }));
-          return {
+          const pts = shape.points;
+          const pLen = pts.length;
+          const updatedPoints = new Array(pLen);
+          for (let p = 0; p < pLen; p++) {
+            const pt = pts[p];
+            updatedPoints[p] = {
+              x: pt.x + dx,
+              y: pt.y + dy,
+              handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,
+              handleOut: pt.handleOut ? { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } : undefined,
+            };
+          }
+          nextShapes[s] = {
             ...shape,
             x: targetPos.x,
             y: targetPos.y,
             points: updatedPoints,
           };
+        } else {
+          nextShapes[s] = {
+            ...shape,
+            x: targetPos.x,
+            y: targetPos.y,
+          };
         }
-
-        return {
-          ...shape,
-          x: targetPos.x,
-          y: targetPos.y,
-        };
-      });
+      }
 
       if (layerChanged) {
-        return {
+        nextLayers[l] = {
           ...layer,
           children: nextShapes,
         };
+      } else {
+        nextLayers[l] = layer;
       }
-      return layer;
-    });
+    }
 
     if (!updated) {
       return false;

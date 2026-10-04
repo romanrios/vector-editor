@@ -9,9 +9,16 @@ import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
-import type { Path } from './types/scene-graph.ts';
+import type { Path, Shape } from './types/scene-graph.ts';
+import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 
-console.log('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
+function debug(...args: unknown[]): void {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+    console.log(...args);
+  }
+}
+
+debug('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
 // 1. Inicializar el StateManager inmutable, el CommandManager y el ViewportManager
 const commandManager = new CommandManager();
@@ -21,7 +28,7 @@ const moduleStateManager = stateManager;
 
 // 2. Inyectar las 3 figuras de prueba hardcodeadas iniciales
 injectSampleShapes(stateManager);
-console.log('✅ Figuras de prueba cargadas:', SAMPLE_SHAPES);
+debug('✅ Figuras de prueba cargadas:', SAMPLE_SHAPES);
 
 // 3. Inyectar un trazado vectorial Path con múltiples curvas Bézier cúbicas de demostración
 const samplePath: Path = {
@@ -43,7 +50,7 @@ const samplePath: Path = {
 };
 stateManager.addShape(stateManager.getState().children[0].id, samplePath);
 
-console.log('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
+debug('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
 
 /**
  * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)
@@ -128,6 +135,17 @@ export function setupUIBindings(
   const btnDuplicate = document.querySelector<HTMLButtonElement>('#btn-duplicate');
   const btnDeleteSelection = document.querySelector<HTMLButtonElement>('#btn-delete-selection');
 
+  // Sección Alinear y Distribuir en Panel de Propiedades
+  const sectionAlign = document.querySelector<HTMLDetailsElement>('#section-align');
+  const btnAlignLeft = document.querySelector<HTMLButtonElement>('#btn-align-left');
+  const btnAlignCenterH = document.querySelector<HTMLButtonElement>('#btn-align-center-h');
+  const btnAlignRight = document.querySelector<HTMLButtonElement>('#btn-align-right');
+  const btnDistributeH = document.querySelector<HTMLButtonElement>('#btn-distribute-h');
+  const btnAlignTop = document.querySelector<HTMLButtonElement>('#btn-align-top');
+  const btnAlignCenterV = document.querySelector<HTMLButtonElement>('#btn-align-center-v');
+  const btnAlignBottom = document.querySelector<HTMLButtonElement>('#btn-align-bottom');
+  const btnDistributeV = document.querySelector<HTMLButtonElement>('#btn-distribute-v');
+
   // Botón responsive para alternar panel lateral
   const btnTogglePanel = document.querySelector<HTMLButtonElement>('#btn-toggle-panel');
 
@@ -156,6 +174,21 @@ export function setupUIBindings(
   const menuItemDelete = document.querySelector<HTMLButtonElement>('#menu-item-delete');
   const menuItemBringToFront = document.querySelector<HTMLButtonElement>('#menu-item-bring-to-front');
   const menuItemSendToBack = document.querySelector<HTMLButtonElement>('#menu-item-send-to-back');
+
+  // Submenús Alinear y Distribuir en Menú Objeto
+  const menuItemAlign = document.querySelector<HTMLButtonElement>('#menu-item-align');
+  const menuDropdownAlign = document.querySelector<HTMLElement>('#menu-dropdown-align');
+  const menuItemAlignLeft = document.querySelector<HTMLButtonElement>('#menu-item-align-left');
+  const menuItemAlignCenterH = document.querySelector<HTMLButtonElement>('#menu-item-align-center-h');
+  const menuItemAlignRight = document.querySelector<HTMLButtonElement>('#menu-item-align-right');
+  const menuItemAlignTop = document.querySelector<HTMLButtonElement>('#menu-item-align-top');
+  const menuItemAlignCenterV = document.querySelector<HTMLButtonElement>('#menu-item-align-center-v');
+  const menuItemAlignBottom = document.querySelector<HTMLButtonElement>('#menu-item-align-bottom');
+
+  const menuItemDistribute = document.querySelector<HTMLButtonElement>('#menu-item-distribute');
+  const menuDropdownDistribute = document.querySelector<HTMLElement>('#menu-dropdown-distribute');
+  const menuItemDistributeH = document.querySelector<HTMLButtonElement>('#menu-item-distribute-h');
+  const menuItemDistributeV = document.querySelector<HTMLButtonElement>('#menu-item-distribute-v');
   const menuItemZoomIn = document.querySelector<HTMLButtonElement>('#menu-item-zoom-in');
   const menuItemZoomOut = document.querySelector<HTMLButtonElement>('#menu-item-zoom-out');
   const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
@@ -222,7 +255,7 @@ export function setupUIBindings(
     syncStatusBar();
   };
 
-  const syncStatusBar = () => {
+  const syncStatusBar = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
     if (statusShapesCount) {
       let count = 0;
       const doc = stateManager.getState();
@@ -236,7 +269,6 @@ export function setupUIBindings(
       statusShapesCount.textContent = count === 1 ? '1 figura' : `${count} figuras`;
     }
 
-    const selectedNodes = stateManager.getSelectedNodes();
     if (statusSelectionInfo) {
       if (selectedNodes.length === 1) {
         const selectedShape = selectedNodes[0];
@@ -297,7 +329,7 @@ export function setupUIBindings(
   syncToolButtons(inputController.currentTool);
 
   // Sincronización del estado de los ítems de menú desplegable
-  function syncMenuItems(): void {
+  function syncMenuItems(selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()): void {
     const canUndo = commandManager.canUndo();
     const canRedo = commandManager.canRedo();
 
@@ -310,7 +342,7 @@ export function setupUIBindings(
       menuItemRedo.setAttribute('aria-disabled', String(!canRedo));
     }
 
-    const hasSelection = stateManager.getSelection().length > 0;
+    const hasSelection = selectedNodes.length > 0;
 
     if (menuItemCopy) {
       menuItemCopy.disabled = !hasSelection;
@@ -338,6 +370,44 @@ export function setupUIBindings(
       menuBtnObject.setAttribute('aria-disabled', String(!hasSelection));
     }
 
+    const canAlign = selectedNodes.length >= 2;
+    const canDistribute = selectedNodes.length >= 3;
+
+    if (menuItemAlign) {
+      menuItemAlign.disabled = !canAlign;
+      menuItemAlign.setAttribute('aria-disabled', String(!canAlign));
+    }
+
+    const alignSubmenuItems = [
+      menuItemAlignLeft,
+      menuItemAlignCenterH,
+      menuItemAlignRight,
+      menuItemAlignTop,
+      menuItemAlignCenterV,
+      menuItemAlignBottom,
+    ];
+    for (let i = 0; i < alignSubmenuItems.length; i++) {
+      const it = alignSubmenuItems[i];
+      if (it) {
+        it.disabled = !canAlign;
+        it.setAttribute('aria-disabled', String(!canAlign));
+      }
+    }
+
+    if (menuItemDistribute) {
+      menuItemDistribute.disabled = !canDistribute;
+      menuItemDistribute.setAttribute('aria-disabled', String(!canDistribute));
+    }
+
+    const distributeSubmenuItems = [menuItemDistributeH, menuItemDistributeV];
+    for (let i = 0; i < distributeSubmenuItems.length; i++) {
+      const it = distributeSubmenuItems[i];
+      if (it) {
+        it.disabled = !canDistribute;
+        it.setAttribute('aria-disabled', String(!canDistribute));
+      }
+    }
+
     const hasClipboard = inputController.clipboard !== null;
     if (menuItemPaste) {
       menuItemPaste.disabled = !hasClipboard;
@@ -360,7 +430,7 @@ export function setupUIBindings(
   }
 
   // 2. Sincronización de historial (CommandManager Event Emitter -> DOM)
-  const syncHistoryButtons = () => {
+  const syncHistoryButtons = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
     const canUndo = commandManager.canUndo();
     const canRedo = commandManager.canRedo();
 
@@ -376,7 +446,7 @@ export function setupUIBindings(
       btnRedo.classList.toggle('is-disabled', !canRedo);
     }
 
-    syncMenuItems();
+    syncMenuItems(selectedNodes);
   };
 
   // Suscripción a eventos del CommandManager
@@ -399,7 +469,7 @@ export function setupUIBindings(
     if (stateManager) {
       const jsonContent = Serializer.serializeDocument(stateManager.getState());
       Serializer.downloadJson('vector-scene.json', jsonContent);
-      console.log('💾 [Serializer] Documento serializado y descargado como vector-scene.json');
+      debug('💾 [Serializer] Documento serializado y descargado como vector-scene.json');
     }
   };
 
@@ -431,7 +501,7 @@ export function setupUIBindings(
           stateManager.loadState(doc);
           commandManager.clear();
           inputController.zoomFit();
-          console.log('📂 [Serializer] Documento importado y cargado con éxito:', doc);
+          debug('📂 [Serializer] Documento importado y cargado con éxito:', doc);
         } catch (error) {
           console.error('❌ Error al importar documento JSON:', error);
           if (typeof alert !== 'undefined') {
@@ -460,7 +530,7 @@ export function setupUIBindings(
           stateManager.loadState(doc);
           commandManager.clear();
           inputController.zoomFit();
-          console.log('📂 [Serializer] Documento importado y cargado con éxito:', doc);
+          debug('📂 [Serializer] Documento importado y cargado con éxito:', doc);
         } catch (error) {
           console.error('❌ Error al importar documento JSON:', error);
           if (typeof alert !== 'undefined') {
@@ -499,9 +569,7 @@ export function setupUIBindings(
     }
   };
 
-  const syncPropertiesPanel = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
-
+  const syncPropertiesPanel = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes()) => {
     if (selectedNodes.length > 0) {
       if (selectionState) {
         selectionState.style.display = 'block';
@@ -526,6 +594,38 @@ export function setupUIBindings(
       if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
         inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
       }
+
+      const canAlign = selectedNodes.length >= 2;
+      const canDistribute = selectedNodes.length >= 3;
+
+      if (sectionAlign) {
+        sectionAlign.style.display = canAlign ? 'block' : 'none';
+      }
+
+      const alignPanelButtons = [
+        btnAlignLeft,
+        btnAlignCenterH,
+        btnAlignRight,
+        btnAlignTop,
+        btnAlignCenterV,
+        btnAlignBottom,
+      ];
+      for (let i = 0; i < alignPanelButtons.length; i++) {
+        const btn = alignPanelButtons[i];
+        if (btn) {
+          btn.disabled = !canAlign;
+          btn.setAttribute('aria-disabled', String(!canAlign));
+        }
+      }
+
+      const distributePanelButtons = [btnDistributeH, btnDistributeV];
+      for (let i = 0; i < distributePanelButtons.length; i++) {
+        const btn = distributePanelButtons[i];
+        if (btn) {
+          btn.disabled = !canDistribute;
+          btn.setAttribute('aria-disabled', String(!canDistribute));
+        }
+      }
     } else {
       if (selectionState) {
         selectionState.style.display = 'none';
@@ -533,19 +633,23 @@ export function setupUIBindings(
       if (noSelectionState) {
         noSelectionState.style.display = 'block';
       }
+      if (sectionAlign) {
+        sectionAlign.style.display = 'none';
+      }
       if (panelTitle) {
         panelTitle.textContent = 'PROPIEDADES';
       }
       initialStyleSnapshots = null;
     }
 
-    syncMenuItems();
-    syncStatusBar();
+    syncMenuItems(selectedNodes);
+    syncStatusBar(selectedNodes);
   };
 
   // Suscripción al StateManager para sincronizar selección y estilos
   const unsubscribeState = stateManager.subscribe(() => {
-    syncPropertiesPanel();
+    const selectedNodes = stateManager.getSelectedNodes();
+    syncPropertiesPanel(selectedNodes);
   });
 
   // Inicializar estado del panel de propiedades, menú y barra de estado
@@ -820,7 +924,12 @@ export function setupUIBindings(
     {
       trigger: menuBtnObject,
       dropdown: menuDropdownObject,
-      items: [menuItemBringToFront, menuItemSendToBack],
+      items: [
+        menuItemBringToFront,
+        menuItemSendToBack,
+        menuItemAlign,
+        menuItemDistribute,
+      ],
     },
     {
       trigger: menuBtnView,
@@ -839,10 +948,72 @@ export function setupUIBindings(
     },
   ];
 
+  interface SubmenuEntry {
+    trigger: HTMLButtonElement | null;
+    dropdown: HTMLElement | null;
+    items: (HTMLButtonElement | null)[];
+  }
+
+  const submenuEntries: SubmenuEntry[] = [
+    {
+      trigger: menuItemAlign,
+      dropdown: menuDropdownAlign,
+      items: [
+        menuItemAlignLeft,
+        menuItemAlignCenterH,
+        menuItemAlignRight,
+        menuItemAlignTop,
+        menuItemAlignCenterV,
+        menuItemAlignBottom,
+      ],
+    },
+    {
+      trigger: menuItemDistribute,
+      dropdown: menuDropdownDistribute,
+      items: [menuItemDistributeH, menuItemDistributeV],
+    },
+  ];
+
+  const closeAllSubmenus = () => {
+    for (let i = 0; i < submenuEntries.length; i++) {
+      const sub = submenuEntries[i];
+      if (sub.trigger) {
+        sub.trigger.setAttribute('aria-expanded', 'false');
+        sub.trigger.classList?.remove('is-open');
+      }
+      if (sub.dropdown) {
+        sub.dropdown.hidden = true;
+        sub.dropdown.classList?.remove('is-open');
+      }
+    }
+  };
+
+  const openSubmenu = (submenu: SubmenuEntry, focusFirstItem: boolean = false) => {
+    if (!submenu.trigger || submenu.trigger.disabled || submenu.trigger.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    closeAllSubmenus();
+    submenu.trigger.setAttribute('aria-expanded', 'true');
+    submenu.trigger.classList?.add('is-open');
+    if (submenu.dropdown) {
+      submenu.dropdown.hidden = false;
+      submenu.dropdown.classList?.add('is-open');
+      if (focusFirstItem) {
+        const enabled = submenu.items.filter((it): it is HTMLButtonElement =>
+          it !== null && !it.disabled && it.getAttribute('aria-disabled') !== 'true'
+        );
+        if (enabled.length > 0) {
+          enabled[0].focus?.();
+        }
+      }
+    }
+  };
+
   let activeMenuIndex = -1;
 
   const closeAllMenus = () => {
     activeMenuIndex = -1;
+    closeAllSubmenus();
     for (const entry of menuEntries) {
       if (entry.trigger) {
         entry.trigger.setAttribute('aria-expanded', 'false');
@@ -954,6 +1125,12 @@ export function setupUIBindings(
         : enabledItems.length - 1;
       enabledItems[prevIndex].focus?.();
     } else if (key === 'ArrowRight') {
+      const sub = submenuEntries.find((s) => s.trigger === focusedItem);
+      if (sub && !sub.trigger?.disabled && sub.trigger?.getAttribute('aria-disabled') !== 'true') {
+        e.preventDefault?.();
+        openSubmenu(sub, true);
+        return;
+      }
       e.preventDefault?.();
       const nextMenuIndex = (menuIndex + 1) % menuEntries.length;
       menuEntries[nextMenuIndex].trigger?.focus?.();
@@ -972,6 +1149,12 @@ export function setupUIBindings(
     } else if (key === 'Enter' || key === ' ') {
       if (focusedItem && allItems.includes(focusedItem)) {
         if (!focusedItem.disabled && focusedItem.getAttribute('aria-disabled') !== 'true') {
+          const sub = submenuEntries.find((s) => s.trigger === focusedItem);
+          if (sub) {
+            e.preventDefault?.();
+            openSubmenu(sub, true);
+            return;
+          }
           e.preventDefault?.();
           focusedItem.click();
         }
@@ -984,6 +1167,82 @@ export function setupUIBindings(
     entry.trigger?.addEventListener('mouseenter', triggerMouseEnterHandlers[i]);
     entry.trigger?.addEventListener('keydown', triggerKeyDownHandlers[i]);
     entry.dropdown?.addEventListener('keydown', dropdownKeyDownHandlers[i]);
+  });
+
+  const submenuContainerEnterHandlers: Array<{ container: HTMLElement | null; handler: () => void }> = [];
+  const submenuContainerLeaveHandlers: Array<{ container: HTMLElement | null; handler: () => void }> = [];
+  const submenuTriggerClickHandlers: Array<{ trigger: HTMLButtonElement | null; handler: (e: any) => void }> = [];
+
+  submenuEntries.forEach((sub) => {
+    if (sub.trigger) {
+      const container = (sub.trigger.closest?.('.menu-submenu-container') || sub.trigger.parentElement) as HTMLElement | null;
+      const onEnter = () => {
+        if (sub.trigger && !sub.trigger.disabled && sub.trigger.getAttribute('aria-disabled') !== 'true') {
+          openSubmenu(sub, false);
+        }
+      };
+      const onLeave = () => {
+        if (sub.dropdown && !sub.dropdown.hidden) {
+          closeAllSubmenus();
+        }
+      };
+      container?.addEventListener?.('mouseenter', onEnter);
+      container?.addEventListener?.('mouseleave', onLeave);
+      submenuContainerEnterHandlers.push({ container, handler: onEnter });
+      submenuContainerLeaveHandlers.push({ container, handler: onLeave });
+
+      const onTriggerClick = (e: any) => {
+        e.stopPropagation?.();
+        if (!sub.trigger?.disabled && sub.trigger?.getAttribute('aria-disabled') !== 'true') {
+          if (sub.dropdown && !sub.dropdown.hidden) {
+            closeAllSubmenus();
+          } else {
+            openSubmenu(sub, true);
+          }
+        }
+      };
+      sub.trigger.addEventListener('click', onTriggerClick);
+      submenuTriggerClickHandlers.push({ trigger: sub.trigger, handler: onTriggerClick });
+    }
+  });
+
+  const submenuKeyDownHandlers = submenuEntries.map((sub) => (e: KeyboardEvent) => {
+    const key = e.key;
+    const allSubItems = sub.items.filter(Boolean) as HTMLButtonElement[];
+    const enabledSubItems = allSubItems.filter((it) => !it.disabled && it.getAttribute('aria-disabled') !== 'true');
+    const focusedSubItem = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLButtonElement;
+    const currentSubIndex = enabledSubItems.indexOf(focusedSubItem);
+
+    if (key === 'ArrowDown') {
+      e.preventDefault?.();
+      if (enabledSubItems.length === 0) return;
+      const nextIndex = currentSubIndex >= 0 ? (currentSubIndex + 1) % enabledSubItems.length : 0;
+      enabledSubItems[nextIndex].focus?.();
+    } else if (key === 'ArrowUp') {
+      e.preventDefault?.();
+      if (enabledSubItems.length === 0) return;
+      const prevIndex = currentSubIndex >= 0
+        ? (currentSubIndex - 1 + enabledSubItems.length) % enabledSubItems.length
+        : enabledSubItems.length - 1;
+      enabledSubItems[prevIndex].focus?.();
+    } else if (key === 'ArrowLeft' || key === 'Escape') {
+      e.preventDefault?.();
+      closeAllSubmenus();
+      sub.trigger?.focus?.();
+    } else if (key === 'Tab') {
+      closeAllMenus();
+    } else if (key === 'Enter' || key === ' ') {
+      if (focusedSubItem && allSubItems.includes(focusedSubItem)) {
+        if (!focusedSubItem.disabled && focusedSubItem.getAttribute('aria-disabled') !== 'true') {
+          e.preventDefault?.();
+          focusedSubItem.click();
+        }
+      }
+    }
+  });
+
+  submenuEntries.forEach((sub, i) => {
+    sub.dropdown?.addEventListener('keydown', submenuKeyDownHandlers[i]);
   });
 
   const onDocumentClick = (e: MouseEvent) => {
@@ -1118,6 +1377,56 @@ export function setupUIBindings(
       canvas?.focus?.();
     }
   };
+
+  // Acciones de Alineación (Menú y Panel)
+  const createAlignHandler = (mode: AlignmentMode) => () => {
+    if (stateManager.getSelection().length >= 2) {
+      closeAllMenus();
+      inputController.alignSelection(mode);
+      syncMenuItems();
+      canvas?.focus?.();
+    }
+  };
+
+  const onAlignLeft = createAlignHandler('left');
+  const onAlignCenterH = createAlignHandler('center-h');
+  const onAlignRight = createAlignHandler('right');
+  const onAlignTop = createAlignHandler('top');
+  const onAlignCenterV = createAlignHandler('center-v');
+  const onAlignBottom = createAlignHandler('bottom');
+
+  // Acciones de Distribución (Menú y Panel)
+  const createDistributeHandler = (axis: DistributionAxis) => () => {
+    if (stateManager.getSelection().length >= 3) {
+      closeAllMenus();
+      inputController.distributeSelection(axis);
+      syncMenuItems();
+      canvas?.focus?.();
+    }
+  };
+
+  const onDistributeH = createDistributeHandler('horizontal');
+  const onDistributeV = createDistributeHandler('vertical');
+
+  menuItemAlignLeft?.addEventListener('click', onAlignLeft);
+  menuItemAlignCenterH?.addEventListener('click', onAlignCenterH);
+  menuItemAlignRight?.addEventListener('click', onAlignRight);
+  menuItemAlignTop?.addEventListener('click', onAlignTop);
+  menuItemAlignCenterV?.addEventListener('click', onAlignCenterV);
+  menuItemAlignBottom?.addEventListener('click', onAlignBottom);
+
+  menuItemDistributeH?.addEventListener('click', onDistributeH);
+  menuItemDistributeV?.addEventListener('click', onDistributeV);
+
+  btnAlignLeft?.addEventListener('click', onAlignLeft);
+  btnAlignCenterH?.addEventListener('click', onAlignCenterH);
+  btnAlignRight?.addEventListener('click', onAlignRight);
+  btnAlignTop?.addEventListener('click', onAlignTop);
+  btnAlignCenterV?.addEventListener('click', onAlignCenterV);
+  btnAlignBottom?.addEventListener('click', onAlignBottom);
+
+  btnDistributeH?.addEventListener('click', onDistributeH);
+  btnDistributeV?.addEventListener('click', onDistributeV);
 
   const onMenuZoomInClick = () => {
     closeAllMenus();
@@ -1461,6 +1770,40 @@ export function setupUIBindings(
       menuItemDelete?.removeEventListener('click', onMenuDeleteClick);
       menuItemBringToFront?.removeEventListener('click', onMenuBringToFrontClick);
       menuItemSendToBack?.removeEventListener('click', onMenuSendToBackClick);
+
+      menuItemAlignLeft?.removeEventListener('click', onAlignLeft);
+      menuItemAlignCenterH?.removeEventListener('click', onAlignCenterH);
+      menuItemAlignRight?.removeEventListener('click', onAlignRight);
+      menuItemAlignTop?.removeEventListener('click', onAlignTop);
+      menuItemAlignCenterV?.removeEventListener('click', onAlignCenterV);
+      menuItemAlignBottom?.removeEventListener('click', onAlignBottom);
+
+      menuItemDistributeH?.removeEventListener('click', onDistributeH);
+      menuItemDistributeV?.removeEventListener('click', onDistributeV);
+
+      btnAlignLeft?.removeEventListener('click', onAlignLeft);
+      btnAlignCenterH?.removeEventListener('click', onAlignCenterH);
+      btnAlignRight?.removeEventListener('click', onAlignRight);
+      btnAlignTop?.removeEventListener('click', onAlignTop);
+      btnAlignCenterV?.removeEventListener('click', onAlignCenterV);
+      btnAlignBottom?.removeEventListener('click', onAlignBottom);
+
+      btnDistributeH?.removeEventListener('click', onDistributeH);
+      btnDistributeV?.removeEventListener('click', onDistributeV);
+
+      submenuEntries.forEach((sub, i) => {
+        sub.dropdown?.removeEventListener('keydown', submenuKeyDownHandlers[i]);
+      });
+
+      submenuContainerEnterHandlers.forEach(({ container, handler }) => {
+        container?.removeEventListener?.('mouseenter', handler);
+      });
+      submenuContainerLeaveHandlers.forEach(({ container, handler }) => {
+        container?.removeEventListener?.('mouseleave', handler);
+      });
+      submenuTriggerClickHandlers.forEach(({ trigger, handler }) => {
+        trigger?.removeEventListener?.('click', handler);
+      });
       menuItemZoomIn?.removeEventListener('click', onMenuZoomInClick);
       menuItemZoomOut?.removeEventListener('click', onMenuZoomOutClick);
       menuItemZoomFit?.removeEventListener('click', onMenuZoomFitClick);
@@ -1510,33 +1853,18 @@ if (typeof document !== 'undefined') {
     // Sistema de observabilidad DOM <-> Estado
     uiBindings = setupUIBindings(inputController, commandManager, stateManager);
 
-    console.log('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo) y Viewport (Zoom/Pan).');
-    console.log('✒️  Herramienta Pluma:');
-    console.log('   - Presiona "P" o haz clic en la toolbar para activar la Pluma.');
-    console.log('   - Clic para crear un punto de ancla.');
-    console.log('   - Arrastra para definir los puntos de control tangentes.');
-    console.log('   - Presiona "Escape", "Enter" o clic en el inicio para finalizar el trazado.');
-    console.log('   - Presiona "V" para volver a la herramienta Selección.');
-    console.log('🎯 Hit-Testing no rectangular activo: haz clic sobre la curva Bézier para seleccionarla.');
+    debug('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo) y Viewport (Zoom/Pan).');
+    debug('✒️  Herramienta Pluma:');
+    debug('   - Presiona "P" o haz clic en la toolbar para activar la Pluma.');
+    debug('   - Clic para crear un punto de ancla.');
+    debug('   - Arrastra para definir los puntos de control tangentes.');
+    debug('   - Presiona "Escape", "Enter" o clic en el inicio para finalizar el trazado.');
+    debug('   - Presiona "V" para volver a la herramienta Selección.');
+    debug('🎯 Hit-Testing no rectangular activo: haz clic sobre la curva Bézier para seleccionarla.');
   }
 }
 
-// 5. Suscripción para depuración de selección
-stateManager.subscribe(() => {
-  const selectedNodes = stateManager.getSelectedNodes();
-  if (selectedNodes.length === 1) {
-    console.log(`🔷 [Nodo Seleccionado]: "${selectedNodes[0].name}" (${selectedNodes[0].type})`, selectedNodes[0]);
-  } else if (selectedNodes.length > 1) {
-    console.log(`🔷 [Selección Múltiple]: ${selectedNodes.length} figuras seleccionadas`);
-  }
-});
-
-// 6. Suscripción para depuración del historial de comandos
-commandManager.subscribe((undoCount, redoCount) => {
-  console.log(`📜 [Historial de Comandos]: Deshacer (${undoCount}) | Rehacer (${redoCount})`);
-});
-
-// 7. Exponer las instancias en el objeto global para inspección interactiva
+// 5. Exponer las instancias en el objeto global para inspección interactiva
 const globals = {
   stateManager,
   viewportManager,

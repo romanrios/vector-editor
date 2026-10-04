@@ -1,5 +1,4 @@
 import type { Command } from './Command.ts';
-import { TranslateCommand } from './TranslateCommand.ts';
 
 /**
  * Comando compuesto que agrupa múltiples instancias de Command en una sola entrada del historial.
@@ -44,11 +43,11 @@ export class BatchCommand implements Command {
   }
 
   /**
-   * Fusiona este lote con otro lote subsiguiente si ambos contienen los mismos hijos
-   * (mismo número, mismos IDs de figura y en el mismo orden), dentro de la ventana
-   * de tiempo y condiciones de mergeWith de cada comando hijo (ej. TranslateCommand).
+   * Determina si este lote puede fusionarse con otro comando subsiguiente.
+   * Verifica que el comando siguiente sea un BatchCommand con igual cantidad de comandos,
+   * que los shapeId coincidan, y que cada comando hijo acepte la fusión mediante canMergeWith.
    */
-  public mergeWith(nextCommand: Command): boolean {
+  public canMergeWith(nextCommand: Command): boolean {
     if (!(nextCommand instanceof BatchCommand)) {
       return false;
     }
@@ -57,7 +56,6 @@ export class BatchCommand implements Command {
       return false;
     }
 
-    // Validación preliminar sin mutaciones
     for (let i = 0; i < this.commands.length; i++) {
       const c1 = this.commands[i];
       const c2 = nextCommand.commands[i];
@@ -67,39 +65,46 @@ export class BatchCommand implements Command {
       }
 
       // Validar coincidencia de IDs si los comandos exponen shapeId
-      const shapeId1 = (c1 as any).shapeId;
-      const shapeId2 = (c2 as any).shapeId;
+      const shapeId1 = c1.shapeId;
+      const shapeId2 = c2.shapeId;
       if (shapeId1 !== undefined || shapeId2 !== undefined) {
         if (shapeId1 !== shapeId2) {
           return false;
         }
       }
 
-      // Si son TranslateCommand, verificar ventana de tiempo y continuidad de coordenadas
-      if (c1 instanceof TranslateCommand && c2 instanceof TranslateCommand) {
-        if (c1.mergeTimeout <= 0) {
-          return false;
-        }
-        const elapsed = c2.timestamp - c1.timestamp;
-        if (elapsed < 0 || elapsed > c1.mergeTimeout) {
-          return false;
-        }
-        if (c2.fromX !== c1.toX || c2.fromY !== c1.toY) {
+      // Delegar la validación al comando hijo si provee canMergeWith
+      if (typeof c1.canMergeWith === 'function') {
+        if (!c1.canMergeWith(c2)) {
           return false;
         }
       }
     }
+
+    return true;
+  }
+
+  /**
+   * Fusiona este lote con otro lote subsiguiente si ambos contienen los mismos hijos
+   * y todos los hijos aceptan la fusión.
+   * La validación completa se realiza previamente en canMergeWith para garantizar
+   * que no quede ninguna fusión parcial si algún hijo rechaza.
+   */
+  public mergeWith(nextCommand: Command): boolean {
+    if (!this.canMergeWith(nextCommand)) {
+      return false;
+    }
+
+    const nextBatch = nextCommand as BatchCommand;
 
     // Fusión efectiva hijo a hijo
-    let allMerged = true;
     for (let i = 0; i < this.commands.length; i++) {
-      const merged = this.commands[i].mergeWith!(nextCommand.commands[i]);
+      const merged = this.commands[i].mergeWith!(nextBatch.commands[i]);
       if (!merged) {
-        allMerged = false;
-        break;
+        return false;
       }
     }
 
-    return allMerged;
+    return true;
   }
 }

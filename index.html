@@ -239,6 +239,26 @@
         margin: 4px 0;
       }
 
+      /* Submenús en Barra de Menú */
+      .menu-submenu-container {
+        position: relative;
+        width: 100%;
+      }
+
+      .menu-submenu-chevron {
+        margin-left: auto;
+        opacity: 0.6;
+        transition: transform var(--transition);
+      }
+
+      .menu-submenu {
+        position: absolute;
+        top: -4px;
+        left: calc(100% - 2px);
+        min-width: 200px;
+        z-index: 1001;
+      }
+
       /* Diálogo de Atajos de Teclado */
       .shortcuts-dialog {
         border: 1px solid var(--border-default);
@@ -685,6 +705,45 @@
         border-color: rgba(239, 68, 68, 0.4);
       }
 
+      /* Cuadrícula de iconos en el panel de propiedades */
+      .panel-icon-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+
+      .panel-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+        padding: 0;
+      }
+
+      .panel-icon-btn:hover:not(:disabled) {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-hover);
+      }
+
+      .panel-icon-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .panel-icon-btn:disabled,
+      .panel-icon-btn[aria-disabled="true"] {
+        color: var(--text-muted);
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
       /* 5. Barra de Estado Inferior */
       .editor-footer {
         grid-column: 1 / -1;
@@ -954,6 +1013,56 @@
                 <span class="menu-item-label">Enviar al fondo</span>
                 <span class="menu-shortcut">Ctrl+Shift+[</span>
               </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+
+              <!-- Submenú Alinear -->
+              <div class="menu-submenu-container">
+                <button id="menu-item-align" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                  <span class="menu-item-label">Alinear</span>
+                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+                <div id="menu-dropdown-align" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-align" hidden>
+                  <button id="menu-item-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Alinear a la izquierda</span>
+                  </button>
+                  <button id="menu-item-align-center-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Centrar horizontalmente</span>
+                  </button>
+                  <button id="menu-item-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Alinear a la derecha</span>
+                  </button>
+                  <div class="menu-divider" role="separator" aria-hidden="true"></div>
+                  <button id="menu-item-align-top" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Alinear arriba</span>
+                  </button>
+                  <button id="menu-item-align-center-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Centrar verticalmente</span>
+                  </button>
+                  <button id="menu-item-align-bottom" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Alinear abajo</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Submenú Distribuir -->
+              <div class="menu-submenu-container">
+                <button id="menu-item-distribute" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                  <span class="menu-item-label">Distribuir</span>
+                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+                <div id="menu-dropdown-distribute" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-distribute" hidden>
+                  <button id="menu-item-distribute-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Distribuir horizontalmente</span>
+                  </button>
+                  <button id="menu-item-distribute-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Distribuir verticalmente</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1133,6 +1242,76 @@
                 <input type="number" id="input-stroke-width" min="0" max="100" value="2">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Sección: Alinear (visible solo con 2 o más figuras seleccionadas) -->
+        <details class="collapsible-section" id="section-align" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Alinear</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="panel-icon-grid" role="group" aria-label="Alineación y distribución de figuras">
+              <button id="btn-align-left" class="panel-icon-btn" title="Alinear a la izquierda" aria-label="Alinear a la izquierda">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="4" y1="2" x2="4" y2="22"></line>
+                  <rect x="4" y="5" width="12" height="5" rx="1"></rect>
+                  <rect x="4" y="14" width="8" height="5" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-align-center-h" class="panel-icon-btn" title="Centrar horizontalmente" aria-label="Centrar horizontalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 2"></line>
+                  <rect x="5" y="5" width="14" height="5" rx="1"></rect>
+                  <rect x="8" y="14" width="8" height="5" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-align-right" class="panel-icon-btn" title="Alinear a la derecha" aria-label="Alinear a la derecha">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="20" y1="2" x2="20" y2="22"></line>
+                  <rect x="8" y="5" width="12" height="5" rx="1"></rect>
+                  <rect x="12" y="14" width="8" height="5" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-distribute-h" class="panel-icon-btn" title="Distribuir horizontalmente" aria-label="Distribuir horizontalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="3" x2="3" y2="21"></line>
+                  <line x1="21" y1="3" x2="21" y2="21"></line>
+                  <rect x="8.5" y="6" width="7" height="12" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-align-top" class="panel-icon-btn" title="Alinear arriba" aria-label="Alinear arriba">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="2" y1="4" x2="22" y2="4"></line>
+                  <rect x="5" y="4" width="5" height="12" rx="1"></rect>
+                  <rect x="14" y="4" width="5" height="8" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-align-center-v" class="panel-icon-btn" title="Centrar verticalmente" aria-label="Centrar verticalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="2" y1="12" x2="22" y2="12" stroke-dasharray="2 2"></line>
+                  <rect x="5" y="5" width="5" height="14" rx="1"></rect>
+                  <rect x="14" y="8" width="5" height="8" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-align-bottom" class="panel-icon-btn" title="Alinear abajo" aria-label="Alinear abajo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="2" y1="20" x2="22" y2="20"></line>
+                  <rect x="5" y="8" width="5" height="12" rx="1"></rect>
+                  <rect x="14" y="12" width="5" height="8" rx="1"></rect>
+                </svg>
+              </button>
+              <button id="btn-distribute-v" class="panel-icon-btn" title="Distribuir verticalmente" aria-label="Distribuir verticalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="3" x2="21" y2="3"></line>
+                  <line x1="3" y1="21" x2="21" y2="21"></line>
+                  <rect x="6" y="8.5" width="12" height="7" rx="1"></rect>
+                </svg>
+              </button>
             </div>
           </div>
         </details>

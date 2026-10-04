@@ -62,10 +62,10 @@ export class TranslateCommand implements Command {
   }
 
   /**
-   * Fusiona un comando de traslación subsiguiente si es para la misma figura,
-   * parte de la posición actual de destino, y ocurrió dentro del intervalo mergeTimeout.
+   * Valida si un comando subsiguiente es compatible para fusión (misma figura,
+   * dentro de la ventana mergeTimeout y con continuidad en las coordenadas).
    */
-  public mergeWith(nextCommand: Command): boolean {
+  public canMergeWith(nextCommand: Command): boolean {
     if (!(nextCommand instanceof TranslateCommand)) {
       return false;
     }
@@ -87,9 +87,22 @@ export class TranslateCommand implements Command {
       return false;
     }
 
-    this.toX = nextCommand.toX;
-    this.toY = nextCommand.toY;
-    this.timestamp = nextCommand.timestamp;
+    return true;
+  }
+
+  /**
+   * Fusiona un comando de traslación subsiguiente si es para la misma figura,
+   * parte de la posición actual de destino, y ocurrió dentro del intervalo mergeTimeout.
+   */
+  public mergeWith(nextCommand: Command): boolean {
+    if (!this.canMergeWith(nextCommand)) {
+      return false;
+    }
+
+    const next = nextCommand as TranslateCommand;
+    this.toX = next.toX;
+    this.toY = next.toY;
+    this.timestamp = next.timestamp;
     return true;
   }
 }

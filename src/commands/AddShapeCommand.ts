@@ -14,6 +14,10 @@ export class AddShapeCommand implements Command {
   public readonly layerId: string;
   public readonly index?: number;
 
+  public get shapeId(): string {
+    return this.shape.id;
+  }
+
   constructor(stateManager: StateManager, shape: Shape, layerId: string, index?: number);
   constructor(stateManager: StateManager, layerId: string, shape: Shape, index?: number);
   constructor(

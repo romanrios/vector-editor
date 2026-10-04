@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { StateManager } from '../src/state/StateManager.ts';
+import { StateManager, hasCachedDocumentIndex } from '../src/state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from '../src/state/injectSampleShapes.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
@@ -709,7 +709,153 @@ describe('StateManager - Selección fuera del Documento e isDirty', () => {
     assert.equal(noopUpdated, false);
     assert.equal(notifyCount, 1, 'No debe notificar si no hubo desplazamientos reales');
   });
+
+  describe('Optimización de Índice Perezoso (WeakMap) e Invarianza de Selección', () => {
+    it('el índice se invalida (nuevo documento sin índice en cache) al añadir, borrar, mover y cargar un documento', () => {
+      const manager = new StateManager();
+      const doc0 = manager.getState();
+      const layerId = doc0.children[0].id;
+
+      // Inicialmente doc0 no tiene índice en cache
+      assert.equal(hasCachedDocumentIndex(doc0), false);
+
+      // Al consultar findNode, se construye perezosamente
+      assert.notEqual(manager.findNode(doc0.id), null);
+      assert.equal(hasCachedDocumentIndex(doc0), true);
+
+      // 1. Añadir figura: doc1 !== doc0, doc1 inicia sin índice
+      const rect1: Rectangle = {
+        id: 'rect-dyn-1',
+        type: 'rectangle',
+        name: 'Rect Dyn 1',
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 50,
+      };
+      manager.addShape(layerId, rect1);
+      const doc1 = manager.getState();
+      assert.notEqual(doc1, doc0);
+      assert.equal(hasCachedDocumentIndex(doc1), false, 'Añadir un nodo produce un nuevo Document cuyo índice no está en cache');
+
+      // Consultar nodo en doc1 construye el índice
+      assert.equal(manager.findNode('rect-dyn-1')?.id, 'rect-dyn-1');
+      assert.equal(hasCachedDocumentIndex(doc1), true);
+
+      // 2. Mover figura: doc2 !== doc1, doc2 inicia sin índice
+      manager.updateShapePosition('rect-dyn-1', 45, 65);
+      const doc2 = manager.getState();
+      assert.notEqual(doc2, doc1);
+      assert.equal(hasCachedDocumentIndex(doc2), false, 'Mover una figura produce un nuevo Document sin índice previo');
+
+      const movedNode = manager.findNode('rect-dyn-1') as Rectangle;
+      assert.equal(movedNode.x, 45);
+      assert.equal(movedNode.y, 65);
+      assert.equal(hasCachedDocumentIndex(doc2), true);
+
+      // 3. Borrar figura: doc3 !== doc2, doc3 inicia sin índice
+      manager.removeShape('rect-dyn-1');
+      const doc3 = manager.getState();
+      assert.notEqual(doc3, doc2);
+      assert.equal(hasCachedDocumentIndex(doc3), false, 'Borrar una figura produce un nuevo Document sin índice previo');
+
+      assert.equal(manager.findNode('rect-dyn-1'), null);
+      assert.equal(hasCachedDocumentIndex(doc3), true);
+
+      // 4. Cargar documento nuevo (loadState): doc4 !== doc3, doc4 inicia sin índice
+      const freshDoc: Document = {
+        id: 'doc-loaded-custom',
+        type: 'document',
+        name: 'Doc Cargado',
+        width: 1200,
+        height: 800,
+        children: [
+          {
+            id: 'layer-loaded-custom',
+            type: 'layer',
+            name: 'Capa Cargada',
+            children: [
+              {
+                id: 'rect-in-loaded',
+                type: 'rectangle',
+                name: 'Rect Cargado',
+                x: 30,
+                y: 40,
+                width: 70,
+                height: 70,
+              },
+            ],
+          },
+        ],
+      };
+      manager.loadState(freshDoc);
+      const doc4 = manager.getState();
+      assert.notEqual(doc4, doc3);
+      assert.equal(hasCachedDocumentIndex(doc4), false, 'loadState reemplaza el documento y el nuevo Document no tiene índice hasta su primer uso');
+
+      assert.equal(manager.findNode('rect-in-loaded')?.id, 'rect-in-loaded');
+      assert.equal(hasCachedDocumentIndex(doc4), true);
+
+      // findParent también utiliza el índice en O(1)
+      const parent = manager.findParent('rect-in-loaded');
+      assert.notEqual(parent, null);
+      assert.equal(parent?.id, 'layer-loaded-custom');
+    });
+
+    it('isSelected y getSelectedNodes devuelven exactamente el mismo resultado y preservan compatibilidad', () => {
+      const manager = new StateManager();
+      injectSampleShapes(manager);
+
+      // Sin selección
+      assert.deepEqual(manager.getSelectedNodes(), []);
+      assert.equal(manager.isSelected('shape-rect-1'), false);
+      assert.equal(manager.isSelected('shape-ellipse-1'), false);
+      assert.equal(manager.isSelected('inexistente'), false);
+
+      // Selección única
+      manager.setSelection(['shape-rect-1']);
+      assert.equal(manager.isSelected('shape-rect-1'), true);
+      assert.equal(manager.isSelected('shape-ellipse-1'), false);
+      assert.equal(manager.isSelected('inexistente'), false);
+
+      const nodes1 = manager.getSelectedNodes();
+      assert.equal(nodes1.length, 1);
+      assert.equal(nodes1[0].id, 'shape-rect-1');
+
+      // Selección múltiple
+      manager.setSelection(['shape-rect-1', 'shape-ellipse-1']);
+      assert.equal(manager.isSelected('shape-rect-1'), true);
+      assert.equal(manager.isSelected('shape-ellipse-1'), true);
+      assert.equal(manager.isSelected('shape-ellipse-2'), false);
+
+      const nodes2 = manager.getSelectedNodes();
+      assert.equal(nodes2.length, 2);
+      assert.equal(nodes2[0].id, 'shape-rect-1');
+      assert.equal(nodes2[1].id, 'shape-ellipse-1');
+
+      // Modificar la selección no invalida el documento de getState()
+      const docBeforeSelection = manager.getState();
+      assert.equal(hasCachedDocumentIndex(docBeforeSelection), true);
+      manager.setSelection(['shape-ellipse-2']);
+      assert.equal(manager.getState(), docBeforeSelection, 'La identidad del documento se preserva al cambiar selección');
+      assert.equal(hasCachedDocumentIndex(manager.getState()), true, 'El índice del documento no se invalida por cambios de selección');
+
+      // toggleInSelection, addToSelection y removeFromSelection operan fielmente
+      manager.toggleInSelection('shape-rect-1');
+      assert.equal(manager.isSelected('shape-rect-1'), true);
+      assert.equal(manager.isSelected('shape-ellipse-2'), true);
+
+      manager.removeFromSelection(['shape-rect-1']);
+      assert.equal(manager.isSelected('shape-rect-1'), false);
+      assert.equal(manager.isSelected('shape-ellipse-2'), true);
+
+      manager.addToSelection(['shape-rect-1']);
+      assert.equal(manager.isSelected('shape-rect-1'), true);
+      assert.equal(manager.isSelected('shape-ellipse-2'), true);
+    });
+  });
 });
+
 
 
 
