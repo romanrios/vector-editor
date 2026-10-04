@@ -1,5 +1,21 @@
 import type { StateManager, ShapePositionEntry } from '../state/StateManager.ts';
-import { isShape, type AABB, type Ellipse, type Path, type PathPoint, type Rectangle, type Shape, type Vector2D } from '../types/scene-graph.ts';
+import { getLeafShapes } from '../state/StateManager.ts';
+import {
+  isGroup,
+  isLayer,
+  isSelectable,
+  isShape,
+  type AABB,
+  type Ellipse,
+  type Group,
+  type LayerChildNode,
+  type Path,
+  type PathPoint,
+  type Rectangle,
+  type SelectableNode,
+  type Shape,
+  type Vector2D,
+} from '../types/scene-graph.ts';
 import {
   getPathBaseAABB,
   getSelectionHandles,
@@ -63,6 +79,8 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Supr / Backspace', description: 'Eliminar figuras seleccionadas', category: 'Edición' },
   { key: 'Ctrl+Shift+]', description: 'Traer figuras al frente', category: 'Objeto' },
   { key: 'Ctrl+Shift+[', description: 'Enviar figuras al fondo', category: 'Objeto' },
+  { key: 'Ctrl+G / Cmd+G', description: 'Agrupar figuras seleccionadas', category: 'Objeto' },
+  { key: 'Ctrl+Shift+G / Cmd+Shift+G', description: 'Desagrupar figuras seleccionadas', category: 'Objeto' },
   { key: 'Ctrl++ / Cmd++', description: 'Acercar zoom', category: 'Navegación' },
   { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
   { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
@@ -148,6 +166,7 @@ export class InputController {
 
   // Listeners de eventos
   private onMouseDownHandler: (e: MouseEvent) => void;
+  private onDoubleClickHandler: (e: MouseEvent) => void;
   private onMouseMoveHandler: (e: MouseEvent) => void;
   private onMouseUpHandler: (e: MouseEvent) => void;
   private onWheelHandler: (e: WheelEvent) => void;
@@ -240,6 +259,7 @@ export class InputController {
     this.viewportManager = options.viewportManager ?? new ViewportManager();
 
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
+    this.onDoubleClickHandler = (e: MouseEvent) => this.handleDoubleClick(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
     this.onMouseUpHandler = (e: MouseEvent) => this.handleMouseUp(e);
     this.onWheelHandler = (e: WheelEvent) => this.handleWheel(e);
@@ -483,6 +503,7 @@ export class InputController {
    */
   private attachEventListeners(): void {
     this.canvas.addEventListener('mousedown', this.onMouseDownHandler);
+    this.canvas.addEventListener('dblclick', this.onDoubleClickHandler);
     this.canvas.addEventListener('mousemove', this.onMouseMoveHandler);
     this.canvas.addEventListener('wheel', this.onWheelHandler, { passive: false });
 
@@ -511,6 +532,7 @@ export class InputController {
    */
   public destroy(): void {
     this.canvas.removeEventListener('mousedown', this.onMouseDownHandler);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClickHandler);
     this.canvas.removeEventListener('mousemove', this.onMouseMoveHandler);
     this.canvas.removeEventListener('wheel', this.onWheelHandler);
 
@@ -702,9 +724,52 @@ export class InputController {
   }
 
   /**
-   * Realiza hit-testing matemático recorriendo el Scene Graph en orden inverso
+   * Evalúa recursivamente si un nodo (figura o grupo) es alcanzado por las coordenadas (x, y).
+   * Ignora nodos efectivamente ocultos o bloqueados (tanto a nivel de nodo como ancestros).
+   * Recorre los hijos de arriba hacia abajo (mayor Z-index a menor).
+   */
+  private hitTestNode(
+    node: LayerChildNode,
+    x: number,
+    y: number,
+    ctx: CanvasRenderingContext2D | null,
+    zoom: number
+  ): Shape | null {
+    if (node.visible === false || node.locked === true) {
+      return null;
+    }
+
+    if (isGroup(node)) {
+      for (let i = node.children.length - 1; i >= 0; i--) {
+        const hit = this.hitTestNode(node.children[i], x, y, ctx, zoom);
+        if (hit) {
+          return hit;
+        }
+      }
+      return null;
+    }
+
+    if (isShape(node)) {
+      if (node.type === 'path') {
+        if (isPointInPath(x, y, node, ctx, 8 / zoom)) {
+          return node;
+        }
+      } else {
+        const tolerance = 4 / zoom;
+        if (isPointInShape(x, y, node, tolerance)) {
+          return node;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Realiza hit-testing matemático recorriendo el Scene Graph recursivamente de arriba abajo
    * (desde el elemento superior visualmente con mayor Z-index hacia el fondo).
    *
+   * Ignora figuras efectivamente ocultas o bloqueadas (capa y ancestros).
    * Utiliza ctx.isPointInPath() o ray-casting poligonal para figuras de tipo Path,
    * y colisión AABB para rectángulos y elipses.
    * Aplica tolerancia constante en píxeles de pantalla dividida por el zoom.
@@ -721,33 +786,108 @@ export class InputController {
         continue;
       }
 
-      const shapes = layer.children;
-      for (let s = shapes.length - 1; s >= 0; s--) {
-        const shape = shapes[s];
-        if (shape.visible === false || shape.locked === true) {
-          continue;
-        }
-
-        if (!isShape(shape)) {
-          continue;
-        }
-
-        if (shape.type === 'path') {
-          // Hit-testing no rectangular para trazados Bézier (isPointInPath / ray-casting)
-          if (isPointInPath(x, y, shape, ctx, 8 / zoom)) {
-            return shape;
-          }
-        } else {
-          // Hit-testing geométrico exacto para rectángulos y elipses con tolerancia en pantalla
-          const tolerance = 4 / zoom;
-          if (isPointInShape(x, y, shape, tolerance)) {
-            return shape;
-          }
+      const children = layer.children;
+      for (let s = children.length - 1; s >= 0; s--) {
+        const hit = this.hitTestNode(children[s], x, y, ctx, zoom);
+        if (hit) {
+          return hit;
         }
       }
     }
 
     return null;
+  }
+
+  /**
+   * Encuentra el ancestro grupo más externo de un nodo en el documento.
+   * Si el nodo está directamente en una capa, retorna el nodo mismo.
+   */
+  private getOutermostGroupOrSelf(node: SelectableNode): SelectableNode {
+    let current: SelectableNode = node;
+    while (true) {
+      const parent = this.stateManager.findParent(current.id);
+      if (!parent || isLayer(parent)) {
+        return current;
+      }
+      if (isGroup(parent)) {
+        current = parent;
+      } else {
+        break;
+      }
+    }
+    return current;
+  }
+
+  /**
+   * Dado un grupo G y un descendiente target (figura o grupo anidado),
+   * encuentra el hijo directo de G que contiene o es target.
+   * Si target no es descendiente de G, retorna null.
+   */
+  private findDirectChildInGroup(group: Group, target: SelectableNode): SelectableNode | null {
+    let current: SelectableNode = target;
+    while (true) {
+      const parent = this.stateManager.findParent(current.id);
+      if (!parent) return null;
+      if (parent.id === group.id) {
+        return current;
+      }
+      if (isLayer(parent) || !isGroup(parent)) {
+        return null;
+      }
+      current = parent;
+    }
+  }
+
+  /**
+   * Resuelve qué nodo debe seleccionarse al hacer clic sobre una figura:
+   * 1. Si hay exactamente un nodo seleccionado dentro de un grupo G y el clic
+   *    cae sobre otro elemento de G, selecciona el hermano de ese mismo nivel.
+   * 2. Si el clic cae fuera de G, o no se está dentro de ese contexto,
+   *    selecciona el grupo más externo que contiene a la figura (o a la figura si no está en ningún grupo).
+   */
+  private resolveNodeToSelect(hitShape: Shape): SelectableNode {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1) {
+      const currentSelected = selectedNodes[0];
+      const parent = this.stateManager.findParent(currentSelected.id);
+      if (parent && isGroup(parent)) {
+        const directChild = this.findDirectChildInGroup(parent, hitShape);
+        if (directChild) {
+          return directChild;
+        }
+      }
+    }
+
+    return this.getOutermostGroupOrSelf(hitShape);
+  }
+
+  /**
+   * Maneja el evento dblclick (doble clic) en el lienzo.
+   * Desciende un nivel en la jerarquía, seleccionando el hijo directo del grupo seleccionado
+   * que está bajo el cursor (grupo o figura).
+   */
+  public handleDoubleClick(event: MouseEvent): void {
+    if (this._currentTool !== 'select') {
+      return;
+    }
+
+    const { x, y } = this.getLocalCoordinates(event);
+    const hitShape = this.hitTest(x, y);
+    if (!hitShape) {
+      return;
+    }
+
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isGroup(selectedNodes[0])) {
+      const selectedGroup = selectedNodes[0];
+      const directChild = this.findDirectChildInGroup(selectedGroup, hitShape);
+      if (directChild) {
+        this.stateManager.setSelection([directChild.id]);
+        this.resetDrag();
+        this.resetResize();
+        this.resetRotate();
+      }
+    }
   }
 
   /**
@@ -894,26 +1034,29 @@ export class InputController {
         this.cancelMarquee();
       }
 
-      // A.1: Shift+clic sobre una figura: la añade o quita de la selección (toggleInSelection). Sin arrastre.
+      const targetNode = this.resolveNodeToSelect(hitShape);
+      const targetId = targetNode.id;
+
+      // A.1: Shift+clic sobre una figura/grupo: la añade o quita de la selección (toggleInSelection). Sin arrastre.
       if (event.shiftKey) {
-        this.stateManager.toggleInSelection(hitShape.id);
+        this.stateManager.toggleInSelection(targetId);
         this.resetDrag();
         this.resetResize();
         this.resetRotate();
         return;
       }
 
-      // A.2 & A.3: Clic sin Shift sobre una figura
-      const isAlreadySelected = this.stateManager.isSelected(hitShape.id);
+      // A.2 & A.3: Clic sin Shift sobre una figura/grupo
+      const isAlreadySelected = this.stateManager.isSelected(targetId);
       const isMultiSelection = this.stateManager.getSelection().length > 1;
 
       if (isAlreadySelected && isMultiSelection) {
-        // Clic sobre figura que ya forma parte de selección múltiple: se mantiene y puede arrastrarse el conjunto.
-        // Si se suelta sin haber arrastrado (>3px en pantalla), la selección pasa a ser solo esa figura.
-        this.pendingSingleSelectionId = hitShape.id;
+        // Clic sobre figura/grupo que ya forma parte de selección múltiple: se mantiene y puede arrastrarse el conjunto.
+        // Si se suelta sin haber arrastrado (>3px en pantalla), la selección pasa a ser solo ese elemento.
+        this.pendingSingleSelectionId = targetId;
       } else if (!isAlreadySelected) {
-        // Clic sobre figura no seleccionada: selección simple.
-        this.stateManager.selectNode(hitShape.id);
+        // Clic sobre figura/grupo no seleccionado: selección simple.
+        this.stateManager.selectNode(targetId);
         this.pendingSingleSelectionId = null;
       } else {
         this.pendingSingleSelectionId = null;
@@ -926,10 +1069,11 @@ export class InputController {
       this.dragStartScreen = this.getScreenCoordinates(event);
       this.hasMovedPastThreshold = false;
 
-      // Registrar posiciones iniciales de todas las figuras del conjunto seleccionado
-      const selectedNodes = this.stateManager.getSelectedNodes().filter(isShape);
+      // Registrar posiciones iniciales de todas las figuras hoja del conjunto seleccionado
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      const leafShapes = getLeafShapes(selectedNodes);
       this.initialShapesPositions = new Map<string, { x: number; y: number }>();
-      for (const node of selectedNodes) {
+      for (const node of leafShapes) {
         this.initialShapesPositions.set(node.id, { x: node.x, y: node.y });
       }
 
@@ -1124,29 +1268,29 @@ export class InputController {
         };
 
         const docState = this.stateManager.getState();
-        const candidates: Shape[] = [];
+        const candidates: SelectableNode[] = [];
         for (const layer of docState.children) {
           if (layer.visible === false || layer.locked === true) {
             continue;
           }
-          for (const shape of layer.children) {
-            if (shape.visible === false || shape.locked === true) {
+          for (const child of layer.children) {
+            if (child.visible === false || child.locked === true) {
               continue;
             }
-            if (isShape(shape)) {
-              candidates.push(shape);
+            if (isSelectable(child)) {
+              candidates.push(child);
             }
           }
         }
 
-        const intersectingShapes = getShapesIntersectingRect(candidates, {
+        const intersecting = getShapesIntersectingRect(candidates, {
           x: minX,
           y: minY,
           width,
           height,
         });
 
-        const hitIds = intersectingShapes.map((s) => s.id);
+        const hitIds = intersecting.map((s) => s.id);
 
         if (this._marqueeShiftKey) {
           const combined = new Set([...this._marqueeInitialSelection, ...hitIds]);
@@ -1170,8 +1314,7 @@ export class InputController {
         screenPos.y - this.dragStartScreen.y
       );
 
-      const isMulti = this.initialShapesPositions.size > 1;
-      const shouldMove = isMulti ? (screenDist > 3 || this.hasMovedPastThreshold) : (screenDist > 0);
+      const shouldMove = screenDist > 3 || this.hasMovedPastThreshold;
 
       if (shouldMove) {
         if (screenDist > 3) {
@@ -1543,11 +1686,14 @@ export class InputController {
     }
 
     // Finalizar arrastre de figuras (A.5):
-    if (this.initialShapesPositions && this.dragOrigin) {
+    if (this.hasMovedPastThreshold && this.initialShapesPositions && this.dragOrigin) {
       const deltaX = x - this.dragOrigin.x;
       const deltaY = y - this.dragOrigin.y;
 
-      if (this.initialShapesPositions.size > 1) {
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      const isGroupSelected = selectedNodes.some(isGroup);
+
+      if (this.initialShapesPositions.size > 1 || isGroupSelected) {
         const commands: TranslateCommand[] = [];
         const entries: ShapePositionEntry[] = [];
 
@@ -1597,6 +1743,13 @@ export class InputController {
           this.commandManager.recordCommand(command);
         }
       }
+    } else if (!this.hasMovedPastThreshold && this.initialShapesPositions) {
+      // Si no superó el umbral de arrastre (>3px), restaurar posiciones originales por si hubo micro-movimiento
+      const restoreEntries: ShapePositionEntry[] = [];
+      for (const [id, pos] of this.initialShapesPositions.entries()) {
+        restoreEntries.push({ id, x: pos.x, y: pos.y });
+      }
+      this.stateManager.updateShapesPosition(restoreEntries);
     }
 
     this.resetDrag();
@@ -1681,6 +1834,18 @@ export class InputController {
         if (!this.isInputFocused(event)) {
           event.preventDefault?.();
           this.duplicate();
+        }
+        return;
+      }
+
+      if (keyLower === 'g') {
+        if (!this.isInputFocused(event)) {
+          event.preventDefault?.();
+          if (event.shiftKey) {
+            this.ungroupSelection();
+          } else {
+            this.groupSelection();
+          }
         }
         return;
       }
@@ -1963,6 +2128,30 @@ export class InputController {
   }
 
   /**
+   * Agrupa los nodos seleccionados (requiere 2 o más).
+   * Delega en SelectionOperations.
+   */
+  public groupSelection(): Group | null {
+    return this._selectionOperations.groupSelection();
+  }
+
+  /**
+   * Desagrupa los grupos seleccionados (requiere al menos 1 grupo).
+   * Delega en SelectionOperations.
+   */
+  public ungroupSelection(): boolean {
+    return this._selectionOperations.ungroupSelection();
+  }
+
+  /**
+   * Aplica estilos a la selección expandiendo grupos a sus figuras hoja.
+   * Delega en SelectionOperations.
+   */
+  public applyStyle(style: Partial<Pick<Shape, 'fill' | 'stroke' | 'strokeWidth'>>): boolean {
+    return this._selectionOperations.applyStyle(style);
+  }
+
+  /**
    * Elimina todas las figuras seleccionadas del Scene Graph mediante DeleteCommand.
    * Delega en SelectionOperations.
    */
@@ -2075,34 +2264,36 @@ export class InputController {
 
   /**
    * Maneja el evento mousedown en modo 'direct-select' (Herramienta de Selección Directa / Subselección).
-   * No selecciona el Shape completo mediante hitTest, sino que itera sobre los points del Path
-   * seleccionado previamente. Si el usuario hace clic cerca de un punto de ancla o manejador de
-   * control (AABB de 10x10px), marca ese vértice o manejador específico como _draggedPointIndex u objetivo de arrastre.
+   * No selecciona figuras completas excepto trazados Bézier ('path'), ignorando agrupaciones.
+   * Si el usuario hace clic sobre un punto de ancla o manejador de control (AABB de 10x10px),
+   * marca ese vértice o manejador específico como objetivo de arrastre.
    */
   private handleDirectSelectMouseDown(x: number, y: number): void {
-    const selection = this.stateManager.getSelection();
-    if (selection.length !== 1) {
-      this.resetDirectSelect();
-      return;
-    }
-
     const selectedNode = this.stateManager.getSelectedNode();
-    if (!selectedNode || selectedNode.type !== 'path') {
-      this.resetDirectSelect();
-      return;
+    let activePath: Path | null =
+      selectedNode && selectedNode.type === 'path' ? (selectedNode as Path) : null;
+    let hitPoint = activePath ? this.findPathPointHit(activePath, x, y) : null;
+
+    if (!hitPoint) {
+      // Evaluar hitTest sobre figuras ignorando grupos: si es un Path, seleccionarlo directamente
+      const hitShape = this.hitTest(x, y);
+      if (hitShape && hitShape.type === 'path') {
+        this.stateManager.setSelection([hitShape.id]);
+        activePath = hitShape as Path;
+        hitPoint = this.findPathPointHit(activePath, x, y);
+      }
     }
 
-    const hit = this.findPathPointHit(selectedNode as Path, x, y);
-    if (hit) {
-      this._draggedPointIndex = hit.index;
-      this._draggedTargetType = hit.type;
+    if (activePath && hitPoint) {
+      this._draggedPointIndex = hitPoint.index;
+      this._draggedTargetType = hitPoint.type;
       const target: DirectSelectTarget = {
-        pathId: selectedNode.id,
-        pointIndex: hit.index,
-        index: hit.index,
-        type: hit.type,
-        targetType: hit.type,
-        handleType: hit.type,
+        pathId: activePath.id,
+        pointIndex: hitPoint.index,
+        index: hitPoint.index,
+        type: hitPoint.type,
+        targetType: hitPoint.type,
+        handleType: hitPoint.type,
       };
       this._draggedPointTarget = target;
       this._dragTarget = target;
@@ -2110,7 +2301,7 @@ export class InputController {
       this._isDraggingPoint = true;
       this.directSelectOrigin = { x, y };
       this.dragOrigin = { x, y };
-      this.initialPathPoints = structuredClone((selectedNode as Path).points);
+      this.initialPathPoints = structuredClone(activePath.points);
       this.canvas.style.cursor = 'grabbing';
     } else {
       this.resetDirectSelect();

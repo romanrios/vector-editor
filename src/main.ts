@@ -1,4 +1,4 @@
-import { StateManager } from './state/StateManager.ts';
+import { StateManager, getLeafShapes } from './state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from './state/injectSampleShapes.ts';
 import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
@@ -9,7 +9,7 @@ import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
-import { isShape, type Path, type Shape } from './types/scene-graph.ts';
+import { isGroup, isSelectable, isShape, type Path, type SelectableNode, type Shape } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 
 function debug(...args: unknown[]): void {
@@ -174,6 +174,8 @@ export function setupUIBindings(
   const menuItemDelete = document.querySelector<HTMLButtonElement>('#menu-item-delete');
   const menuItemBringToFront = document.querySelector<HTMLButtonElement>('#menu-item-bring-to-front');
   const menuItemSendToBack = document.querySelector<HTMLButtonElement>('#menu-item-send-to-back');
+  const menuItemGroup = document.querySelector<HTMLButtonElement>('#menu-item-group');
+  const menuItemUngroup = document.querySelector<HTMLButtonElement>('#menu-item-ungroup');
 
   // Submenús Alinear y Distribuir en Menú Objeto
   const menuItemAlign = document.querySelector<HTMLButtonElement>('#menu-item-align');
@@ -255,15 +257,13 @@ export function setupUIBindings(
     syncStatusBar();
   };
 
-  const syncStatusBar = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)) => {
+  const syncStatusBar = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()) => {
     if (statusShapesCount) {
-      let count = 0;
       const doc = stateManager.getState();
+      let count = 0;
       if (doc && doc.children) {
         for (const layer of doc.children) {
-          if (layer.children) {
-            count += layer.children.length;
-          }
+          count += getLeafShapes(layer.children.filter(isSelectable)).length;
         }
       }
       statusShapesCount.textContent = count === 1 ? '1 figura' : `${count} figuras`;
@@ -276,6 +276,7 @@ export function setupUIBindings(
           rectangle: 'Rectángulo',
           ellipse: 'Elipse',
           path: 'Trazado',
+          group: 'Grupo',
         };
         const typeName = typeLabels[selectedShape.type] || selectedShape.type;
         statusSelectionInfo.textContent = `${selectedShape.name} (${typeName})`;
@@ -286,7 +287,10 @@ export function setupUIBindings(
           statusSelectionSeparator.style.display = 'inline';
         }
       } else if (selectedNodes.length > 1) {
-        statusSelectionInfo.textContent = `${selectedNodes.length} figuras seleccionadas`;
+        const hasGroup = selectedNodes.some(isGroup);
+        statusSelectionInfo.textContent = hasGroup
+          ? `${selectedNodes.length} elementos seleccionados`
+          : `${selectedNodes.length} figuras seleccionadas`;
         if (statusSelectionInfo.style) {
           statusSelectionInfo.style.display = 'inline';
         }
@@ -329,7 +333,7 @@ export function setupUIBindings(
   syncToolButtons(inputController.currentTool);
 
   // Sincronización del estado de los ítems de menú desplegable
-  function syncMenuItems(selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)): void {
+  function syncMenuItems(selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()): void {
     const canUndo = commandManager.canUndo();
     const canRedo = commandManager.canRedo();
 
@@ -368,6 +372,18 @@ export function setupUIBindings(
     if (menuBtnObject) {
       menuBtnObject.disabled = !hasSelection;
       menuBtnObject.setAttribute('aria-disabled', String(!hasSelection));
+    }
+
+    const canGroup = selectedNodes.length >= 2;
+    const canUngroup = selectedNodes.some(isGroup);
+
+    if (menuItemGroup) {
+      menuItemGroup.disabled = !canGroup;
+      menuItemGroup.setAttribute('aria-disabled', String(!canGroup));
+    }
+    if (menuItemUngroup) {
+      menuItemUngroup.disabled = !canUngroup;
+      menuItemUngroup.setAttribute('aria-disabled', String(!canUngroup));
     }
 
     const canAlign = selectedNodes.length >= 2;
@@ -556,10 +572,11 @@ export function setupUIBindings(
   let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
 
   const captureInitialStyle = () => {
-    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
-    if (selectedNodes.length > 0) {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length > 0) {
       initialStyleSnapshots = new Map();
-      for (const shape of selectedNodes) {
+      for (const shape of leafShapes) {
         initialStyleSnapshots.set(shape.id, {
           fill: shape.fill,
           stroke: shape.stroke,
@@ -569,7 +586,8 @@ export function setupUIBindings(
     }
   };
 
-  const syncPropertiesPanel = (selectedNodes: readonly Shape[] = stateManager.getSelectedNodes().filter(isShape)) => {
+  const syncPropertiesPanel = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()) => {
+    const leafShapes = getLeafShapes(selectedNodes);
     if (selectedNodes.length > 0) {
       if (selectionState) {
         selectionState.style.display = 'block';
@@ -579,20 +597,29 @@ export function setupUIBindings(
       }
 
       if (panelTitle) {
-        panelTitle.textContent =
-          selectedNodes.length === 1 ? 'PROPIEDADES' : `${selectedNodes.length} figuras seleccionadas`;
+        if (selectedNodes.length === 1) {
+          const single = selectedNodes[0];
+          panelTitle.textContent = isGroup(single) ? (single.name || 'Grupo') : 'PROPIEDADES';
+        } else {
+          const hasGroup = selectedNodes.some(isGroup);
+          panelTitle.textContent = hasGroup
+            ? `${selectedNodes.length} elementos seleccionados`
+            : `${selectedNodes.length} figuras seleccionadas`;
+        }
       }
 
-      const firstShape = selectedNodes[0];
+      const firstShape = leafShapes[0];
       const isEditing = initialStyleSnapshots !== null;
-      if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
-        inputFill.value = toValidHexColor(firstShape.fill, '#000000');
-      }
-      if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
-        inputStroke.value = toValidHexColor(firstShape.stroke, '#000000');
-      }
-      if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
-        inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
+      if (firstShape) {
+        if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
+          inputFill.value = toValidHexColor(firstShape.fill, '#000000');
+        }
+        if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
+          inputStroke.value = toValidHexColor(firstShape.stroke, '#000000');
+        }
+        if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
+          inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
+        }
       }
 
       const canAlign = selectedNodes.length >= 2;
@@ -648,7 +675,7 @@ export function setupUIBindings(
 
   // Suscripción al StateManager para sincronizar selección y estilos
   const unsubscribeState = stateManager.subscribe(() => {
-    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
+    const selectedNodes = stateManager.getSelectedNodes();
     syncPropertiesPanel(selectedNodes);
   });
 
@@ -675,37 +702,40 @@ export function setupUIBindings(
   // Previsualización en vivo (evento 'input'): actualiza directamente en StateManager sin registrar comando
   const onFillInput = () => {
     const selectedNodes = stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0 || !inputFill) return;
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputFill) return;
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
     const val = inputFill.value;
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       stateManager.updateShape(shape.id, { fill: val });
     }
   };
 
   const onStrokeInput = () => {
     const selectedNodes = stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0 || !inputStroke) return;
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputStroke) return;
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
     const val = inputStroke.value;
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       stateManager.updateShape(shape.id, { stroke: val });
     }
   };
 
   const onStrokeWidthInput = () => {
     const selectedNodes = stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0 || !inputStrokeWidth) return;
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputStrokeWidth) return;
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
     const parsed = parseFloat(inputStrokeWidth.value);
     const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       stateManager.updateShape(shape.id, { strokeWidth });
     }
   };
@@ -716,8 +746,9 @@ export function setupUIBindings(
 
   // Consolidación final (evento 'change'): genera StyleCommand y registra en CommandManager
   const onFillChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
-    if (selectedNodes.length === 0 || !inputFill) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputFill) return;
 
     if (!initialStyleSnapshots) {
       captureInitialStyle();
@@ -726,7 +757,7 @@ export function setupUIBindings(
     const finalVal = inputFill.value;
     const commands: StyleCommand[] = [];
 
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       const initialVal = initialStyleSnapshots?.get(shape.id)?.fill ?? shape.fill;
       stateManager.updateShape(shape.id, { fill: finalVal });
 
@@ -752,8 +783,9 @@ export function setupUIBindings(
   };
 
   const onStrokeChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
-    if (selectedNodes.length === 0 || !inputStroke) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputStroke) return;
 
     if (!initialStyleSnapshots) {
       captureInitialStyle();
@@ -762,7 +794,7 @@ export function setupUIBindings(
     const finalVal = inputStroke.value;
     const commands: StyleCommand[] = [];
 
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       const initialVal = initialStyleSnapshots?.get(shape.id)?.stroke ?? shape.stroke;
       stateManager.updateShape(shape.id, { stroke: finalVal });
 
@@ -788,8 +820,9 @@ export function setupUIBindings(
   };
 
   const onStrokeWidthChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes().filter(isShape);
-    if (selectedNodes.length === 0 || !inputStrokeWidth) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0 || !inputStrokeWidth) return;
 
     if (!initialStyleSnapshots) {
       captureInitialStyle();
@@ -799,7 +832,7 @@ export function setupUIBindings(
     const finalVal = isNaN(parsed) ? 1 : Math.max(0, parsed);
     const commands: StyleCommand[] = [];
 
-    for (const shape of selectedNodes) {
+    for (const shape of leafShapes) {
       const initialVal = initialStyleSnapshots?.get(shape.id)?.strokeWidth ?? shape.strokeWidth;
       stateManager.updateShape(shape.id, { strokeWidth: finalVal });
 
@@ -1378,6 +1411,24 @@ export function setupUIBindings(
     }
   };
 
+  const onMenuGroupClick = () => {
+    if (stateManager.getSelection().length >= 2) {
+      closeAllMenus();
+      inputController.groupSelection();
+      syncMenuItems();
+      canvas?.focus?.();
+    }
+  };
+
+  const onMenuUngroupClick = () => {
+    if (stateManager.getSelectedNodes().some(isGroup)) {
+      closeAllMenus();
+      inputController.ungroupSelection();
+      syncMenuItems();
+      canvas?.focus?.();
+    }
+  };
+
   // Acciones de Alineación (Menú y Panel)
   const createAlignHandler = (mode: AlignmentMode) => () => {
     if (stateManager.getSelection().length >= 2) {
@@ -1531,6 +1582,8 @@ export function setupUIBindings(
   menuItemDelete?.addEventListener('click', onMenuDeleteClick);
   menuItemBringToFront?.addEventListener('click', onMenuBringToFrontClick);
   menuItemSendToBack?.addEventListener('click', onMenuSendToBackClick);
+  menuItemGroup?.addEventListener('click', onMenuGroupClick);
+  menuItemUngroup?.addEventListener('click', onMenuUngroupClick);
   menuItemZoomIn?.addEventListener('click', onMenuZoomInClick);
   menuItemZoomOut?.addEventListener('click', onMenuZoomOutClick);
   menuItemZoomFit?.addEventListener('click', onMenuZoomFitClick);
@@ -1770,6 +1823,8 @@ export function setupUIBindings(
       menuItemDelete?.removeEventListener('click', onMenuDeleteClick);
       menuItemBringToFront?.removeEventListener('click', onMenuBringToFrontClick);
       menuItemSendToBack?.removeEventListener('click', onMenuSendToBackClick);
+      menuItemGroup?.removeEventListener('click', onMenuGroupClick);
+      menuItemUngroup?.removeEventListener('click', onMenuUngroupClick);
 
       menuItemAlignLeft?.removeEventListener('click', onAlignLeft);
       menuItemAlignCenterH?.removeEventListener('click', onAlignCenterH);

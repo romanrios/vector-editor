@@ -1,9 +1,19 @@
 import type { StateManager } from '../state/StateManager.ts';
-import { isLayer, isShape, type Shape } from '../types/scene-graph.ts';
-import { cloneShape } from '../utils/cloneShape.ts';
+import { getLeafShapes } from '../state/StateManager.ts';
 import {
-  computeAlignment,
-  computeDistribution,
+  isGroup,
+  isLayer,
+  isSelectable,
+  isShape,
+  type Group,
+  type Layer,
+  type SelectableNode,
+  type Shape,
+} from '../types/scene-graph.ts';
+import { cloneNode } from '../utils/cloneShape.ts';
+import {
+  computeNodesAlignment,
+  computeNodesDistribution,
   type AlignmentMode,
   type DistributionAxis,
 } from '../utils/geometry.ts';
@@ -13,23 +23,28 @@ import { BatchCommand } from '../commands/BatchCommand.ts';
 import { DeleteCommand } from '../commands/DeleteCommand.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
 import { ReorderCommand } from '../commands/ReorderCommand.ts';
+import { GroupCommand } from '../commands/GroupCommand.ts';
+import { UngroupCommand } from '../commands/UngroupCommand.ts';
+import { StyleCommand } from '../commands/StyleCommand.ts';
 
 /**
- * Portapapeles que almacena una lista de figuras preservando compatibilidad con .id
+ * Portapapeles que almacena una lista de nodos seleccionables preservando compatibilidad con .id
  */
-export interface ClipboardList extends ReadonlyArray<Shape> {
+export interface ClipboardList extends ReadonlyArray<SelectableNode> {
   readonly id?: string;
 }
 
 export interface ClipboardEntry {
-  readonly shape: Shape;
+  readonly node: SelectableNode;
+  readonly parentId: string;
   readonly layerId: string;
   readonly layerIndex: number;
-  readonly shapeIndex: number;
+  readonly nodeIndex: number;
+  readonly shape?: Shape;
 }
 
-export function createClipboardList(shapes: readonly Shape[]): ClipboardList {
-  const list = [...shapes] as Shape[] & { id?: string };
+export function createClipboardList(nodes: readonly SelectableNode[]): ClipboardList {
+  const list = [...nodes] as SelectableNode[] & { id?: string };
   Object.defineProperty(list, 'id', {
     get: () => list[0]?.id,
     enumerable: false,
@@ -38,31 +53,33 @@ export function createClipboardList(shapes: readonly Shape[]): ClipboardList {
   return Object.freeze(list) as unknown as ClipboardList;
 }
 
-export function asShapeArray(shapes: readonly Shape[]): Shape[] & Shape {
+export function asShapeArray(shapes: readonly SelectableNode[]): Shape[] & Shape {
   const arr = [...shapes] as unknown as Shape[] & Shape;
   if (arr.length > 0) {
+    const first = arr[0];
     Object.defineProperties(arr, {
       id: { get: () => arr[0]?.id, configurable: true },
       name: { get: () => arr[0]?.name, configurable: true },
       type: { get: () => arr[0]?.type, configurable: true },
-      x: { get: () => arr[0]?.x, configurable: true },
-      y: { get: () => arr[0]?.y, configurable: true },
-      stroke: { get: () => arr[0]?.stroke, configurable: true },
-      fill: { get: () => arr[0]?.fill, configurable: true },
-      strokeWidth: { get: () => arr[0]?.strokeWidth, configurable: true },
+      x: { get: () => ('x' in first ? (first as any).x : undefined), configurable: true },
+      y: { get: () => ('y' in first ? (first as any).y : undefined), configurable: true },
+      stroke: { get: () => ('stroke' in first ? (first as any).stroke : undefined), configurable: true },
+      fill: { get: () => ('fill' in first ? (first as any).fill : undefined), configurable: true },
+      strokeWidth: { get: () => ('strokeWidth' in first ? (first as any).strokeWidth : undefined), configurable: true },
       visible: { get: () => arr[0]?.visible, configurable: true },
       locked: { get: () => arr[0]?.locked, configurable: true },
-      rotation: { get: () => arr[0]?.rotation, configurable: true },
+      rotation: { get: () => ('rotation' in first ? (first as any).rotation : undefined), configurable: true },
     });
   }
   return arr;
 }
 
 /**
- * Encapsula todas las operaciones que actúan directamente sobre la selección de figuras:
+ * Encapsula todas las operaciones que actúan directamente sobre la selección de figuras y grupos:
  * reordenamiento (bringToFront, sendToBack), duplicación, portapapeles en memoria (copy, paste),
- * eliminación (deleteSelected), traslación por teclado/desplazamiento (moveSelection)
- * y alineación/distribución geométrica.
+ * eliminación (deleteSelected), traslación por teclado/desplazamiento (moveSelection),
+ * agrupación/desagrupación (groupSelection, ungroupSelection), alineación/distribución geométrica
+ * y aplicación de estilos sobre hojas.
  */
 export class SelectionOperations {
   private readonly stateManager: StateManager;
@@ -79,7 +96,7 @@ export class SelectionOperations {
   }
 
   public get clipboard(): (readonly Shape[] & { readonly id?: string }) | null {
-    return this._clipboard;
+    return this._clipboard as unknown as (readonly Shape[] & { readonly id?: string }) | null;
   }
 
   public get pasteCount(): number {
@@ -87,27 +104,63 @@ export class SelectionOperations {
   }
 
   /**
-   * Agrupa una colección de figuras (por defecto la selección activa) por capa contenedora,
-   * indexando su posición dentro de cada capa y ordenando los elementos por índice de forma ascendente.
-   * Reutilizado uniformemente por bringToFront, sendToBack, duplicate, copy, paste y deleteSelected.
+   * Resuelve la capa contenedora raíz de cualquier nodo subiendo por la cadena de padres.
+   */
+  private findParentLayer(nodeId: string): Layer | null {
+    let current = this.stateManager.findParent(nodeId);
+    while (current) {
+      if (isLayer(current)) {
+        return current;
+      }
+      current = this.stateManager.findParent(current.id);
+    }
+    return null;
+  }
+
+  /**
+   * Encuentra el hijo directo de la capa que contiene al nodo especificado.
+   */
+  private findTopChildInLayer(layer: Layer, descendantId: string): SelectableNode | null {
+    let currentId = descendantId;
+    while (currentId) {
+      const p = this.stateManager.findParent(currentId);
+      if (!p) break;
+      if (p.id === layer.id) {
+        const node = this.stateManager.findNode(currentId);
+        return node && isSelectable(node) ? node : null;
+      }
+      currentId = p.id;
+    }
+    return null;
+  }
+
+  /**
+   * Agrupa una colección de figuras (por defecto las hojas de la selección activa)
+   * por su capa contenedora raíz, subiendo por la jerarquía de padres si están dentro de grupos.
    */
   public getSelectedShapesGroupedByLayer(
-    shapes: readonly Shape[] = this.stateManager.getSelectedNodes().filter(isShape)
+    shapes?: readonly Shape[]
   ): Map<string, { shape: Shape; index: number }[]> {
+    const targetShapes =
+      shapes ?? getLeafShapes(this.stateManager.getSelectedNodes());
+
     const layerMap = new Map<string, { shape: Shape; index: number }[]>();
-    if (shapes.length === 0) {
+    if (targetShapes.length === 0) {
       return layerMap;
     }
 
-    for (const shape of shapes) {
-      const parent = this.stateManager.findParent(shape.id);
-      if (parent && isLayer(parent)) {
-        let list = layerMap.get(parent.id);
+    for (const shape of targetShapes) {
+      const layer = this.findParentLayer(shape.id);
+      if (layer) {
+        let list = layerMap.get(layer.id);
         if (!list) {
           list = [];
-          layerMap.set(parent.id, list);
+          layerMap.set(layer.id, list);
         }
-        const index = parent.children.findIndex((s) => s.id === shape.id);
+        const topChild = this.findTopChildInLayer(layer, shape.id);
+        const index = topChild
+          ? layer.children.findIndex((c) => c.id === topChild.id)
+          : 0;
         list.push({ shape, index });
       }
     }
@@ -120,12 +173,13 @@ export class SelectionOperations {
   }
 
   /**
-   * Trae las figuras seleccionadas al frente de sus capas contenedoras conservando su orden relativo,
-   * registrando una sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
+   * Trae los elementos seleccionados al frente dentro de sus respectivos contenedores padres
+   * (capa o grupo) conservando su orden relativo.
+   * Registra UNA sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
    */
-  public bringToFront(shapeId?: string): boolean {
-    if (shapeId) {
-      const command = new ReorderCommand(this.stateManager, shapeId, 'bringToFront');
+  public bringToFront(nodeId?: string): boolean {
+    if (nodeId) {
+      const command = new ReorderCommand(this.stateManager, nodeId, 'bringToFront');
       if (command.isAlreadyAtTarget) {
         return false;
       }
@@ -147,17 +201,30 @@ export class SelectionOperations {
       return true;
     }
 
-    // Varias figuras seleccionadas:
-    const layerMap = this.getSelectedShapesGroupedByLayer(selectedNodes.filter(isShape));
-    if (layerMap.size === 0) {
-      return false;
+    // Varias figuras o grupos seleccionados: agrupar por contenedor padre directo (Layer o Group)
+    const parentMap = new Map<string, { node: SelectableNode; index: number }[]>();
+    for (const node of selectedNodes) {
+      const parent = this.stateManager.findParent(node.id);
+      if (parent && 'children' in parent) {
+        let list = parentMap.get(parent.id);
+        if (!list) {
+          list = [];
+          parentMap.set(parent.id, list);
+        }
+        const index = (parent.children as readonly SelectableNode[]).findIndex((c) => c.id === node.id);
+        list.push({ node, index });
+      }
+    }
+
+    for (const items of parentMap.values()) {
+      items.sort((a, b) => a.index - b.index);
     }
 
     let anyNeedsMove = false;
-    for (const [layerId, items] of layerMap.entries()) {
-      const parent = this.stateManager.findNode(layerId);
-      if (parent && isLayer(parent)) {
-        const total = parent.children.length;
+    for (const [parentId, items] of parentMap.entries()) {
+      const parent = this.stateManager.findNode(parentId);
+      if (parent && 'children' in parent) {
+        const total = (parent.children as readonly SelectableNode[]).length;
         const k = items.length;
         const alreadyAtTop = items.every((it, idx) => it.index === total - k + idx);
         if (!alreadyAtTop) {
@@ -172,12 +239,12 @@ export class SelectionOperations {
 
     const commands: ReorderCommand[] = [];
 
-    for (const [layerId, items] of layerMap.entries()) {
+    for (const [parentId, items] of parentMap.entries()) {
       for (const item of items) {
-        const parent = this.stateManager.findNode(layerId);
-        if (parent && isLayer(parent)) {
-          const currentIndex = parent.children.findIndex((s) => s.id === item.shape.id);
-          const cmd = new ReorderCommand(this.stateManager, item.shape.id, 'bringToFront', currentIndex);
+        const parent = this.stateManager.findNode(parentId);
+        if (parent && 'children' in parent) {
+          const currentIndex = (parent.children as readonly SelectableNode[]).findIndex((s) => s.id === item.node.id);
+          const cmd = new ReorderCommand(this.stateManager, item.node.id, 'bringToFront', currentIndex);
           cmd.execute();
           commands.push(cmd);
         }
@@ -194,12 +261,13 @@ export class SelectionOperations {
   }
 
   /**
-   * Envía las figuras seleccionadas al fondo de sus capas contenedoras conservando su orden relativo,
-   * registrando una sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
+   * Envía los elementos seleccionados al fondo dentro de sus respectivos contenedores padres
+   * (capa o grupo) conservando su orden relativo.
+   * Registra UNA sola entrada en el historial de comandos (ReorderCommand o BatchCommand).
    */
-  public sendToBack(shapeId?: string): boolean {
-    if (shapeId) {
-      const command = new ReorderCommand(this.stateManager, shapeId, 'sendToBack');
+  public sendToBack(nodeId?: string): boolean {
+    if (nodeId) {
+      const command = new ReorderCommand(this.stateManager, nodeId, 'sendToBack');
       if (command.isAlreadyAtTarget) {
         return false;
       }
@@ -221,16 +289,29 @@ export class SelectionOperations {
       return true;
     }
 
-    // Varias figuras seleccionadas:
-    const layerMap = this.getSelectedShapesGroupedByLayer(selectedNodes.filter(isShape));
-    if (layerMap.size === 0) {
-      return false;
+    // Varias figuras o grupos seleccionados: agrupar por contenedor padre directo (Layer o Group)
+    const parentMap = new Map<string, { node: SelectableNode; index: number }[]>();
+    for (const node of selectedNodes) {
+      const parent = this.stateManager.findParent(node.id);
+      if (parent && 'children' in parent) {
+        let list = parentMap.get(parent.id);
+        if (!list) {
+          list = [];
+          parentMap.set(parent.id, list);
+        }
+        const index = (parent.children as readonly SelectableNode[]).findIndex((c) => c.id === node.id);
+        list.push({ node, index });
+      }
+    }
+
+    for (const items of parentMap.values()) {
+      items.sort((a, b) => a.index - b.index);
     }
 
     let anyNeedsMove = false;
-    for (const [layerId, items] of layerMap.entries()) {
-      const parent = this.stateManager.findNode(layerId);
-      if (parent && isLayer(parent)) {
+    for (const [parentId, items] of parentMap.entries()) {
+      const parent = this.stateManager.findNode(parentId);
+      if (parent && 'children' in parent) {
         const alreadyAtBottom = items.every((it, idx) => it.index === idx);
         if (!alreadyAtBottom) {
           anyNeedsMove = true;
@@ -244,14 +325,14 @@ export class SelectionOperations {
 
     const commands: ReorderCommand[] = [];
 
-    for (const [layerId, items] of layerMap.entries()) {
+    for (const [parentId, items] of parentMap.entries()) {
       const reversed = [...items].reverse();
 
       for (const item of reversed) {
-        const parent = this.stateManager.findNode(layerId);
-        if (parent && isLayer(parent)) {
-          const currentIndex = parent.children.findIndex((s) => s.id === item.shape.id);
-          const cmd = new ReorderCommand(this.stateManager, item.shape.id, 'sendToBack', currentIndex);
+        const parent = this.stateManager.findNode(parentId);
+        if (parent && 'children' in parent) {
+          const currentIndex = (parent.children as readonly SelectableNode[]).findIndex((s) => s.id === item.node.id);
+          const cmd = new ReorderCommand(this.stateManager, item.node.id, 'sendToBack', currentIndex);
           cmd.execute();
           commands.push(cmd);
         }
@@ -268,29 +349,47 @@ export class SelectionOperations {
   }
 
   /**
-   * Duplica las figuras seleccionadas con un desplazamiento de 10 px,
+   * Duplica los nodos seleccionados (figuras o grupos) con un desplazamiento de 10 px,
    * conservando sus posiciones relativas y su orden de apilado relativo,
-   * en su capa de origen, con IDs y nombres nuevos.
+   * en su contenedor padre de origen, con IDs y nombres nuevos.
    * Las copias quedan seleccionadas.
    * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
   public duplicate(): (Shape[] & Shape) | null {
-    const layerMap = this.getSelectedShapesGroupedByLayer();
-    if (layerMap.size === 0) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return null;
     }
 
-    const clonedShapes: Shape[] = [];
+    const parentMap = new Map<string, { node: SelectableNode; index: number }[]>();
+    for (const node of selectedNodes) {
+      const parent = this.stateManager.findParent(node.id);
+      if (parent && 'children' in parent) {
+        let list = parentMap.get(parent.id);
+        if (!list) {
+          list = [];
+          parentMap.set(parent.id, list);
+        }
+        const index = (parent.children as readonly SelectableNode[]).findIndex((c) => c.id === node.id);
+        list.push({ node, index });
+      }
+    }
+
+    for (const items of parentMap.values()) {
+      items.sort((a, b) => a.index - b.index);
+    }
+
+    const clonedNodes: SelectableNode[] = [];
     const commands: AddShapeCommand[] = [];
 
-    for (const [layerId, items] of layerMap.entries()) {
+    for (const [parentId, items] of parentMap.entries()) {
       const maxIndex = Math.max(...items.map((it) => it.index));
 
       items.forEach((item, k) => {
         const targetIndex = maxIndex + 1 + k;
-        const cloned = cloneShape(item.shape, { dx: 10, dy: 10 });
-        clonedShapes.push(cloned);
-        commands.push(new AddShapeCommand(this.stateManager, layerId, cloned, targetIndex));
+        const cloned = cloneNode(item.node, { dx: 10, dy: 10 });
+        clonedNodes.push(cloned);
+        commands.push(new AddShapeCommand(this.stateManager, parentId, cloned, targetIndex));
       });
     }
 
@@ -301,57 +400,64 @@ export class SelectionOperations {
     if (commands.length === 1) {
       this.commandManager.executeCommand(commands[0]);
     } else {
-      const batch = new BatchCommand(commands, 'Duplicate Shapes');
+      const batch = new BatchCommand(commands, 'Duplicate Nodes');
       this.commandManager.executeCommand(batch);
     }
 
-    this.stateManager.setSelection(clonedShapes.map((s) => s.id));
-    return asShapeArray(clonedShapes);
+    this.stateManager.setSelection(clonedNodes.map((s) => s.id));
+    return asShapeArray(clonedNodes);
   }
 
   /**
-   * Guarda una copia de las figuras seleccionadas en el portapapeles interno en memoria.
+   * Guarda una copia de los nodos seleccionados (figuras o grupos) en el portapapeles interno.
    * Reinicia el contador de desplazamientos de pegados consecutivos.
-   * Retorna true si se copió con éxito o false si no había figuras seleccionadas.
    */
   public copy(): boolean {
-    const layerMap = this.getSelectedShapesGroupedByLayer();
-    if (layerMap.size === 0) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
     }
 
     const doc = this.stateManager.getState();
     const entries: ClipboardEntry[] = [];
 
-    for (const [layerId, items] of layerMap.entries()) {
+    for (const node of selectedNodes) {
+      const parent = this.stateManager.findParent(node.id);
+      const layer = this.findParentLayer(node.id);
+      const layerId = layer ? layer.id : (doc.children[0]?.id ?? '');
       const layerIndex = doc.children.findIndex((l) => l.id === layerId);
-      for (const item of items) {
-        entries.push({
-          shape: item.shape,
-          layerId,
-          layerIndex,
-          shapeIndex: item.index,
-        });
-      }
+      const nodeIndex =
+        parent && 'children' in parent
+          ? (parent.children as readonly SelectableNode[]).findIndex((c) => c.id === node.id)
+          : 0;
+
+      entries.push({
+        node,
+        parentId: parent ? parent.id : layerId,
+        layerId,
+        layerIndex,
+        nodeIndex,
+        ...(isShape(node) ? { shape: node } : {}),
+      });
     }
 
     entries.sort((a, b) => {
       if (a.layerIndex !== b.layerIndex) {
         return a.layerIndex - b.layerIndex;
       }
-      return a.shapeIndex - b.shapeIndex;
+      return a.nodeIndex - b.nodeIndex;
     });
 
     this._clipboardEntries = entries;
-    this._clipboard = createClipboardList(entries.map((e) => e.shape));
+    this._clipboard = createClipboardList(selectedNodes);
     this._pasteCount = 0;
     return true;
   }
 
   /**
-   * Crea copias de las figuras del portapapeles conservando sus posiciones relativas
+   * Crea copias de los elementos del portapapeles conservando sus posiciones relativas
    * y orden de apilado relativo, desplazadas 10 px de forma acumulada en pegados consecutivos.
-   * Las figuras se insertan en su capa de origen y quedan seleccionadas.
+   * Las copias se insertan en su contenedor de origen y quedan seleccionadas.
    * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
   public paste(): (Shape[] & Shape) | null {
@@ -364,21 +470,24 @@ export class SelectionOperations {
     const doc = this.stateManager.getState();
     const defaultLayerId = doc.children[0]?.id;
 
-    const clonedShapes: Shape[] = [];
+    const clonedNodes: SelectableNode[] = [];
     const commands: AddShapeCommand[] = [];
 
     for (const entry of this._clipboardEntries) {
-      let targetLayerId = entry.layerId;
-      if (!this.stateManager.findNode(targetLayerId)) {
-        targetLayerId = defaultLayerId;
+      let targetParentId = entry.parentId;
+      if (!this.stateManager.findNode(targetParentId)) {
+        targetParentId = entry.layerId;
+        if (!this.stateManager.findNode(targetParentId)) {
+          targetParentId = defaultLayerId;
+        }
       }
-      if (!targetLayerId) {
+      if (!targetParentId) {
         continue;
       }
 
-      const cloned = cloneShape(entry.shape, { dx: offset, dy: offset });
-      clonedShapes.push(cloned);
-      commands.push(new AddShapeCommand(this.stateManager, targetLayerId, cloned));
+      const cloned = cloneNode(entry.node, { dx: offset, dy: offset });
+      clonedNodes.push(cloned);
+      commands.push(new AddShapeCommand(this.stateManager, targetParentId, cloned));
     }
 
     if (commands.length === 0) {
@@ -388,34 +497,47 @@ export class SelectionOperations {
     if (commands.length === 1) {
       this.commandManager.executeCommand(commands[0]);
     } else {
-      const batch = new BatchCommand(commands, 'Paste Shapes');
+      const batch = new BatchCommand(commands, 'Paste Nodes');
       this.commandManager.executeCommand(batch);
     }
 
-    this.stateManager.setSelection(clonedShapes.map((s) => s.id));
-    return asShapeArray(clonedShapes);
+    this.stateManager.setSelection(clonedNodes.map((s) => s.id));
+    return asShapeArray(clonedNodes);
   }
 
   /**
-   * Elimina todas las figuras seleccionadas del Scene Graph mediante DeleteCommand.
-   * Al deshacer, las restaura en sus posiciones e índices originales dentro de su capa.
+   * Elimina todos los elementos seleccionados (figuras o grupos) mediante DeleteCommand.
+   * Al deshacer, restaura los nodos y cualquier grupo vaciado en sus posiciones exactas.
    * Registra UNA sola entrada en el historial de comandos (DeleteCommand o BatchCommand).
-   *
-   * @returns true si se eliminaron figuras, false si no había selección
    */
   public deleteSelected(): boolean {
-    const layerMap = this.getSelectedShapesGroupedByLayer();
-    if (layerMap.size === 0) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 0) {
       return false;
+    }
+
+    // Agrupar nodos por contenedor padre directo para ordenar por índice descendente
+    const parentMap = new Map<string, { node: SelectableNode; index: number }[]>();
+    for (const node of selectedNodes) {
+      const parent = this.stateManager.findParent(node.id);
+      if (parent && 'children' in parent) {
+        let list = parentMap.get(parent.id);
+        if (!list) {
+          list = [];
+          parentMap.set(parent.id, list);
+        }
+        const index = (parent.children as readonly SelectableNode[]).findIndex((c) => c.id === node.id);
+        list.push({ node, index });
+      }
     }
 
     const commands: DeleteCommand[] = [];
 
-    for (const [layerId, items] of layerMap.entries()) {
+    for (const [parentId, items] of parentMap.entries()) {
       // Orden descendente de índice para que la eliminación no altere los índices inferiores
-      const reversed = [...items].reverse();
-      for (const item of reversed) {
-        commands.push(new DeleteCommand(this.stateManager, item.shape, layerId, item.index));
+      items.sort((a, b) => b.index - a.index);
+      for (const item of items) {
+        commands.push(new DeleteCommand(this.stateManager, item.node, parentId, item.index));
       }
     }
 
@@ -426,7 +548,7 @@ export class SelectionOperations {
     if (commands.length === 1) {
       this.commandManager.executeCommand(commands[0]);
     } else {
-      const batch = new BatchCommand(commands, 'Delete Shapes');
+      const batch = new BatchCommand(commands, 'Delete Nodes');
       this.commandManager.executeCommand(batch);
     }
 
@@ -435,46 +557,28 @@ export class SelectionOperations {
   }
 
   /**
-   * Mueve todas las figuras seleccionadas por un desplazamiento relativo (dx, dy).
-   * Omite figuras bloqueadas (locked).
-   * Fusiona comandos consecutivos en el CommandManager (BatchCommand.mergeWith) dentro de un intervalo corto (400 ms).
-   *
-   * @param dx Desplazamiento horizontal en píxeles
-   * @param dy Desplazamiento vertical en píxeles
-   * @param timestamp Marca temporal opcional (para pruebas deterministas o repetición)
-   * @returns true si las figuras fueron movidas, false en caso contrario
+   * Mueve todas las figuras de la selección (expandiendo grupos a figuras hoja)
+   * por un desplazamiento relativo (dx, dy). Omite figuras efectivamente bloqueadas.
+   * Con varias figuras u hojas de grupo, las encapsula en un BatchCommand;
+   * los comandos de flechas consecutivos se fusionan en una sola entrada del historial.
    */
   public moveSelection(dx: number, dy: number, timestamp?: number): boolean {
     if (dx === 0 && dy === 0) {
       return false;
     }
 
-    const selectedShapes = this.stateManager.getSelectedNodes().filter((s): s is Shape => isShape(s) && !s.locked);
-    if (selectedShapes.length === 0) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes).filter(
+      (s) => !this.stateManager.isEffectivelyLocked(s.id)
+    );
+
+    if (leafShapes.length === 0) {
       return false;
     }
 
     const now = timestamp ?? Date.now();
 
-    if (selectedShapes.length === 1) {
-      const shape = selectedShapes[0];
-      const command = new TranslateCommand(
-        this.stateManager,
-        shape.id,
-        shape.x,
-        shape.y,
-        shape.x + dx,
-        shape.y + dy,
-        {
-          timestamp: now,
-          mergeTimeout: 400,
-        }
-      );
-      this.commandManager.executeCommand(command);
-      return true;
-    }
-
-    const commands = selectedShapes.map((shape) => {
+    const commands = leafShapes.map((shape) => {
       return new TranslateCommand(
         this.stateManager,
         shape.id,
@@ -489,50 +593,52 @@ export class SelectionOperations {
       );
     });
 
-    const batch = new BatchCommand(commands, 'Translate Shapes');
-    this.commandManager.executeCommand(batch);
+    if (commands.length === 1 && selectedNodes.length === 1 && isShape(selectedNodes[0])) {
+      this.commandManager.executeCommand(commands[0]);
+    } else {
+      const batch = new BatchCommand(commands, 'Translate Shapes');
+      this.commandManager.executeCommand(batch);
+    }
     return true;
   }
 
   /**
-   * Alinea las figuras actualmente seleccionadas según el modo indicado.
-   * Si hay menos de 2 figuras seleccionadas y no bloqueadas, o si ninguna figura cambia de posición,
-   * no ejecuta nada ni registra historial.
+   * Alinea los elementos seleccionados considerando cada grupo como una unidad indivisible (getNodeAABB).
+   * El desplazamiento resultante se aplica a todas las figuras hoja de cada elemento.
    * Toda la operación se encapsula en UN solo BatchCommand de TranslateCommand.
-   *
-   * @param mode Modo de alineación ('left', 'center-h', 'right', 'top', 'center-v', 'bottom')
-   * @returns true si se ejecutó y registró la alineación, false si no hubo cambios
    */
   public alignSelection(mode: AlignmentMode): boolean {
-    const selectedShapes = this.stateManager.getSelectedNodes().filter((s): s is Shape => isShape(s) && !s.locked);
-    if (selectedShapes.length < 2) {
+    const selectedNodes = this.stateManager.getSelectedNodes().filter(
+      (n) => !this.stateManager.isEffectivelyLocked(n.id)
+    );
+    if (selectedNodes.length < 2) {
       return false;
     }
 
-    const entries = computeAlignment(selectedShapes, mode);
+    const entries = computeNodesAlignment(selectedNodes, mode);
     if (entries.length === 0) {
       return false;
     }
 
-    const shapeMap = new Map(selectedShapes.map((s) => [s.id, s]));
     const commands: TranslateCommand[] = [];
 
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const shape = shapeMap.get(entry.id);
-      if (!shape) continue;
-
-      commands.push(
-        new TranslateCommand(
-          this.stateManager,
-          entry.id,
-          shape.x,
-          shape.y,
-          entry.x,
-          entry.y,
-          { mergeTimeout: 0 }
-        )
+    for (const entry of entries) {
+      const leafShapes = getLeafShapes([entry.node]).filter(
+        (s) => !this.stateManager.isEffectivelyLocked(s.id)
       );
+      for (const shape of leafShapes) {
+        commands.push(
+          new TranslateCommand(
+            this.stateManager,
+            shape.id,
+            shape.x,
+            shape.y,
+            shape.x + entry.dx,
+            shape.y + entry.dy,
+            { mergeTimeout: 0 }
+          )
+        );
+      }
     }
 
     if (commands.length === 0) {
@@ -545,45 +651,42 @@ export class SelectionOperations {
   }
 
   /**
-   * Distribuye las figuras actualmente seleccionadas uniformemente a lo largo del eje indicado,
-   * manteniendo iguales los espacios libres entre figuras contiguas y fijas la primera y última figura.
-   * Si hay menos de 3 figuras seleccionadas y no bloqueadas, o si ninguna figura cambia de posición,
-   * no ejecuta nada ni registra historial.
+   * Distribuye uniformemente los elementos seleccionados considerando cada grupo como una unidad (getNodeAABB).
+   * El desplazamiento resultante se aplica a todas las figuras hoja de cada elemento.
    * Toda la operación se encapsula en UN solo BatchCommand de TranslateCommand.
-   *
-   * @param axis Eje de distribución ('horizontal' o 'vertical')
-   * @returns true si se ejecutó y registró la distribución, false si no hubo cambios
    */
   public distributeSelection(axis: DistributionAxis): boolean {
-    const selectedShapes = this.stateManager.getSelectedNodes().filter((s): s is Shape => isShape(s) && !s.locked);
-    if (selectedShapes.length < 3) {
+    const selectedNodes = this.stateManager.getSelectedNodes().filter(
+      (n) => !this.stateManager.isEffectivelyLocked(n.id)
+    );
+    if (selectedNodes.length < 3) {
       return false;
     }
 
-    const entries = computeDistribution(selectedShapes, axis);
+    const entries = computeNodesDistribution(selectedNodes, axis);
     if (entries.length === 0) {
       return false;
     }
 
-    const shapeMap = new Map(selectedShapes.map((s) => [s.id, s]));
     const commands: TranslateCommand[] = [];
 
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const shape = shapeMap.get(entry.id);
-      if (!shape) continue;
-
-      commands.push(
-        new TranslateCommand(
-          this.stateManager,
-          entry.id,
-          shape.x,
-          shape.y,
-          entry.x,
-          entry.y,
-          { mergeTimeout: 0 }
-        )
+    for (const entry of entries) {
+      const leafShapes = getLeafShapes([entry.node]).filter(
+        (s) => !this.stateManager.isEffectivelyLocked(s.id)
       );
+      for (const shape of leafShapes) {
+        commands.push(
+          new TranslateCommand(
+            this.stateManager,
+            shape.id,
+            shape.x,
+            shape.y,
+            shape.x + entry.dx,
+            shape.y + entry.dy,
+            { mergeTimeout: 0 }
+          )
+        );
+      }
     }
 
     if (commands.length === 0) {
@@ -592,6 +695,93 @@ export class SelectionOperations {
 
     const batch = new BatchCommand(commands, `Distribuir (${axis})`);
     this.commandManager.executeCommand(batch);
+    return true;
+  }
+
+  /**
+   * Aplica estilos (relleno, borde, grosor) sobre todas las figuras hoja de la selección activa.
+   * Registra UNA sola entrada en el historial de comandos (StyleCommand o BatchCommand).
+   */
+  public applyStyle(
+    style: Partial<{ fill: string; stroke: string; strokeWidth: number }>
+  ): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes).filter(
+      (s) => !this.stateManager.isEffectivelyLocked(s.id)
+    );
+    if (leafShapes.length === 0) {
+      return false;
+    }
+
+    const commands: StyleCommand[] = [];
+
+    for (const shape of leafShapes) {
+      const oldStyle: Record<string, any> = {};
+      const newStyle: Record<string, any> = {};
+      let changed = false;
+
+      if (style.fill !== undefined && shape.fill !== style.fill) {
+        oldStyle.fill = shape.fill;
+        newStyle.fill = style.fill;
+        changed = true;
+      }
+      if (style.stroke !== undefined && shape.stroke !== style.stroke) {
+        oldStyle.stroke = shape.stroke;
+        newStyle.stroke = style.stroke;
+        changed = true;
+      }
+      if (style.strokeWidth !== undefined && shape.strokeWidth !== style.strokeWidth) {
+        oldStyle.strokeWidth = shape.strokeWidth;
+        newStyle.strokeWidth = style.strokeWidth;
+        changed = true;
+      }
+
+      if (changed) {
+        commands.push(new StyleCommand(this.stateManager, shape.id, oldStyle, newStyle));
+      }
+    }
+
+    if (commands.length === 0) {
+      return false;
+    }
+
+    if (commands.length === 1) {
+      this.commandManager.executeCommand(commands[0]);
+    } else {
+      const batch = new BatchCommand(commands, 'Apply Style');
+      this.commandManager.executeCommand(batch);
+    }
+
+    return true;
+  }
+
+  /**
+   * Agrupa los elementos actualmente seleccionados (requiere 2 o más nodos).
+   * Registra UNA sola entrada en el historial mediante GroupCommand.
+   */
+  public groupSelection(): Group | null {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length < 2) {
+      return null;
+    }
+
+    const command = new GroupCommand(this.stateManager, selectedNodes);
+    this.commandManager.executeCommand(command);
+    return command.newGroup;
+  }
+
+  /**
+   * Desagrupa los grupos actualmente seleccionados (requiere al menos un grupo).
+   * Registra UNA sola entrada en el historial mediante UngroupCommand.
+   */
+  public ungroupSelection(): boolean {
+    const selectedGroups = this.stateManager.getSelectedNodes().filter(isGroup);
+    if (selectedGroups.length === 0) {
+      return false;
+    }
+
+    const command = new UngroupCommand(this.stateManager, selectedGroups);
+    this.commandManager.executeCommand(command);
     return true;
   }
 }

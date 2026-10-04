@@ -1220,4 +1220,80 @@ export class StateManager {
 
     return updated;
   }
+
+  /**
+   * Actualiza propiedades de cualquier nodo (Layer, Group o Shape) existente en el Scene Graph de forma inmutable.
+   */
+  public updateNode(nodeId: string, updater: Partial<SceneNode> | Record<string, unknown>): boolean {
+    const docIndex = getDocumentIndex(this._state);
+    const target = docIndex.nodeMap.get(nodeId);
+    if (!target) {
+      return false;
+    }
+
+    if (isDocument(target)) {
+      this.setState({ ...this._state, ...updater } as Document);
+      return true;
+    }
+
+    if (isLayer(target)) {
+      const nextLayers = this._state.children.map((layer) => {
+        if (layer.id === nodeId) {
+          return { ...layer, ...updater } as Layer;
+        }
+        return layer;
+      });
+      this.setState({ ...this._state, children: nextLayers });
+      return true;
+    }
+
+    let updated = false;
+
+    function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
+      let changed = false;
+      const nextChildren: LayerChildNode[] = new Array(children.length);
+
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child.id === nodeId) {
+          changed = true;
+          updated = true;
+          nextChildren[i] = { ...child, ...updater } as LayerChildNode;
+        } else if (isGroup(child)) {
+          const res = updateTree(child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren[i] = { ...child, children: res.updated };
+          } else {
+            nextChildren[i] = child;
+          }
+        } else {
+          nextChildren[i] = child;
+        }
+      }
+
+      return { updated: changed ? nextChildren : children, changed };
+    }
+
+    const nextLayers = this._state.children.map((layer) => {
+      const res = updateTree(layer.children);
+      if (res.changed) {
+        return {
+          ...layer,
+          children: res.updated,
+        };
+      }
+      return layer;
+    });
+
+    if (updated) {
+      this.setState({
+        ...this._state,
+        children: nextLayers,
+      });
+    }
+
+    return updated;
+  }
 }
+
