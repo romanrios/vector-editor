@@ -454,43 +454,55 @@ describe('StateManager - Selección fuera del Documento e isDirty', () => {
     assert.equal(manager.isSelected('rect-in-l2'), true);
   });
 
-  it('loadState(newState) purga de la selección los IDs que no existen en el nuevo documento', () => {
+  it('loadState deja getSelection() vacío incluso si el nuevo documento comparte los MISMOS IDs que el actual', () => {
     const manager = new StateManager();
     injectSampleShapes(manager);
 
+    // Seleccionar una figura existente
     manager.selectNode('shape-rect-1');
     assert.deepEqual(manager.getSelection(), ['shape-rect-1']);
 
-    const freshDoc: Document = {
-      id: 'doc-fresh',
+    // Crear un documento nuevo que tiene exactamente los mismos IDs (ej. reimportación de export JSON)
+    const sameIdsDoc: Document = structuredClone(manager.getState());
+
+    manager.loadState(sameIdsDoc);
+
+    // Al cargar un documento nuevo la selección debe quedar siempre vacía
+    assert.deepEqual(manager.getSelection(), [], 'La selección debe quedar vacía tras loadState');
+    assert.equal(manager.getSelectedNode(), null);
+  });
+
+  it('loadState notifica a los suscriptores y getState() devuelve el documento nuevo', () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+
+    let notified = false;
+    manager.subscribe(() => {
+      notified = true;
+    });
+
+    const newDoc: Document = {
+      id: 'doc-fresh-notify',
       type: 'document',
-      name: 'Nuevo',
-      width: 800,
-      height: 600,
+      name: 'Documento Notificado',
+      width: 1024,
+      height: 768,
       children: [
         {
-          id: 'l-fresh',
+          id: 'l-fresh-notify',
           type: 'layer',
-          name: 'Capa',
-          children: [
-            {
-              id: 'fresh-rect',
-              type: 'rectangle',
-              name: 'Nuevo Rect',
-              x: 50,
-              y: 50,
-              width: 50,
-              height: 50,
-            },
-          ],
+          name: 'Capa Nueva',
+          children: [],
         },
       ],
     };
 
-    manager.loadState(freshDoc);
+    manager.loadState(newDoc);
 
-    assert.deepEqual(manager.getSelection(), [], 'La selección previa debe haber sido purgada');
-    assert.equal(manager.getSelectedNode(), null);
+    assert.equal(notified, true, 'loadState debe notificar a los suscriptores');
+    assert.equal(manager.getState().id, 'doc-fresh-notify');
+    assert.equal(manager.getState().name, 'Documento Notificado');
+    assert.equal(manager.getState().width, 1024);
   });
 
   it('los cambios de selección notifican a los suscriptores y marcan isDirty = true', () => {

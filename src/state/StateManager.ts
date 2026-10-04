@@ -97,8 +97,9 @@ export class StateManager {
 
   /**
    * Reemplaza por completo el árbol de estado actual (_state) con el newState provisto.
-   * Marca la bandera _isDirty = true, invalida el historial de comandos en CommandManager
-   * y llama a notify() para forzar el repintado masivo y actualización de suscriptores.
+   * Limpia completamente la selección dejándola vacía, marca la bandera _isDirty = true,
+   * invalida el historial de comandos en CommandManager y llama a notify() para forzar
+   * la actualización de suscriptores y el repintado.
    *
    * @param newState Nuevo Document raíz a cargar
    * @param commandManager Opcional: instancia de CommandManager a invalidar si no fue inyectada previamente
@@ -119,9 +120,8 @@ export class StateManager {
     const cloned = structuredClone(newState);
     this._state = deepFreeze(cloned);
 
-    // Purgar de _selectedIds cualquier ID que no exista en el nuevo estado
-    const validSelectedIds = this._selectedIds.filter((id) => this.findNode(id) !== null);
-    this._selectedIds = Object.freeze(validSelectedIds);
+    // Al cargar un documento nuevo, la selección queda siempre vacía
+    this._selectedIds = Object.freeze([]);
 
     this.notify();
   }

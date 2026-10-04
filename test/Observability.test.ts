@@ -320,16 +320,29 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     const btnExport = new MockElement('btn-export');
     const btnImport = new MockElement('btn-import');
     const fileInput = new MockElement('file-import-input', 'input');
+    const noSelectionState = new MockElement('no-selection-state', 'div');
+    const selectionState = new MockElement('selection-state', 'div');
+    const statusShapesCount = new MockElement('status-shapes-count', 'span');
+    const statusSelectionInfo = new MockElement('status-selection-info', 'span');
+    const menuItemCopy = new MockElement('menu-item-copy', 'button');
+    const menuItemDelete = new MockElement('menu-item-delete', 'button');
 
     const domMap: Record<string, MockElement> = {
       '#btn-export, #btn-export-json': btnExport,
       '#btn-export': btnExport,
       '#btn-import': btnImport,
       '#file-import-input': fileInput,
+      '#no-selection-state': noSelectionState,
+      '#selection-state': selectionState,
+      '#status-shapes-count': statusShapesCount,
+      '#status-selection-info': statusSelectionInfo,
+      '#menu-item-copy': menuItemCopy,
+      '#menu-item-delete': menuItemDelete,
     };
 
     (globalThis as any).document = {
       querySelector: (selector: string) => domMap[selector] || null,
+      querySelectorAll: () => [],
     };
 
     const stateManager = new StateManager();
@@ -353,6 +366,11 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
 
     const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
 
+    // Seleccionar una figura antes de importar
+    stateManager.selectNode('pre-import-rect');
+    assert.equal(selectionState.style.display, 'block');
+    assert.equal(noSelectionState.style.display, 'none');
+
     // 1. Clic en #btn-export (no debe lanzar error y serializa el estado)
     btnExport.click();
 
@@ -361,7 +379,7 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     btnImport.click();
     assert.equal(fileInput.clickCount, 1);
 
-    // 3. Simular selección de archivo JSON en #file-import-input
+    // 3. Simular selección de archivo JSON en #file-import-input (con figuras y mismo id si se diera el caso)
     const validJsonDoc = {
       id: 'doc-imported',
       type: 'document',
@@ -373,7 +391,26 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
           id: 'layer-imported',
           type: 'layer',
           name: 'Capa Importada',
-          children: [],
+          children: [
+            {
+              id: 'pre-import-rect',
+              type: 'rectangle',
+              name: 'Imported Rect',
+              x: 10,
+              y: 10,
+              width: 100,
+              height: 50,
+            },
+            {
+              id: 'imported-rect-2',
+              type: 'rectangle',
+              name: 'Imported Rect 2',
+              x: 200,
+              y: 200,
+              width: 50,
+              height: 50,
+            },
+          ],
         },
       ],
     };
@@ -393,6 +430,22 @@ describe('Observabilidad DOM <-> Estado (setupUIBindings)', () => {
     // Verificar que el estado del StateManager se actualizó
     assert.equal(stateManager.getState().id, 'doc-imported');
     assert.equal(stateManager.getState().name, 'Imported Scene');
+
+    // Verificar que la selección quedó completamente vacía a pesar de compartir el ID 'pre-import-rect'
+    assert.deepEqual(stateManager.getSelection(), []);
+    assert.equal(stateManager.getSelectedNode(), null);
+
+    // Verificar que el panel de propiedades quedó en "Sin selección"
+    assert.equal(noSelectionState.style.display, 'block');
+    assert.equal(selectionState.style.display, 'none');
+
+    // Verificar que la barra de estado contó correctamente las figuras y no muestra selección
+    assert.equal(statusShapesCount.textContent, '2 figuras');
+    assert.equal(statusSelectionInfo.style.display, 'none');
+
+    // Verificar que los ítems de menú dependientes de selección quedaron deshabilitados
+    assert.equal(menuItemCopy.disabled, true);
+    assert.equal(menuItemDelete.disabled, true);
 
     // Verificar que commandManager.clear() reinició el historial
     assert.equal(commandManager.canUndo(), false);
