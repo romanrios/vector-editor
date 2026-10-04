@@ -31,6 +31,8 @@ export * from './commands/RotateCommand.ts';
 export * from './commands/PointCommand.ts';
 export * from './commands/ReorderCommand.ts';
 export * from './commands/BatchCommand.ts';
+export * from './commands/GroupCommand.ts';
+export * from './commands/UngroupCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

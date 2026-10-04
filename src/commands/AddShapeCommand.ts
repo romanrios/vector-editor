@@ -1,16 +1,17 @@
 import type { Command } from './Command.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import type { Shape } from '../types/scene-graph.ts';
+import type { SelectableNode } from '../types/scene-graph.ts';
 
 /**
- * Comando que encapsula la adición de una figura al Scene Graph,
- * permitiendo ejecutar (execute), deshacer (undo) y rehacer (redo)
- * sin duplicar figuras.
+ * Comando que encapsula la adición de una figura o grupo al Scene Graph
+ * dentro de una capa o grupo contenedor (parentId), permitiendo ejecutar (execute),
+ * deshacer (undo) y rehacer (redo) sin duplicar elementos.
  */
 export class AddShapeCommand implements Command {
   public readonly name: string = 'AddShapeCommand';
   private readonly stateManager: StateManager;
-  public readonly shape: Shape;
+  public readonly shape: SelectableNode;
+  public readonly parentId: string;
   public readonly layerId: string;
   public readonly index?: number;
 
@@ -18,39 +19,55 @@ export class AddShapeCommand implements Command {
     return this.shape.id;
   }
 
-  constructor(stateManager: StateManager, shape: Shape, layerId: string, index?: number);
-  constructor(stateManager: StateManager, layerId: string, shape: Shape, index?: number);
+  public get node(): SelectableNode {
+    return this.shape;
+  }
+
   constructor(
     stateManager: StateManager,
-    arg2: Shape | string,
-    arg3: string | Shape,
+    shape: SelectableNode,
+    parentId: string,
+    index?: number
+  );
+  constructor(
+    stateManager: StateManager,
+    parentId: string,
+    shape: SelectableNode,
+    index?: number
+  );
+  constructor(
+    stateManager: StateManager,
+    arg2: SelectableNode | string,
+    arg3: string | SelectableNode,
     index?: number
   ) {
     this.stateManager = stateManager;
     this.index = index;
     if (typeof arg2 === 'string') {
+      this.parentId = arg2;
       this.layerId = arg2;
-      this.shape = arg3 as Shape;
+      this.shape = arg3 as SelectableNode;
     } else {
       this.shape = arg2;
+      this.parentId = arg3 as string;
       this.layerId = arg3 as string;
     }
   }
 
   /**
-   * Añade la figura a la capa indicada si no se encuentra ya en el Scene Graph.
+   * Añade el elemento al contenedor padre indicado si no se encuentra ya en el Scene Graph.
    */
   public execute(): void {
     if (!this.stateManager.findNode(this.shape.id)) {
-      this.stateManager.addShape(this.layerId, this.shape, this.index);
+      this.stateManager.addNode(this.parentId, this.shape, this.index);
     }
   }
 
   /**
-   * Elimina la figura y, si estaba seleccionada, la remueve de la selección activa.
+   * Elimina el elemento y, si estaba seleccionado, lo remueve de la selección activa.
    */
   public undo(): void {
     this.stateManager.removeFromSelection([this.shape.id]);
-    this.stateManager.removeShape(this.shape.id);
+    this.stateManager.removeNode(this.shape.id);
   }
 }

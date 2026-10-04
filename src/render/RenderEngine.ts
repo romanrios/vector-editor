@@ -1,6 +1,23 @@
-import { isShape, type Document, type Ellipse, type Layer, type Path, type Rectangle, type Shape } from '../types/scene-graph.ts';
+import {
+  isGroup,
+  isShape,
+  type Document,
+  type Ellipse,
+  type Group,
+  type Layer,
+  type LayerChildNode,
+  type Path,
+  type Rectangle,
+  type SelectableNode,
+  type Shape,
+} from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import { getPathBaseAABB, getSelectionBounds, getShapeAABB } from '../utils/geometry.ts';
+import {
+  getGroupAABB,
+  getPathBaseAABB,
+  getSelectionBounds,
+  getShapeAABB,
+} from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 
@@ -291,7 +308,7 @@ export class RenderEngine {
   }
 
   /**
-   * Itera sobre las figuras (Shape) dentro de una capa
+   * Renderiza el contenido de una capa respetando opacidad y visibilidad heredadas.
    */
   private renderLayer(layer: Layer, zoom: number): void {
     this.ctx.save();
@@ -300,13 +317,44 @@ export class RenderEngine {
       this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
     }
 
-    for (const shape of layer.children) {
-      if (shape.visible === false) {
-        continue;
-      }
-      if (isShape(shape)) {
-        this.renderShape(shape, zoom);
-      }
+    for (const child of layer.children) {
+      this.renderChildNode(child, zoom);
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Renderiza recursivamente un nodo hijo (Shape o Group).
+   * Si el nodo está oculto (visible === false), se omite junto con todos sus descendientes.
+   */
+  private renderChildNode(child: LayerChildNode, zoom: number): void {
+    if (child.visible === false) {
+      return;
+    }
+    if (isGroup(child)) {
+      this.renderGroup(child, zoom);
+    } else if (isShape(child)) {
+      this.renderShape(child, zoom);
+    }
+  }
+
+  /**
+   * Renderiza un Grupo de forma recursiva multiplicando su opacidad acumulada
+   * y aislando el estado gráfico mediante save/restore.
+   */
+  private renderGroup(group: Group, zoom: number): void {
+    if (group.visible === false) {
+      return;
+    }
+    this.ctx.save();
+
+    if (typeof group.opacity === 'number') {
+      this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
+    }
+
+    for (const child of group.children) {
+      this.renderChildNode(child, zoom);
     }
 
     this.ctx.restore();
@@ -405,43 +453,45 @@ export class RenderEngine {
   /**
    * Dibuja la caja delimitadora (bounding box) y los manejadores de selección.
    * - Con una sola figura: dibuja la caja OBB con manejadores de esquina y rotación.
-   * - Con varias figuras: dibuja un contorno fino sobre cada figura y una única caja AABB
+   * - Con un solo grupo: dibuja la caja delimitadora AABB de grosor constante, SIN tiradores.
+   * - Con varias figuras/grupos: dibuja un contorno fino sobre cada elemento y una única caja AABB
    *   combinada (getSelectionBounds) sin tiradores.
    * Mantiene un tamaño constante en pantalla dividiendo las medidas entre el factor de zoom.
    */
-  private renderSelectionOverlay(document: Document, zoom: number): void {
-    const selectedShapes: Shape[] = [];
-    for (const layer of document.children) {
-      if (layer.visible === false) {
-        continue;
-      }
-      for (const shape of layer.children) {
-        if (shape.visible === false) {
-          continue;
-        }
-        if (isShape(shape) && this.stateManager.isSelected(shape.id)) {
-          selectedShapes.push(shape);
-        }
+  private renderSelectionOverlay(_document: Document, zoom: number): void {
+    const selectedNodes: SelectableNode[] = [];
+    for (const node of this.stateManager.getSelectedNodes()) {
+      if (this.stateManager.isEffectivelyVisible(node.id)) {
+        selectedNodes.push(node);
       }
     }
 
-    if (selectedShapes.length === 0) {
+    if (selectedNodes.length === 0) {
       return;
     }
 
-    if (selectedShapes.length === 1) {
-      this.renderSingleShapeSelection(selectedShapes[0], zoom);
+    if (selectedNodes.length === 1) {
+      const node = selectedNodes[0];
+      if (isGroup(node)) {
+        this.renderSingleGroupSelection(node, zoom);
+      } else if (isShape(node)) {
+        this.renderSingleShapeSelection(node, zoom);
+      }
       return;
     }
 
-    // Múltiples figuras seleccionadas:
-    // 1. Contorno fino sobre cada figura seleccionada
-    for (const shape of selectedShapes) {
-      this.renderShapeOutline(shape, zoom);
+    // Múltiples elementos seleccionados:
+    // 1. Contorno fino sobre cada elemento seleccionado
+    for (const node of selectedNodes) {
+      if (isGroup(node)) {
+        this.renderGroupOutline(node, zoom);
+      } else if (isShape(node)) {
+        this.renderShapeOutline(node, zoom);
+      }
     }
 
     // 2. Un recuadro delimitador combinado (getSelectionBounds) sin tiradores
-    const combinedBounds = getSelectionBounds(selectedShapes);
+    const combinedBounds = getSelectionBounds(selectedNodes);
     if (combinedBounds) {
       this.ctx.save();
       this.ctx.strokeStyle = '#2563eb';
@@ -455,6 +505,37 @@ export class RenderEngine {
       );
       this.ctx.restore();
     }
+  }
+
+  /**
+   * Dibuja el recuadro delimitador de un grupo seleccionado con grosor constante (1.5 / zoom),
+   * sin ningún manejador de redimensionado ni rotación.
+   */
+  private renderSingleGroupSelection(group: Group, zoom: number): void {
+    const aabb = getGroupAABB(group);
+    if (!aabb) return;
+
+    this.ctx.save();
+    this.ctx.strokeStyle = '#2563eb';
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.setLineDash([]);
+    this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja un contorno fino de 1px constante sobre un grupo perteneciente a una selección múltiple.
+   */
+  private renderGroupOutline(group: Group, zoom: number): void {
+    const aabb = getGroupAABB(group);
+    if (!aabb) return;
+
+    this.ctx.save();
+    this.ctx.strokeStyle = '#38bdf8';
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.setLineDash([]);
+    this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
+    this.ctx.restore();
   }
 
   /**
