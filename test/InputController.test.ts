@@ -845,6 +845,10 @@ describe('InputController & Hit-testing AABB', () => {
     assert.equal(controller.shapePreview?.y, 60);
     assert.equal(controller.shapePreview?.width, 100);
     assert.equal(controller.shapePreview?.height, 60);
+    assert.equal(controller.shapePreview?.fill, '#38bdf8');
+    assert.equal(controller.shapePreview?.stroke, '#0284c7');
+    assert.equal(controller.shapePreview?.strokeWidth, 2);
+    assert.equal(controller.shapePreview?.opacity, 1);
 
     const layerBefore = stateManager.findNode(layerId) as any;
     assert.equal(layerBefore.children.length, 0, 'No debe añadirse la figura al Scene Graph antes de soltar');

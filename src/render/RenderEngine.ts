@@ -945,12 +945,10 @@ export class RenderEngine {
     }
 
     this.ctx.save();
-    if (typeof this.ctx.setLineDash === 'function') {
-      this.ctx.setLineDash([6 / zoom, 4 / zoom]);
+
+    if (typeof preview.opacity === 'number') {
+      this.ctx.globalAlpha *= Math.max(0, Math.min(1, preview.opacity));
     }
-    this.ctx.lineWidth = 2 / zoom;
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
 
     this.ctx.beginPath();
     if (preview.type === 'rectangle') {
@@ -965,8 +963,17 @@ export class RenderEngine {
       }
     }
 
-    this.ctx.fill();
-    this.ctx.stroke();
+    if (!isNonePaint(preview.fill)) {
+      this.ctx.fillStyle = preview.fill!;
+      this.ctx.fill();
+    }
+
+    const strokeWidth = preview.strokeWidth;
+    if (!isNonePaint(preview.stroke) && strokeWidth !== undefined && strokeWidth > 0) {
+      this.ctx.lineWidth = strokeWidth;
+      this.ctx.strokeStyle = preview.stroke!;
+      this.ctx.stroke();
+    }
 
     this.ctx.restore();
   }

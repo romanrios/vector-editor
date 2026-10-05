@@ -153,7 +153,29 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
     assert.ok(fillRectCalls.length >= 4, 'Debe rellenar los 4 manejadores');
   });
 
-  it('dibuja la vista previa con trazo punteado y relleno semitransparente cuando hay una previsualización activa', () => {
+  it('dibuja la vista previa con trazo punteado cuando es marquee', () => {
+    const { canvas, calls } = createMockCanvas();
+    const manager = new StateManager();
+    const engine = new RenderEngine(canvas, manager, {
+      highDpi: false,
+      previewProvider: () => ({
+        type: 'marquee',
+        x: 10,
+        y: 10,
+        width: 100,
+        height: 80,
+      }),
+    });
+
+    engine.render();
+
+    assert.equal(calls.includes('setLineDash'), true, 'Marquee debe configurar trazo punteado mediante setLineDash');
+    assert.equal(calls.includes('rect'), true);
+    assert.equal(calls.includes('stroke'), true);
+    assert.equal(calls.includes('fill'), true);
+  });
+
+  it('dibuja la vista previa de rectangle con estilo real y línea sólida (sin setLineDash)', () => {
     const { canvas, calls } = createMockCanvas();
     const manager = new StateManager();
     const engine = new RenderEngine(canvas, manager, {
@@ -164,14 +186,42 @@ describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
         y: 50,
         width: 100,
         height: 80,
+        fill: '#38bdf8',
+        stroke: '#0284c7',
+        strokeWidth: 2,
+        opacity: 1,
       }),
     });
 
     engine.render();
 
-    assert.equal(calls.includes('setLineDash'), true, 'Debe configurar trazo punteado mediante setLineDash');
+    assert.equal(calls.includes('setLineDash'), false, 'No debe usar setLineDash en figuras no-marquee');
     assert.equal(calls.includes('rect'), true, 'Debe dibujar el rectángulo de vista previa');
-    assert.equal(calls.includes('stroke'), true, 'Debe aplicar stroke al trazo punteado');
-    assert.equal(calls.includes('fill'), true, 'Debe aplicar fill semitransparente');
+    assert.equal(calls.includes('stroke'), true, 'Debe aplicar stroke');
+    assert.equal(calls.includes('fill'), true, 'Debe aplicar fill');
+  });
+
+  it('con "none" en fill, no se invoca fill en la vista previa', () => {
+    const { canvas, calls } = createMockCanvas();
+    const manager = new StateManager();
+    const engine = new RenderEngine(canvas, manager, {
+      highDpi: false,
+      previewProvider: () => ({
+        type: 'rectangle',
+        x: 50,
+        y: 50,
+        width: 100,
+        height: 80,
+        fill: 'none',
+        stroke: '#0284c7',
+        strokeWidth: 2,
+        opacity: 1,
+      }),
+    });
+
+    engine.render();
+
+    assert.equal(calls.includes('fill'), false, 'No debe invocar fill cuando fill es "none"');
+    assert.equal(calls.includes('stroke'), true, 'Debe aplicar stroke si tiene borde');
   });
 });

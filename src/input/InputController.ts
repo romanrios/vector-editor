@@ -133,6 +133,10 @@ export interface ShapePreview {
   readonly height: number;
   readonly radiusX?: number;
   readonly radiusY?: number;
+  readonly fill?: string;
+  readonly stroke?: string;
+  readonly strokeWidth?: number;
+  readonly opacity?: number;
 }
 
 /**
@@ -2504,7 +2508,14 @@ export class InputController {
       lock
     );
 
-    this._shapePreview = bounds;
+    const style = this.stateManager.getDrawingStyle();
+    this._shapePreview = {
+      ...bounds,
+      fill: style.fill,
+      stroke: style.stroke,
+      strokeWidth: style.strokeWidth,
+      opacity: 1,
+    };
   }
 
   /**
