@@ -54,8 +54,6 @@ stateManager.addShape(stateManager.getState().children[0].id, samplePath);
 
 debug('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
 
-import { normalizeColor } from './utils/color.ts';
-
 /**
  * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)
  * en un código hexadecimal válido de 7 caracteres (#rrggbb) aceptado por <input type="color">.
