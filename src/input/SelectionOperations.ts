@@ -43,6 +43,13 @@ export interface ClipboardEntry {
   readonly shape?: Shape;
 }
 
+export interface PreparedClone {
+  readonly parentId: string;
+  readonly originalNode: SelectableNode;
+  readonly clonedNode: SelectableNode;
+  readonly targetIndex: number;
+}
+
 export function createClipboardList(nodes: readonly SelectableNode[]): ClipboardList {
   const list = [...nodes] as SelectableNode[] & { id?: string };
   Object.defineProperty(list, 'id', {
@@ -352,17 +359,22 @@ export class SelectionOperations {
    * Duplica los nodos seleccionados (figuras o grupos) con un desplazamiento de 10 px,
    * conservando sus posiciones relativas y su orden de apilado relativo,
    * en su contenedor padre de origen, con IDs y nombres nuevos.
-   * Las copias quedan seleccionadas.
-   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
+  /**
+   * Calcula para una colección de nodos (o la selección activa) su padre, su índice
+   * y su clon (con cloneNode) colocado justo encima de los originales conservando
+   * el orden relativo.
    */
-  public duplicate(): (Shape[] & Shape) | null {
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 0) {
-      return null;
+  public prepareClones(
+    nodes?: readonly SelectableNode[],
+    offset: { dx?: number; dy?: number } = { dx: 0, dy: 0 }
+  ): PreparedClone[] {
+    const targetNodes = nodes ?? this.stateManager.getSelectedNodes();
+    if (targetNodes.length === 0) {
+      return [];
     }
 
     const parentMap = new Map<string, { node: SelectableNode; index: number }[]>();
-    for (const node of selectedNodes) {
+    for (const node of targetNodes) {
       const parent = this.stateManager.findParent(node.id);
       if (parent && 'children' in parent) {
         let list = parentMap.get(parent.id);
@@ -379,22 +391,43 @@ export class SelectionOperations {
       items.sort((a, b) => a.index - b.index);
     }
 
-    const clonedNodes: SelectableNode[] = [];
-    const commands: AddShapeCommand[] = [];
-
+    const result: PreparedClone[] = [];
     for (const [parentId, items] of parentMap.entries()) {
       const maxIndex = Math.max(...items.map((it) => it.index));
 
       items.forEach((item, k) => {
         const targetIndex = maxIndex + 1 + k;
-        const cloned = cloneNode(item.node, { dx: 10, dy: 10 });
-        clonedNodes.push(cloned);
-        commands.push(new AddShapeCommand(this.stateManager, parentId, cloned, targetIndex));
+        const cloned = cloneNode(item.node, offset);
+        result.push({
+          parentId,
+          originalNode: item.node,
+          clonedNode: cloned,
+          targetIndex,
+        });
       });
     }
 
-    if (commands.length === 0) {
+    return result;
+  }
+
+  /**
+   * Duplica los nodos seleccionados aplicando un desplazamiento fijo de 10 píxeles.
+   * Las copias se insertan encima de los originales conservando su orden relativo.
+   * Las copias quedan seleccionadas.
+   * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
+   */
+  public duplicate(): (Shape[] & Shape) | null {
+    const prepared = this.prepareClones(this.stateManager.getSelectedNodes(), { dx: 10, dy: 10 });
+    if (prepared.length === 0) {
       return null;
+    }
+
+    const clonedNodes: SelectableNode[] = [];
+    const commands: AddShapeCommand[] = [];
+
+    for (const item of prepared) {
+      clonedNodes.push(item.clonedNode);
+      commands.push(new AddShapeCommand(this.stateManager, item.parentId, item.clonedNode, item.targetIndex));
     }
 
     if (commands.length === 1) {

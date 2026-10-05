@@ -54,6 +54,7 @@ import {
   SelectionOperations,
   type ClipboardList,
   type ClipboardEntry,
+  type PreparedClone,
   createClipboardList,
   asShapeArray,
 } from './SelectionOperations.ts';
@@ -84,6 +85,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
   { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
   { key: 'Arrastrar en el vacío', description: 'Selección por marquesina (rectángulo)', category: 'Selección' },
+  { key: 'Alt + arrastrar', description: 'Copiar mientras se mueve', category: 'Selección' },
   { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
   { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
   { key: 'Ctrl+C / Cmd+C', description: 'Copiar figuras seleccionadas', category: 'Edición' },
@@ -217,6 +219,10 @@ export class InputController {
   private pendingSingleSelectionId: string | null = null;
   private dragStartScreen: { x: number; y: number } | null = null;
   private hasMovedPastThreshold: boolean = false;
+  private _isCopyDragging: boolean = false;
+  private originalSelectionIds: readonly string[] = [];
+  private originalLeafPositions: Map<string, { x: number; y: number }> | null = null;
+  private activeClonePlacements: PreparedClone[] | null = null;
 
   // Estado del rectángulo de selección marquesina (modo Selección)
   private _isMarqueeSelecting: boolean = false;
@@ -409,6 +415,10 @@ export class InputController {
 
   public get isDragging(): boolean {
     return this._isDragging;
+  }
+
+  public get isCopyDragging(): boolean {
+    return this._isCopyDragging;
   }
 
   public get isCreatingShape(): boolean {
@@ -1141,6 +1151,9 @@ export class InputController {
       }
 
       this._isDragging = true;
+      this._isCopyDragging = false;
+      this.originalSelectionIds = this.stateManager.getSelection();
+      this.activeClonePlacements = null;
       this._isResizing = false;
       this._isRotating = false;
       this.dragOrigin = { x, y };
@@ -1151,8 +1164,10 @@ export class InputController {
       const selectedNodes = this.stateManager.getSelectedNodes();
       const leafShapes = getLeafShapes(selectedNodes);
       this.initialShapesPositions = new Map<string, { x: number; y: number }>();
+      this.originalLeafPositions = new Map<string, { x: number; y: number }>();
       for (const node of leafShapes) {
         this.initialShapesPositions.set(node.id, { x: node.x, y: node.y });
+        this.originalLeafPositions.set(node.id, { x: node.x, y: node.y });
       }
 
       this.canvas.style.cursor = 'grabbing';
@@ -1405,6 +1420,9 @@ export class InputController {
           this.pendingSingleSelectionId = null;
         }
 
+        // Evaluar Alt para alternar entre modo copia y modo normal
+        this.syncCopyDragMode(Boolean(event.altKey));
+
         const deltaX = x - this.dragOrigin.x;
         const deltaY = y - this.dragOrigin.y;
 
@@ -1418,7 +1436,7 @@ export class InputController {
         }
 
         this.stateManager.updateShapesPosition(entries);
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = this._isCopyDragging ? 'copy' : 'grabbing';
         return;
       }
     }
@@ -1809,8 +1827,39 @@ export class InputController {
 
     // Finalizar arrastre de figuras (A.5):
     if (this.hasMovedPastThreshold && this.initialShapesPositions && this.dragOrigin) {
+      // Evaluar Alt también en el mouseup
+      this.syncCopyDragMode(Boolean(event.altKey));
+
       const deltaX = x - this.dragOrigin.x;
       const deltaY = y - this.dragOrigin.y;
+
+      if (this._isCopyDragging && this.activeClonePlacements) {
+        // Asegurar posición final de las figuras hoja de los clones
+        const entries: ShapePositionEntry[] = [];
+        for (const [id, initialPos] of this.initialShapesPositions.entries()) {
+          entries.push({ id, x: initialPos.x + deltaX, y: initialPos.y + deltaY });
+        }
+        this.stateManager.updateShapesPosition(entries);
+
+        // BatchCommand de AddShapeCommand construido con los clones tal como están ahora en el estado
+        const commands: AddShapeCommand[] = [];
+        for (const p of this.activeClonePlacements) {
+          const finalClone = this.stateManager.findNode(p.clonedNode.id) as SelectableNode;
+          if (finalClone) {
+            commands.push(new AddShapeCommand(this.stateManager, p.parentId, finalClone, p.targetIndex));
+          }
+        }
+
+        if (commands.length > 0) {
+          const batch = new BatchCommand(commands, 'Copiar y mover');
+          this.commandManager.recordCommand(batch);
+        }
+
+        this.resetDrag();
+        const hitShape = this.hitTest(x, y);
+        this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+        return;
+      }
 
       const selectedNodes = this.stateManager.getSelectedNodes();
       const isGroupSelected = selectedNodes.some(isGroup);
@@ -2126,6 +2175,36 @@ export class InputController {
         this.stateManager.markDirty();
         this.canvas.style.cursor = 'default';
         return;
+      } else if (this._isDragging && this._isCopyDragging && this.activeClonePlacements) {
+        // Escape durante un arrastre en modo copia: elimina los clones, restaura la selección original y cancela el arrastre
+        for (const p of this.activeClonePlacements) {
+          this.stateManager.removeFromSelection([p.clonedNode.id]);
+          this.stateManager.removeNode(p.clonedNode.id);
+        }
+        this.stateManager.setSelection(this.originalSelectionIds);
+        if (this.originalLeafPositions) {
+          const restoreEntries: ShapePositionEntry[] = [];
+          for (const [id, pos] of this.originalLeafPositions.entries()) {
+            restoreEntries.push({ id, x: pos.x, y: pos.y });
+          }
+          this.stateManager.updateShapesPosition(restoreEntries);
+        }
+        this.resetDrag();
+        this.stateManager.markDirty();
+        this.canvas.style.cursor = 'default';
+        return;
+      } else if (this._isDragging) {
+        if (this.initialShapesPositions) {
+          const restoreEntries: ShapePositionEntry[] = [];
+          for (const [id, pos] of this.initialShapesPositions.entries()) {
+            restoreEntries.push({ id, x: pos.x, y: pos.y });
+          }
+          this.stateManager.updateShapesPosition(restoreEntries);
+        }
+        this.resetDrag();
+        this.stateManager.markDirty();
+        this.canvas.style.cursor = 'default';
+        return;
       } else if (this._isMarqueeSelecting) {
         this.cancelMarquee();
       } else if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
@@ -2367,8 +2446,78 @@ export class InputController {
     this._shapePreview = bounds;
   }
 
+  /**
+   * Sincroniza el modo copia durante el arrastre (Alt + arrastre).
+   * Crea o destruye clones interactivos según el estado de event.altKey.
+   */
+  private syncCopyDragMode(altKey: boolean): void {
+    if (altKey && !this._isCopyDragging) {
+      // 1. Restaurar originales a su posición inicial si se habían movido
+      if (this.originalLeafPositions) {
+        const restoreEntries: ShapePositionEntry[] = [];
+        for (const [id, pos] of this.originalLeafPositions.entries()) {
+          restoreEntries.push({ id, x: pos.x, y: pos.y });
+        }
+        this.stateManager.updateShapesPosition(restoreEntries);
+      }
+
+      // 2. Obtener los nodos originales para clonar
+      const originalNodes: SelectableNode[] = [];
+      for (const id of this.originalSelectionIds) {
+        const node = this.stateManager.findNode(id);
+        if (node && isSelectable(node)) {
+          originalNodes.push(node);
+        }
+      }
+
+      // 3. Crear clones con desplazamiento 0 e insertarlos en el estado (sin historial)
+      const prepared = this._selectionOperations.prepareClones(originalNodes, { dx: 0, dy: 0 });
+      for (const p of prepared) {
+        this.stateManager.addNode(p.parentId, p.clonedNode, p.targetIndex);
+      }
+      this.activeClonePlacements = prepared;
+
+      // 4. Pasar la selección a los clones
+      const cloneIds = prepared.map((p) => p.clonedNode.id);
+      this.stateManager.setSelection(cloneIds);
+
+      // 5. Usar las posiciones iniciales de las figuras hoja de los clones como nueva instantánea
+      const clonedSelectedNodes = this.stateManager.getSelectedNodes();
+      const clonedLeafShapes = getLeafShapes(clonedSelectedNodes);
+      this.initialShapesPositions = new Map<string, { x: number; y: number }>();
+      for (const leaf of clonedLeafShapes) {
+        this.initialShapesPositions.set(leaf.id, { x: leaf.x, y: leaf.y });
+      }
+
+      this._isCopyDragging = true;
+    } else if (!altKey && this._isCopyDragging) {
+      // 1. Eliminar los clones del estado
+      if (this.activeClonePlacements) {
+        for (const p of this.activeClonePlacements) {
+          this.stateManager.removeFromSelection([p.clonedNode.id]);
+          this.stateManager.removeNode(p.clonedNode.id);
+        }
+        this.activeClonePlacements = null;
+      }
+
+      // 2. Volver a seleccionar las figuras originales
+      this.stateManager.setSelection(this.originalSelectionIds);
+
+      // 3. Restaurar la instantánea a las posiciones iniciales de los originales
+      if (this.originalLeafPositions) {
+        this.initialShapesPositions = new Map(this.originalLeafPositions);
+      }
+
+      this._isCopyDragging = false;
+    }
+  }
+
   private resetDrag(): void {
     this._isDragging = false;
+    this._isCopyDragging = false;
+    this.originalSelectionIds = [];
+    this.originalLeafPositions = null;
+    this.activeClonePlacements = null;
     this.dragOrigin = null;
     this.initialShapesPositions = null;
     this.pendingSingleSelectionId = null;
