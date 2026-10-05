@@ -29,6 +29,8 @@ import {
   isPointInAABB,
   isPointInPath,
   isPointInShape,
+  isSmoothPoint,
+  mirrorHandleCollinear,
   normalizeShapeBounds,
   translatePathAnchors,
   type AlignmentMode,
@@ -266,6 +268,7 @@ export class InputController {
   private initialPathPoints: readonly PathPoint[] | null = null;
   private _selectedAnchors: Set<number> = new Set();
   private _anchorsPathId: string | null = null;
+  private _isDraggedPointSmooth: boolean = false;
 
   // Estado de la herramienta Pluma (modo Pen)
   private activePathId: string | null = null;
@@ -1333,7 +1336,7 @@ export class InputController {
     }
 
     if (this._currentTool === 'direct-select') {
-      this.handleDirectSelectMouseMove(x, y);
+      this.handleDirectSelectMouseMove(x, y, Boolean(event.altKey));
       return;
     }
 
@@ -1700,6 +1703,7 @@ export class InputController {
       }
 
       this._isDraggingPoint = false;
+      this._isDraggedPointSmooth = false;
       this.directSelectOrigin = null;
       this.initialPathPoints = null;
 
@@ -2642,6 +2646,7 @@ export class InputController {
     this._dragTarget = null;
     this._directSelectTarget = null;
     this._isDraggingPoint = false;
+    this._isDraggedPointSmooth = false;
     this.directSelectOrigin = null;
     this.initialPathPoints = null;
     this.clearSelectedAnchors();
@@ -2706,6 +2711,13 @@ export class InputController {
         }
       }
 
+      if (hitPoint.type === 'handleIn' || hitPoint.type === 'handleOut') {
+        const pt = activePath.points[hitPoint.index];
+        this._isDraggedPointSmooth = pt ? isSmoothPoint(pt) : false;
+      } else {
+        this._isDraggedPointSmooth = false;
+      }
+
       this._draggedPointIndex = hitPoint.index;
       this._draggedTargetType = hitPoint.type;
       const target: DirectSelectTarget = {
@@ -2736,7 +2748,7 @@ export class InputController {
    * Arrastra exclusivamente el vértice o manejador seleccionado en tiempo real calculando el delta del cursor.
    * Si está en reposo (hover), actualiza el cursor si sobrevuela un punto o manejador.
    */
-  private handleDirectSelectMouseMove(x: number, y: number): void {
+  private handleDirectSelectMouseMove(x: number, y: number, altKey: boolean = false): void {
     if (
       this._isDraggingPoint &&
       this._draggedPointTarget &&
@@ -2770,21 +2782,41 @@ export class InputController {
               if (idx !== pointIndex) return pt;
               if (type === 'handleIn') {
                 const initH = pt.handleIn ?? { x: pt.x, y: pt.y };
+                const newHandleIn = {
+                  x: initH.x + deltaX,
+                  y: initH.y + deltaY,
+                };
+                let newHandleOut = pt.handleOut;
+                if (this._isDraggedPointSmooth && !altKey && pt.handleOut) {
+                  newHandleOut = mirrorHandleCollinear(
+                    { x: pt.x, y: pt.y },
+                    newHandleIn,
+                    pt.handleOut
+                  );
+                }
                 return {
                   ...pt,
-                  handleIn: {
-                    x: initH.x + deltaX,
-                    y: initH.y + deltaY,
-                  },
+                  handleIn: newHandleIn,
+                  handleOut: newHandleOut,
                 };
               } else if (type === 'handleOut') {
                 const initH = pt.handleOut ?? { x: pt.x, y: pt.y };
+                const newHandleOut = {
+                  x: initH.x + deltaX,
+                  y: initH.y + deltaY,
+                };
+                let newHandleIn = pt.handleIn;
+                if (this._isDraggedPointSmooth && !altKey && pt.handleIn) {
+                  newHandleIn = mirrorHandleCollinear(
+                    { x: pt.x, y: pt.y },
+                    newHandleOut,
+                    pt.handleIn
+                  );
+                }
                 return {
                   ...pt,
-                  handleOut: {
-                    x: initH.x + deltaX,
-                    y: initH.y + deltaY,
-                  },
+                  handleIn: newHandleIn,
+                  handleOut: newHandleOut,
                 };
               }
               return pt;

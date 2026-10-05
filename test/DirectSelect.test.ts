@@ -4,7 +4,12 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { RenderEngine } from '../src/render/RenderEngine.ts';
-import { translatePathAnchors, getVisiblePathHandles } from '../src/utils/geometry.ts';
+import {
+  translatePathAnchors,
+  getVisiblePathHandles,
+  mirrorHandleCollinear,
+  isSmoothPoint,
+} from '../src/utils/geometry.ts';
 import type { Path, PathPoint } from '../src/types/scene-graph.ts';
 
 // Mock simple de Canvas para Node.js (de test/PathAndPenTool.test.ts)
@@ -494,6 +499,215 @@ describe('DirectSelect & translatePathAnchors', () => {
       // Se dibujan las líneas y círculos de manejadores visibles
       assert.ok(canvas.calls.includes('arc'), 'Debe dibujar círculo del manejador visible');
       assert.ok(canvas.calls.includes('lineTo'), 'Debe dibujar la línea conector del manejador visible');
+    });
+  });
+
+  describe('f) Arrastre colineal de manejadores en nodos suaves', () => {
+    it('mirrorHandleCollinear conserva la longitud original y refleja colinealmente', () => {
+      const anchor = { x: 100, y: 100 };
+      const dragged = { x: 100, y: 60 }; // vector (0, -40), len 40
+      const oppositeInitial = { x: 150, y: 100 }; // opuesto inicial len 50 horizontal
+      const mirrored = mirrorHandleCollinear(anchor, dragged, oppositeInitial);
+      // El opuesto debe apuntar en (0, +1) con longitud 50 -> (100, 150)
+      assert.ok(Math.abs(mirrored.x - 100) < 1e-6);
+      assert.ok(Math.abs(mirrored.y - 150) < 1e-6);
+    });
+
+    it('isSmoothPoint identifica puntos suaves y descarta no colineales o incompletos', () => {
+      // Suave: colineal y lados opuestos
+      assert.equal(
+        isSmoothPoint({
+          x: 100,
+          y: 100,
+          handleIn: { x: 70, y: 100 },
+          handleOut: { x: 150, y: 100 },
+        }),
+        true
+      );
+      // No suave: ángulo recto (90 grados)
+      assert.equal(
+        isSmoothPoint({
+          x: 100,
+          y: 100,
+          handleIn: { x: 100, y: 70 },
+          handleOut: { x: 150, y: 100 },
+        }),
+        false
+      );
+      // No suave: mismo lado
+      assert.equal(
+        isSmoothPoint({
+          x: 100,
+          y: 100,
+          handleIn: { x: 120, y: 100 },
+          handleOut: { x: 150, y: 100 },
+        }),
+        false
+      );
+      // No suave: falta un manejador
+      assert.equal(
+        isSmoothPoint({
+          x: 100,
+          y: 100,
+          handleIn: { x: 70, y: 100 },
+        }),
+        false
+      );
+      // No suave: colapsado al ancla
+      assert.equal(
+        isSmoothPoint({
+          x: 100,
+          y: 100,
+          handleIn: { x: 100, y: 100 },
+          handleOut: { x: 150, y: 100 },
+        }),
+        false
+      );
+    });
+
+    it('nodo suave arrastra el manejador opuesto conservando su longitud', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const layerId = stateManager.getState().children[0].id;
+
+      const path: Path = {
+        id: 'smooth-path',
+        type: 'path',
+        name: 'Smooth Path',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100, handleIn: { x: 70, y: 100 }, handleOut: { x: 150, y: 100 } },
+          { x: 300, y: 300 },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('direct-select');
+      stateManager.selectNode('smooth-path');
+
+      // Seleccionar ancla 0 para hacer visibles sus manejadores
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+
+      // Arrastrar handleIn desde (70, 100) hacia (100, 70) (deltaX = +30, deltaY = -30)
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 70, clientY: 100, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 100, clientY: 70, altKey: false });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 70 });
+
+      const updated = stateManager.findNode('smooth-path') as Path;
+      assert.ok(updated.points[0].handleIn);
+      assert.ok(updated.points[0].handleOut);
+
+      // handleIn se movió a (100, 70)
+      assert.ok(Math.abs(updated.points[0].handleIn.x - 100) < 1e-4);
+      assert.ok(Math.abs(updated.points[0].handleIn.y - 70) < 1e-4);
+
+      // handleOut se actualizó colinealmente conservando longitud 50 -> (100, 150)
+      assert.ok(Math.abs(updated.points[0].handleOut.x - 100) < 1e-4);
+      assert.ok(Math.abs(updated.points[0].handleOut.y - 150) < 1e-4);
+
+      controller.destroy();
+    });
+
+    it('con Alt presionado rompe la simetría y no mueve el manejador opuesto', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const layerId = stateManager.getState().children[0].id;
+
+      const path: Path = {
+        id: 'alt-path',
+        type: 'path',
+        name: 'Alt Path',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100, handleIn: { x: 70, y: 100 }, handleOut: { x: 150, y: 100 } },
+          { x: 300, y: 300 },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('direct-select');
+      stateManager.selectNode('alt-path');
+
+      // Seleccionar ancla 0
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+
+      // Arrastrar handleIn con Alt presionado
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 70, clientY: 100, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 100, clientY: 70, altKey: true });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 70 });
+
+      const updated = stateManager.findNode('alt-path') as Path;
+      assert.ok(updated.points[0].handleIn);
+      assert.ok(updated.points[0].handleOut);
+
+      // handleIn se movió a (100, 70)
+      assert.ok(Math.abs(updated.points[0].handleIn.x - 100) < 1e-4);
+      assert.ok(Math.abs(updated.points[0].handleIn.y - 70) < 1e-4);
+
+      // handleOut NO se movió (sigue intacto en 150, 100)
+      assert.equal(updated.points[0].handleOut.x, 150);
+      assert.equal(updated.points[0].handleOut.y, 100);
+
+      controller.destroy();
+    });
+
+    it('nodo no suave no mueve el manejador opuesto', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const layerId = stateManager.getState().children[0].id;
+
+      // Nodo con manejadores perpendiculares (no suave)
+      const path: Path = {
+        id: 'corner-path',
+        type: 'path',
+        name: 'Corner Path',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100, handleIn: { x: 100, y: 70 }, handleOut: { x: 150, y: 100 } },
+          { x: 300, y: 300 },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('direct-select');
+      stateManager.selectNode('corner-path');
+
+      // Seleccionar ancla 0
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+
+      // Arrastrar handleIn sin Alt
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 70, shiftKey: false });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 90, clientY: 60, altKey: false });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 90, clientY: 60 });
+
+      const updated = stateManager.findNode('corner-path') as Path;
+      assert.ok(updated.points[0].handleIn);
+      assert.ok(updated.points[0].handleOut);
+
+      // handleIn se movió a (90, 60)
+      assert.ok(Math.abs(updated.points[0].handleIn.x - 90) < 1e-4);
+      assert.ok(Math.abs(updated.points[0].handleIn.y - 60) < 1e-4);
+
+      // handleOut permanece intacto en (150, 100)
+      assert.equal(updated.points[0].handleOut.x, 150);
+      assert.equal(updated.points[0].handleOut.y, 100);
+
+      controller.destroy();
     });
   });
 });

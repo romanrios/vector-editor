@@ -1767,3 +1767,64 @@ export function getVisiblePathHandles(
 
   return result;
 }
+
+/**
+ * Refleja colinealmente un manejador opuesto respecto a su punto de ancla,
+ * conservando la longitud original del opuesto.
+ * opposite = anchor - normalize(dragged - anchor) * |oppositeInitial - anchor|
+ */
+export function mirrorHandleCollinear(
+  anchor: Vector2D,
+  dragged: Vector2D,
+  oppositeInitial: Vector2D
+): Vector2D {
+  const dx = dragged.x - anchor.x;
+  const dy = dragged.y - anchor.y;
+  const lenDragged = Math.hypot(dx, dy);
+
+  if (lenDragged === 0) {
+    return { x: oppositeInitial.x, y: oppositeInitial.y };
+  }
+
+  const opDx = oppositeInitial.x - anchor.x;
+  const opDy = oppositeInitial.y - anchor.y;
+  const lenOpposite = Math.hypot(opDx, opDy);
+
+  const normX = dx / lenDragged;
+  const normY = dy / lenDragged;
+
+  return {
+    x: anchor.x - normX * lenOpposite,
+    y: anchor.y - normY * lenOpposite,
+  };
+}
+
+/**
+ * Determina si un punto es suave: ambos manejadores existen, no coinciden con el ancla,
+ * apuntan a lados opuestos y el producto vectorial normalizado es < 1e-3.
+ */
+export function isSmoothPoint(point: PathPoint): boolean {
+  if (!point.handleIn || !point.handleOut) return false;
+  const inX = point.handleIn.x - point.x;
+  const inY = point.handleIn.y - point.y;
+  const outX = point.handleOut.x - point.x;
+  const outY = point.handleOut.y - point.y;
+
+  const lenIn = Math.hypot(inX, inY);
+  const lenOut = Math.hypot(outX, outY);
+  if (lenIn < 1e-6 || lenOut < 1e-6) return false;
+
+  const uInX = inX / lenIn;
+  const uInY = inY / lenIn;
+  const uOutX = outX / lenOut;
+  const uOutY = outY / lenOut;
+
+  // Apuntan a lados opuestos (producto escalar < 0)
+  const dot = uInX * uOutX + uInY * uOutY;
+  if (dot >= 0) return false;
+
+  // Producto vectorial normalizado < 1e-3
+  const cross = Math.abs(uInX * uOutY - uInY * uOutX);
+  return cross < 1e-3;
+}
+
