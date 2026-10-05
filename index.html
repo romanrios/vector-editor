@@ -1409,60 +1409,60 @@
         <span id="panel-title" class="panel-title">PROPIEDADES</span>
       </div>
 
+      <!-- Sección 1: Apariencia -->
+      <details class="collapsible-section" id="section-appearance" open>
+        <summary class="section-header" tabindex="0">
+          <span class="section-title">Apariencia</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="section-content">
+          <div class="control-group">
+            <label for="input-fill-hex">Relleno</label>
+            <div class="color-composite-group">
+              <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
+                <div class="color-swatch-preview" id="swatch-fill-preview"></div>
+                <input type="color" id="input-fill" title="Elegir color de relleno" aria-label="Elegir color de relleno">
+              </div>
+              <input type="text" id="input-fill-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de relleno">
+              <button type="button" id="btn-fill-none" class="btn-color-none" aria-pressed="false" title="Sin relleno" aria-label="Sin relleno">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
+                  <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label for="input-stroke-hex">Borde</label>
+            <div class="color-composite-group">
+              <div class="color-swatch-wrapper" id="swatch-stroke-wrapper" title="Elegir color de borde">
+                <div class="color-swatch-preview" id="swatch-stroke-preview"></div>
+                <input type="color" id="input-stroke" title="Elegir color de borde" aria-label="Elegir color de borde">
+              </div>
+              <input type="text" id="input-stroke-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de borde">
+              <button type="button" id="btn-stroke-none" class="btn-color-none" aria-pressed="false" title="Sin borde" aria-label="Sin borde">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
+                  <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label for="input-stroke-width">Grosor</label>
+            <div class="input-number-wrapper">
+              <input type="number" id="input-stroke-width" min="0" max="100" value="2">
+              <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <div id="no-selection-state" class="no-selection-state">Sin selección</div>
 
       <div id="selection-state" style="display: none;">
-        <!-- Sección 1: Apariencia -->
-        <details class="collapsible-section" id="section-appearance" open>
-          <summary class="section-header" tabindex="0">
-            <span class="section-title">Apariencia</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="section-content">
-            <div class="control-group">
-              <label for="input-fill-hex">Relleno</label>
-              <div class="color-composite-group">
-                <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
-                  <div class="color-swatch-preview" id="swatch-fill-preview"></div>
-                  <input type="color" id="input-fill" title="Elegir color de relleno" aria-label="Elegir color de relleno">
-                </div>
-                <input type="text" id="input-fill-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de relleno">
-                <button type="button" id="btn-fill-none" class="btn-color-none" aria-pressed="false" title="Sin relleno" aria-label="Sin relleno">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
-                    <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="control-group">
-              <label for="input-stroke-hex">Borde</label>
-              <div class="color-composite-group">
-                <div class="color-swatch-wrapper" id="swatch-stroke-wrapper" title="Elegir color de borde">
-                  <div class="color-swatch-preview" id="swatch-stroke-preview"></div>
-                  <input type="color" id="input-stroke" title="Elegir color de borde" aria-label="Elegir color de borde">
-                </div>
-                <input type="text" id="input-stroke-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de borde">
-                <button type="button" id="btn-stroke-none" class="btn-color-none" aria-pressed="false" title="Sin borde" aria-label="Sin borde">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
-                    <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="control-group">
-              <label for="input-stroke-width">Grosor</label>
-              <div class="input-number-wrapper">
-                <input type="number" id="input-stroke-width" min="0" max="100" value="2">
-                <span class="input-unit" aria-hidden="true">px</span>
-              </div>
-            </div>
-          </div>
-        </details>
-
         <!-- Sección: Alinear (visible solo con 2 o más figuras seleccionadas) -->
         <details class="collapsible-section" id="section-align" open style="display: none;">
           <summary class="section-header" tabindex="0">

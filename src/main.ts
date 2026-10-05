@@ -10,7 +10,7 @@ import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
-import { getPaintState, parseHexColor, isNonePaint, normalizeColor } from './utils/color.ts';
+import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
 import { isGroup, isSelectable, isShape, type Path, type SelectableNode, type Shape } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 
@@ -590,9 +590,23 @@ export function setupUIBindings(
     }
   };
 
+  const getCurrentPaintState = (property: 'fill' | 'stroke', leafShapes: readonly Shape[]): PaintState => {
+    if (leafShapes.length > 0) {
+      return getPaintState(leafShapes, property);
+    }
+    const val = stateManager.getDrawingStyle()[property];
+    if (isNonePaint(val)) {
+      return { kind: 'none' };
+    }
+    const hex = normalizeColor(val);
+    return hex ? { kind: 'color', hex } : { kind: 'none' };
+  };
+
   const syncPropertiesPanel = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()) => {
     const leafShapes = getLeafShapes(selectedNodes);
-    if (selectedNodes.length > 0) {
+    const hasSelection = selectedNodes.length > 0;
+
+    if (hasSelection) {
       if (selectionState) {
         selectionState.style.display = 'block';
       }
@@ -611,95 +625,117 @@ export function setupUIBindings(
             : `${selectedNodes.length} figuras seleccionadas`;
         }
       }
-
-      const firstShape = leafShapes[0];
-      const isEditing = initialStyleSnapshots !== null;
-      if (firstShape) {
-        const fillState = getPaintState(leafShapes, 'fill');
-        const strokeState = getPaintState(leafShapes, 'stroke');
-
-        if (fillState.kind === 'color') {
-          lastRememberedFill = fillState.hex;
-        }
-        if (strokeState.kind === 'color') {
-          lastRememberedStroke = strokeState.hex;
-        }
-
-        // 1. Relleno: Muestra, input nativo, hex input y botón none
-        if (swatchFillPreview) {
-          if (fillState.kind === 'none') {
-            swatchFillPreview.className = 'color-swatch-preview state-none';
-            swatchFillPreview.style.backgroundColor = 'transparent';
-          } else if (fillState.kind === 'mixed') {
-            swatchFillPreview.className = 'color-swatch-preview state-mixed';
-            swatchFillPreview.style.backgroundColor = 'transparent';
-          } else {
-            swatchFillPreview.className = 'color-swatch-preview';
-            swatchFillPreview.style.backgroundColor = fillState.hex;
-          }
-        }
-
-        if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
-          inputFill.value = fillState.kind === 'color' ? fillState.hex : toValidHexColor(firstShape.fill, '#000000');
-        }
-
-        if (inputFillHex && (typeof document === 'undefined' || document.activeElement !== inputFillHex)) {
-          if (fillState.kind === 'none') {
-            inputFillHex.value = '';
-            inputFillHex.placeholder = 'ninguno';
-          } else if (fillState.kind === 'mixed') {
-            inputFillHex.value = '';
-            inputFillHex.placeholder = 'Mixto';
-          } else {
-            inputFillHex.value = fillState.hex;
-            inputFillHex.placeholder = fillState.hex;
-          }
-        }
-
-        if (btnFillNone) {
-          btnFillNone.setAttribute('aria-pressed', String(fillState.kind === 'none'));
-        }
-
-        // 2. Borde: Muestra, input nativo, hex input y botón none
-        if (swatchStrokePreview) {
-          if (strokeState.kind === 'none') {
-            swatchStrokePreview.className = 'color-swatch-preview state-none';
-            swatchStrokePreview.style.backgroundColor = 'transparent';
-          } else if (strokeState.kind === 'mixed') {
-            swatchStrokePreview.className = 'color-swatch-preview state-mixed';
-            swatchStrokePreview.style.backgroundColor = 'transparent';
-          } else {
-            swatchStrokePreview.className = 'color-swatch-preview';
-            swatchStrokePreview.style.backgroundColor = strokeState.hex;
-          }
-        }
-
-        if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
-          inputStroke.value = strokeState.kind === 'color' ? strokeState.hex : toValidHexColor(firstShape.stroke, '#000000');
-        }
-
-        if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {
-          if (strokeState.kind === 'none') {
-            inputStrokeHex.value = '';
-            inputStrokeHex.placeholder = 'ninguno';
-          } else if (strokeState.kind === 'mixed') {
-            inputStrokeHex.value = '';
-            inputStrokeHex.placeholder = 'Mixto';
-          } else {
-            inputStrokeHex.value = strokeState.hex;
-            inputStrokeHex.placeholder = strokeState.hex;
-          }
-        }
-
-        if (btnStrokeNone) {
-          btnStrokeNone.setAttribute('aria-pressed', String(strokeState.kind === 'none'));
-        }
-
-        if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
-          inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
-        }
+    } else {
+      if (selectionState) {
+        selectionState.style.display = 'none';
       }
+      if (noSelectionState) {
+        noSelectionState.style.display = 'block';
+      }
+      if (sectionAlign) {
+        sectionAlign.style.display = 'none';
+      }
+      if (panelTitle) {
+        panelTitle.textContent = 'ESTILO DE DIBUJO';
+      }
+      initialStyleSnapshots = null;
+    }
 
+    const firstShape = leafShapes[0];
+    const defaultStyle = hasSelection ? null : stateManager.getDrawingStyle();
+    const isEditing = initialStyleSnapshots !== null;
+
+    const fillState = getCurrentPaintState('fill', leafShapes);
+    const strokeState = getCurrentPaintState('stroke', leafShapes);
+
+    if (fillState.kind === 'color') {
+      lastRememberedFill = fillState.hex;
+    }
+    if (strokeState.kind === 'color') {
+      lastRememberedStroke = strokeState.hex;
+    }
+
+    // 1. Relleno: Muestra, input nativo, hex input y botón none
+    if (swatchFillPreview) {
+      if (fillState.kind === 'none') {
+        swatchFillPreview.className = 'color-swatch-preview state-none';
+        swatchFillPreview.style.backgroundColor = 'transparent';
+      } else if (fillState.kind === 'mixed') {
+        swatchFillPreview.className = 'color-swatch-preview state-mixed';
+        swatchFillPreview.style.backgroundColor = 'transparent';
+      } else {
+        swatchFillPreview.className = 'color-swatch-preview';
+        swatchFillPreview.style.backgroundColor = fillState.hex;
+      }
+    }
+
+    if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
+      inputFill.value =
+        fillState.kind === 'color'
+          ? fillState.hex
+          : toValidHexColor(firstShape?.fill ?? defaultStyle?.fill ?? lastRememberedFill, '#000000');
+    }
+
+    if (inputFillHex && (typeof document === 'undefined' || document.activeElement !== inputFillHex)) {
+      if (fillState.kind === 'none') {
+        inputFillHex.value = '';
+        inputFillHex.placeholder = 'ninguno';
+      } else if (fillState.kind === 'mixed') {
+        inputFillHex.value = '';
+        inputFillHex.placeholder = 'Mixto';
+      } else {
+        inputFillHex.value = fillState.hex;
+        inputFillHex.placeholder = fillState.hex;
+      }
+    }
+
+    if (btnFillNone) {
+      btnFillNone.setAttribute('aria-pressed', String(fillState.kind === 'none'));
+    }
+
+    // 2. Borde: Muestra, input nativo, hex input y botón none
+    if (swatchStrokePreview) {
+      if (strokeState.kind === 'none') {
+        swatchStrokePreview.className = 'color-swatch-preview state-none';
+        swatchStrokePreview.style.backgroundColor = 'transparent';
+      } else if (strokeState.kind === 'mixed') {
+        swatchStrokePreview.className = 'color-swatch-preview state-mixed';
+        swatchStrokePreview.style.backgroundColor = 'transparent';
+      } else {
+        swatchStrokePreview.className = 'color-swatch-preview';
+        swatchStrokePreview.style.backgroundColor = strokeState.hex;
+      }
+    }
+
+    if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
+      inputStroke.value =
+        strokeState.kind === 'color'
+          ? strokeState.hex
+          : toValidHexColor(firstShape?.stroke ?? defaultStyle?.stroke ?? lastRememberedStroke, '#000000');
+    }
+
+    if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {
+      if (strokeState.kind === 'none') {
+        inputStrokeHex.value = '';
+        inputStrokeHex.placeholder = 'ninguno';
+      } else if (strokeState.kind === 'mixed') {
+        inputStrokeHex.value = '';
+        inputStrokeHex.placeholder = 'Mixto';
+      } else {
+        inputStrokeHex.value = strokeState.hex;
+        inputStrokeHex.placeholder = strokeState.hex;
+      }
+    }
+
+    if (btnStrokeNone) {
+      btnStrokeNone.setAttribute('aria-pressed', String(strokeState.kind === 'none'));
+    }
+
+    if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
+      inputStrokeWidth.value = String(firstShape ? (firstShape.strokeWidth ?? 1) : (defaultStyle?.strokeWidth ?? 2));
+    }
+
+    if (hasSelection) {
       const canAlign = selectedNodes.length >= 2;
       const canDistribute = selectedNodes.length >= 3;
 
@@ -731,20 +767,6 @@ export function setupUIBindings(
           btn.setAttribute('aria-disabled', String(!canDistribute));
         }
       }
-    } else {
-      if (selectionState) {
-        selectionState.style.display = 'none';
-      }
-      if (noSelectionState) {
-        noSelectionState.style.display = 'block';
-      }
-      if (sectionAlign) {
-        sectionAlign.style.display = 'none';
-      }
-      if (panelTitle) {
-        panelTitle.textContent = 'PROPIEDADES';
-      }
-      initialStyleSnapshots = null;
     }
 
     syncMenuItems(selectedNodes);
@@ -781,7 +803,11 @@ export function setupUIBindings(
   const previewColor = (property: 'fill' | 'stroke', color: string) => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0) return;
+    if (leafShapes.length === 0) {
+      stateManager.setDrawingStyle({ [property]: color });
+      return;
+    }
+    stateManager.setDrawingStyle({ [property]: color });
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
@@ -807,9 +833,26 @@ export function setupUIBindings(
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
     if (leafShapes.length === 0) {
+      const needsStrokeWidth =
+        property === 'stroke' &&
+        !isNonePaint(color) &&
+        stateManager.getDrawingStyle().strokeWidth <= 0;
+      stateManager.setDrawingStyle({
+        [property]: color,
+        ...(needsStrokeWidth ? { strokeWidth: 1 } : {}),
+      });
       initialStyleSnapshots = null;
       return;
     }
+    const needsStrokeWidthDefault =
+      property === 'stroke' &&
+      !isNonePaint(color) &&
+      stateManager.getDrawingStyle().strokeWidth <= 0;
+    stateManager.setDrawingStyle({
+      [property]: color,
+      ...(needsStrokeWidthDefault ? { strokeWidth: 1 } : {}),
+    });
+
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
@@ -882,14 +925,20 @@ export function setupUIBindings(
   };
 
   const onStrokeWidthInput = () => {
+    if (!inputStrokeWidth) return;
+    const parsed = parseFloat(inputStrokeWidth.value);
+    const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
+
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputStrokeWidth) return;
+    if (leafShapes.length === 0) {
+      stateManager.setDrawingStyle({ strokeWidth });
+      return;
+    }
+    stateManager.setDrawingStyle({ strokeWidth });
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
-    const parsed = parseFloat(inputStrokeWidth.value);
-    const strokeWidth = isNaN(parsed) ? 1 : Math.max(0, parsed);
     for (const shape of leafShapes) {
       stateManager.updateShape(shape.id, { strokeWidth });
     }
@@ -944,7 +993,7 @@ export function setupUIBindings(
 
       const selectedNodes = stateManager.getSelectedNodes();
       const leafShapes = getLeafShapes(selectedNodes);
-      const paintState = getPaintState(leafShapes, property);
+      const paintState = getCurrentPaintState(property, leafShapes);
       if (paintState.kind === 'color') {
         inputEl.value = paintState.hex;
         inputEl.placeholder = paintState.hex;
@@ -963,7 +1012,7 @@ export function setupUIBindings(
     inputEl.removeAttribute('aria-invalid');
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    const paintState = getPaintState(leafShapes, property);
+    const paintState = getCurrentPaintState(property, leafShapes);
     if (paintState.kind === 'color') {
       inputEl.value = paintState.hex;
       inputEl.placeholder = paintState.hex;
@@ -1042,7 +1091,16 @@ export function setupUIBindings(
   const onFillNoneClick = () => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0) return;
+    if (leafShapes.length === 0) {
+      const currentFill = stateManager.getDrawingStyle().fill;
+      if (!isNonePaint(currentFill)) {
+        lastRememberedFill = toValidHexColor(currentFill, lastRememberedFill);
+        commitColor('fill', 'none');
+      } else {
+        commitColor('fill', lastRememberedFill);
+      }
+      return;
+    }
     captureInitialStyle();
     const fillState = getPaintState(leafShapes, 'fill');
     if (fillState.kind === 'color' || fillState.kind === 'mixed') {
@@ -1058,7 +1116,16 @@ export function setupUIBindings(
   const onStrokeNoneClick = () => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0) return;
+    if (leafShapes.length === 0) {
+      const currentStroke = stateManager.getDrawingStyle().stroke;
+      if (!isNonePaint(currentStroke)) {
+        lastRememberedStroke = toValidHexColor(currentStroke, lastRememberedStroke);
+        commitColor('stroke', 'none');
+      } else {
+        commitColor('stroke', lastRememberedStroke);
+      }
+      return;
+    }
     captureInitialStyle();
     const strokeState = getPaintState(leafShapes, 'stroke');
     if (strokeState.kind === 'color' || strokeState.kind === 'mixed') {
@@ -1083,16 +1150,26 @@ export function setupUIBindings(
   btnStrokeNone?.addEventListener('click', onStrokeNoneClick);
 
   const onStrokeWidthChange = () => {
+    if (!inputStrokeWidth) return;
+
+    const parsed = parseFloat(inputStrokeWidth.value);
+    const finalVal = isNaN(parsed) ? 1 : Math.max(0, parsed);
+
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputStrokeWidth) return;
+
+    if (leafShapes.length === 0) {
+      stateManager.setDrawingStyle({ strokeWidth: finalVal });
+      initialStyleSnapshots = null;
+      return;
+    }
+
+    stateManager.setDrawingStyle({ strokeWidth: finalVal });
 
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
 
-    const parsed = parseFloat(inputStrokeWidth.value);
-    const finalVal = isNaN(parsed) ? 1 : Math.max(0, parsed);
     const commands: StyleCommand[] = [];
 
     for (const shape of leafShapes) {

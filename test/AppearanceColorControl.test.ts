@@ -481,4 +481,43 @@ describe('Control de color en Panel de Apariencia', () => {
 
     cleanup();
   });
+
+  it('sin selección, cambiar el color de relleno actualiza getDrawingStyle().fill y no agrega entradas al historial; con selección, el cambio sí queda en el historial y actualiza también el estilo', () => {
+    const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
+
+    // 1. Sin selección
+    stateManager.setSelection([]);
+    const inputFill = elements['#input-fill'];
+
+    inputFill.value = '#e11d48';
+    inputFill.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getDrawingStyle().fill, '#e11d48');
+    assert.equal(commandManager.undoCount, 0);
+
+    // 2. Con selección
+    const rect: Rectangle = {
+      id: 'rect-style-test',
+      type: 'rectangle',
+      name: 'Rect Style Test',
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 50,
+      fill: '#123456',
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, rect);
+    stateManager.selectNode('rect-style-test');
+
+    inputFill.value = '#10b981';
+    inputFill.dispatchEvent({ type: 'change' });
+
+    const updated = stateManager.findNode('rect-style-test') as Rectangle;
+    assert.equal(updated.fill, '#10b981');
+    assert.equal(stateManager.getDrawingStyle().fill, '#10b981');
+    assert.equal(commandManager.undoCount, 1);
+
+    cleanup();
+  });
 });
+

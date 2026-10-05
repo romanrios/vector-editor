@@ -687,7 +687,7 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
 
       // Con 0 figuras
       stateManager.setSelection([]);
-      assert.equal(elements['#panel-title'].textContent, 'PROPIEDADES');
+      assert.equal(elements['#panel-title'].textContent, 'ESTILO DE DIBUJO');
       assert.equal(elements['#no-selection-state'].style.display, 'block');
       assert.equal(elements['#selection-state'].style.display, 'none');
       assert.equal(elements['#status-selection-info'].textContent, '');
