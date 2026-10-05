@@ -52,29 +52,14 @@ stateManager.addShape(stateManager.getState().children[0].id, samplePath);
 
 debug('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
 
+import { normalizeColor } from './utils/color.ts';
+
 /**
  * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)
  * en un código hexadecimal válido de 7 caracteres (#rrggbb) aceptado por <input type="color">.
  */
 export function toValidHexColor(color: string | undefined | null, fallback: string = '#000000'): string {
-  if (!color || color === 'transparent' || color === 'none') {
-    return fallback;
-  }
-  const trimmed = color.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/i.test(trimmed)) {
-    return trimmed;
-  }
-  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
-    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
-  }
-  const rgbMatch = trimmed.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (rgbMatch) {
-    const r = Math.min(255, Math.max(0, parseInt(rgbMatch[1], 10))).toString(16).padStart(2, '0');
-    const g = Math.min(255, Math.max(0, parseInt(rgbMatch[2], 10))).toString(16).padStart(2, '0');
-    const b = Math.min(255, Math.max(0, parseInt(rgbMatch[3], 10))).toString(16).padStart(2, '0');
-    return `#${r}${g}${b}`;
-  }
-  return fallback;
+  return normalizeColor(color) ?? fallback;
 }
 
 /**

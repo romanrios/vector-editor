@@ -31,6 +31,17 @@ export interface ShapeDimensionsEntry {
   readonly dimensions: ShapeDimensions;
 }
 
+export interface ShapeStyleUpdate {
+  readonly fill?: string;
+  readonly stroke?: string;
+  readonly strokeWidth?: number;
+}
+
+export interface ShapeStyleEntry {
+  readonly id: string;
+  readonly style: ShapeStyleUpdate;
+}
+
 export interface DocumentIndex {
   readonly nodeMap: Map<string, SceneNode>;
   readonly parentMap: Map<string, ParentNode>;
@@ -1188,6 +1199,126 @@ export class StateManager {
           } else {
             nextChildren[i] = child;
           }
+        } else {
+          nextChildren[i] = child;
+        }
+      }
+
+      return { updated: changed ? nextChildren : children, changed };
+    }
+
+    const layers = this._state.children;
+    const nextLayers: Layer[] = new Array(layers.length);
+
+    for (let l = 0; l < layers.length; l++) {
+      const layer = layers[l];
+      if (!affectedLayerIds.has(layer.id)) {
+        nextLayers[l] = layer;
+        continue;
+      }
+
+      const res = updateTree(layer.children);
+      if (res.changed) {
+        nextLayers[l] = {
+          ...layer,
+          children: res.updated,
+        };
+      } else {
+        nextLayers[l] = layer;
+      }
+    }
+
+    if (!anyChanged) {
+      return false;
+    }
+
+    this.setState({
+      ...this._state,
+      children: nextLayers,
+    });
+
+    return true;
+  }
+
+  /**
+   * Actualiza el estilo (fill, stroke, strokeWidth) de múltiples figuras en el Scene Graph
+   * en UNA sola actualización inmutable y emite UNA sola notificación a los suscriptores.
+   * Utiliza persistencia estructural (recorrido único) para ramas y capas no afectadas.
+   * Funciona con figuras dentro de grupos anidados.
+   *
+   * @param entries Array de { id, style } con estilo parcial
+   * @returns true si al menos una figura cambió efectivamente de estilo, false si nada cambia
+   */
+  public updateShapesStyle(entries: readonly ShapeStyleEntry[]): boolean {
+    if (!entries || entries.length === 0) {
+      return false;
+    }
+
+    const styleMap = new Map<string, ShapeStyleUpdate>();
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      styleMap.set(entry.id, entry.style);
+    }
+
+    const docIndex = getDocumentIndex(this._state);
+    const affectedLayerIds = new Set<string>();
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      let current: ParentNode | undefined = docIndex.parentMap.get(entry.id);
+      while (current && current.type !== 'layer') {
+        current = docIndex.parentMap.get(current.id);
+      }
+      if (current && isLayer(current)) {
+        affectedLayerIds.add(current.id);
+      }
+    }
+
+    if (affectedLayerIds.size === 0) {
+      return false;
+    }
+
+    let anyChanged = false;
+
+    function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
+      let changed = false;
+      const nextChildren: LayerChildNode[] = new Array(children.length);
+
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isGroup(child)) {
+          const res = updateTree(child.children);
+          if (res.changed) {
+            changed = true;
+            nextChildren[i] = { ...child, children: res.updated };
+          } else {
+            nextChildren[i] = child;
+          }
+        } else if (isShape(child)) {
+          const targetStyle = styleMap.get(child.id);
+          if (!targetStyle) {
+            nextChildren[i] = child;
+            continue;
+          }
+
+          const hasFillChange = targetStyle.fill !== undefined && targetStyle.fill !== child.fill;
+          const hasStrokeChange = targetStyle.stroke !== undefined && targetStyle.stroke !== child.stroke;
+          const hasStrokeWidthChange =
+            targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== child.strokeWidth;
+
+          if (!hasFillChange && !hasStrokeChange && !hasStrokeWidthChange) {
+            nextChildren[i] = child;
+            continue;
+          }
+
+          changed = true;
+          anyChanged = true;
+          nextChildren[i] = {
+            ...child,
+            ...(targetStyle.fill !== undefined ? { fill: targetStyle.fill } : {}),
+            ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
+            ...(targetStyle.strokeWidth !== undefined ? { strokeWidth: targetStyle.strokeWidth } : {}),
+          };
         } else {
           nextChildren[i] = child;
         }

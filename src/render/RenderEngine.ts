@@ -21,6 +21,7 @@ import {
 } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
+import { isNonePaint } from '../utils/color.ts';
 
 export interface RenderEngineOptions {
   /**
@@ -404,14 +405,14 @@ export class RenderEngine {
       this.ctx.rect(rect.x, rect.y, rect.width, rect.height);
     }
 
-    if (rect.fill) {
-      this.ctx.fillStyle = rect.fill;
+    if (!isNonePaint(rect.fill)) {
+      this.ctx.fillStyle = rect.fill!;
       this.ctx.fill();
     }
 
-    if (rect.stroke && rect.strokeWidth) {
+    if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
       this.ctx.lineWidth = rect.strokeWidth;
-      this.ctx.strokeStyle = rect.stroke;
+      this.ctx.strokeStyle = rect.stroke!;
       this.ctx.stroke();
     }
 
@@ -437,14 +438,14 @@ export class RenderEngine {
       Math.PI * 2
     );
 
-    if (ellipse.fill) {
-      this.ctx.fillStyle = ellipse.fill;
+    if (!isNonePaint(ellipse.fill)) {
+      this.ctx.fillStyle = ellipse.fill!;
       this.ctx.fill();
     }
 
-    if (ellipse.stroke && ellipse.strokeWidth) {
+    if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
       this.ctx.lineWidth = ellipse.strokeWidth;
-      this.ctx.strokeStyle = ellipse.stroke;
+      this.ctx.strokeStyle = ellipse.stroke!;
       this.ctx.stroke();
     }
 
@@ -815,14 +816,14 @@ export class RenderEngine {
       this.ctx.closePath();
     }
 
-    if (path.fill && path.fill !== 'transparent' && path.fill !== 'none') {
-      this.ctx.fillStyle = path.fill;
+    if (!isNonePaint(path.fill)) {
+      this.ctx.fillStyle = path.fill!;
       this.ctx.fill();
     }
 
-    if (path.stroke && path.strokeWidth) {
+    if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
       this.ctx.lineWidth = path.strokeWidth;
-      this.ctx.strokeStyle = path.stroke;
+      this.ctx.strokeStyle = path.stroke!;
       this.ctx.lineCap = 'round';
       this.ctx.lineJoin = 'round';
       this.ctx.stroke();

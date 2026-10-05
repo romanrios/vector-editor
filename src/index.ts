@@ -7,6 +7,7 @@ export * from './utils/geometry.ts';
 export * from './utils/transform.ts';
 export * from './utils/cloneShape.ts';
 export * from './utils/viewport.ts';
+export * from './utils/color.ts';
 
 // Gestor de Estado Inmutable
 export * from './state/StateManager.ts';
@@ -27,6 +28,7 @@ export * from './commands/TranslateCommand.ts';
 export * from './commands/ResizeCommand.ts';
 export * from './commands/TransformShapesCommand.ts';
 export * from './commands/StyleCommand.ts';
+export * from './commands/StyleShapesCommand.ts';
 export * from './commands/DeleteCommand.ts';
 export * from './commands/AddShapeCommand.ts';
 export * from './commands/RotateCommand.ts';
