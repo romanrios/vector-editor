@@ -17,7 +17,11 @@ import {
   type Vector2D,
 } from '../types/scene-graph.ts';
 import {
+  computeBoxScale,
+  computeRotationDelta,
   getPathBaseAABB,
+  getSelectionBounds,
+  getSelectionBoxHandles,
   getSelectionHandles,
   getShapeAABB,
   getShapesIntersectingRect,
@@ -29,6 +33,15 @@ import {
   type DistributionAxis,
   type HandleType,
 } from '../utils/geometry.ts';
+import {
+  rotateShapesAboutPivot,
+  scaleShapesAboutAnchor,
+  getShapeDimensions,
+} from '../utils/transform.ts';
+import {
+  TransformShapesCommand,
+  type ShapeTransformEntry,
+} from '../commands/TransformShapesCommand.ts';
 import { CommandManager } from '../commands/CommandManager.ts';
 import { TranslateCommand } from '../commands/TranslateCommand.ts';
 import { BatchCommand } from '../commands/BatchCommand.ts';
@@ -133,6 +146,16 @@ export interface DirectSelectTarget {
   readonly handleType: DirectSelectTargetType;
 }
 
+export interface MultiTransformState {
+  type: 'scale' | 'rotate';
+  leafShapes: readonly Shape[];
+  initialBounds: AABB;
+  anchorOrPivot: Vector2D;
+  startMouse: Vector2D;
+  lastMouse: Vector2D;
+  handle?: HandleType;
+}
+
 export interface InputControllerOptions {
   /**
    * Permite deseleccionar al hacer clic en un área vacía del lienzo (en modo select).
@@ -217,6 +240,9 @@ export class InputController {
   private initialRotation: number | null = null;
   private rotationAngleOffset: number = 0;
   private rotationCentroid: { x: number; y: number } | null = null;
+
+  // Estado de escalado y rotación de conjuntos (grupo o 2+ figuras seleccionadas)
+  private _multiTransformState: MultiTransformState | null = null;
 
   // Operaciones sobre la selección
   private _selectionOperations: SelectionOperations;
@@ -313,6 +339,9 @@ export class InputController {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
       }
       this.resetRotate();
+    }
+    if (this._multiTransformState) {
+      this.resetMultiTransform();
     }
 
     if (tool === 'direct-select' && this.stateManager.getSelection().length > 1) {
@@ -419,6 +448,14 @@ export class InputController {
 
   public get isRotating(): boolean {
     return this._isRotating;
+  }
+
+  public get isMultiTransforming(): boolean {
+    return this._multiTransformState !== null;
+  }
+
+  public get multiTransformState(): MultiTransformState | null {
+    return this._multiTransformState;
   }
 
   public get rotatingNodeId(): string | null {
@@ -566,6 +603,7 @@ export class InputController {
     this.resetDrag();
     this.resetResize();
     this.resetRotate();
+    this.resetMultiTransform();
     this.resetDirectSelect();
     this.eventListeners.clear();
   }
@@ -950,10 +988,50 @@ export class InputController {
 
     // Modo 'select'
     // 1. Manejadores de redimensionado y rotación:
-    // Con varias figuras seleccionadas NO se muestran ni se detectan los tiradores.
-    // Solo se evalúan cuando hay exactamente UNA figura seleccionada.
-    const selection = this.stateManager.getSelection();
-    if (selection.length === 1) {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const isMultiOrGroup = selectedNodes.length >= 2 || (selectedNodes.length === 1 && isGroup(selectedNodes[0]));
+
+    if (isMultiOrGroup) {
+      const bounds = getSelectionBounds(selectedNodes);
+      if (bounds) {
+        const zoom = this.viewportManager.zoom;
+        const handles = getSelectionBoxHandles(bounds, 8 / zoom, 30 / zoom);
+        const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+
+        if (hitHandle) {
+          const leafShapes = getLeafShapes(selectedNodes);
+          if (hitHandle.type === 'rotation-handle') {
+            const pivot: Vector2D = {
+              x: (bounds.minX + bounds.maxX) / 2,
+              y: (bounds.minY + bounds.maxY) / 2,
+            };
+            this._multiTransformState = {
+              type: 'rotate',
+              leafShapes,
+              initialBounds: bounds,
+              anchorOrPivot: pivot,
+              startMouse: { x, y },
+              lastMouse: { x, y },
+            };
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          } else {
+            const { anchor } = computeBoxScale(bounds, hitHandle.type, 0, 0, false);
+            this._multiTransformState = {
+              type: 'scale',
+              leafShapes,
+              initialBounds: bounds,
+              anchorOrPivot: anchor,
+              startMouse: { x, y },
+              lastMouse: { x, y },
+              handle: hitHandle.type,
+            };
+            this.canvas.style.cursor = this.getResizeCursor(hitHandle.type, 0);
+            return;
+          }
+        }
+      }
+    } else if (selectedNodes.length === 1) {
       const selectedNode = this.stateManager.getSelectedNode();
       if (selectedNode && isShape(selectedNode)) {
         const zoom = this.viewportManager.zoom;
@@ -1218,6 +1296,11 @@ export class InputController {
     }
 
     // Modo 'select'
+    if (this._multiTransformState) {
+      this.applyMultiTransform(x, y, Boolean(event.shiftKey));
+      return;
+    }
+
     if (this._isRotating && this.rotatingShapeId) {
       const rawNode = this.stateManager.findNode(this.rotatingShapeId) ?? this.stateManager.getSelectedNode();
       const selectedShape = rawNode && isShape(rawNode) ? rawNode : null;
@@ -1370,11 +1453,28 @@ export class InputController {
       return;
     }
 
-    // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado (SOLO si hay exactamente 1 figura seleccionada)
-    const selection = this.stateManager.getSelection();
-    if (selection.length === 1) {
-      const selectedShape = this.stateManager.getSelectedNode();
-      if (selectedShape && isShape(selectedShape)) {
+    // Verificar si el cursor sobrevuela uno de los manejadores del nodo seleccionado (o grupo / multiselección)
+    const currentSelected = this.stateManager.getSelectedNodes();
+    const isMultiOrGroupHover = currentSelected.length >= 2 || (currentSelected.length === 1 && isGroup(currentSelected[0]));
+
+    if (isMultiOrGroupHover) {
+      const bounds = getSelectionBounds(currentSelected);
+      if (bounds) {
+        const zoom = this.viewportManager.zoom;
+        const handles = getSelectionBoxHandles(bounds, 8 / zoom, 30 / zoom);
+        const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
+        if (hoveredHandle) {
+          if (hoveredHandle.type === 'rotation-handle') {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+          this.canvas.style.cursor = this.getResizeCursor(hoveredHandle.type, 0);
+          return;
+        }
+      }
+    } else if (currentSelected.length === 1) {
+      const selectedShape = currentSelected[0];
+      if (isShape(selectedShape)) {
         const zoom = this.viewportManager.zoom;
         const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
@@ -1570,6 +1670,28 @@ export class InputController {
     }
 
     // Modo 'select'
+    if (this._multiTransformState) {
+      const entries: ShapeTransformEntry[] = this._multiTransformState.leafShapes.map((initialShape) => {
+        const currentShape = (this.stateManager.findNode(initialShape.id) as Shape | null) ?? initialShape;
+        return {
+          id: initialShape.id,
+          before: getShapeDimensions(initialShape),
+          after: getShapeDimensions(currentShape),
+        };
+      });
+
+      const command = new TransformShapesCommand(this.stateManager, entries);
+      if (!command.isAlreadyAtTarget) {
+        this.commandManager.recordCommand(command);
+      }
+
+      this.resetMultiTransform();
+      const { x, y } = this.getLocalCoordinates(event);
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
+
     if (this._isRotating) {
       if (this.rotatingShapeId && this.initialRotation !== null) {
         const rawNode = this.stateManager.findNode(this.rotatingShapeId) ?? this.stateManager.getSelectedNode();
@@ -1907,6 +2029,11 @@ export class InputController {
     }
 
     if (event.key === 'Shift') {
+      if (this._multiTransformState && this._multiTransformState.lastMouse) {
+        this.applyMultiTransform(this._multiTransformState.lastMouse.x, this._multiTransformState.lastMouse.y, true);
+        this.stateManager.markDirty();
+        return;
+      }
       if (this._isResizing) {
         if (
           this.resizingShapeId &&
@@ -1989,7 +2116,17 @@ export class InputController {
     } else if (keyLower === 'h') {
       this.setTool('hand');
     } else if (keyLower === 'escape') {
-      if (this._isMarqueeSelecting) {
+      if (this._multiTransformState) {
+        const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
+          id: shape.id,
+          dimensions: getShapeDimensions(shape),
+        }));
+        this.stateManager.updateShapesDimensions(restoreEntries);
+        this.resetMultiTransform();
+        this.stateManager.markDirty();
+        this.canvas.style.cursor = 'default';
+        return;
+      } else if (this._isMarqueeSelecting) {
         this.cancelMarquee();
       } else if (this._isRotating && this.rotatingShapeId && this.initialRotation !== null) {
         this.stateManager.updateShape(this.rotatingShapeId, { rotation: this.initialRotation });
@@ -2017,6 +2154,11 @@ export class InputController {
 
   public handleKeyUp(event: KeyboardEvent): void {
     if (event.key === 'Shift') {
+      if (this._multiTransformState && this._multiTransformState.lastMouse) {
+        this.applyMultiTransform(this._multiTransformState.lastMouse.x, this._multiTransformState.lastMouse.y, false);
+        this.stateManager.markDirty();
+        return;
+      }
       if (this._isResizing) {
         if (
           this.resizingShapeId &&
@@ -2241,6 +2383,7 @@ export class InputController {
     this.activeResizeHandle = null;
     this.resizingShapeId = null;
     this.initialDimensions = null;
+    this.resetMultiTransform();
   }
 
   private resetRotate(): void {
@@ -2249,6 +2392,53 @@ export class InputController {
     this.initialRotation = null;
     this.rotationAngleOffset = 0;
     this.rotationCentroid = null;
+    this.resetMultiTransform();
+  }
+
+  private resetMultiTransform(): void {
+    this._multiTransformState = null;
+  }
+
+  private applyMultiTransform(x: number, y: number, shiftKey: boolean): void {
+    if (!this._multiTransformState) {
+      return;
+    }
+    this._multiTransformState.lastMouse = { x, y };
+
+    if (this._multiTransformState.type === 'rotate') {
+      const pivot = this._multiTransformState.anchorOrPivot;
+      const startMouse = this._multiTransformState.startMouse;
+      const currentMouse = { x, y };
+      const deltaDeg = computeRotationDelta(pivot, startMouse, currentMouse, shiftKey);
+      const changes = rotateShapesAboutPivot(this._multiTransformState.leafShapes, pivot, deltaDeg);
+      if (changes.length === 0) {
+        const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
+          id: shape.id,
+          dimensions: getShapeDimensions(shape),
+        }));
+        this.stateManager.updateShapesDimensions(restoreEntries);
+      } else {
+        this.stateManager.updateShapesDimensions(changes);
+      }
+      this.canvas.style.cursor = 'crosshair';
+    } else if (this._multiTransformState.type === 'scale') {
+      const handle = this._multiTransformState.handle!;
+      const bounds = this._multiTransformState.initialBounds;
+      const dx = x - this._multiTransformState.startMouse.x;
+      const dy = y - this._multiTransformState.startMouse.y;
+      const { anchor, sx, sy } = computeBoxScale(bounds, handle, dx, dy, shiftKey);
+      const changes = scaleShapesAboutAnchor(this._multiTransformState.leafShapes, anchor, sx, sy);
+      if (changes.length === 0) {
+        const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
+          id: shape.id,
+          dimensions: getShapeDimensions(shape),
+        }));
+        this.stateManager.updateShapesDimensions(restoreEntries);
+      } else {
+        this.stateManager.updateShapesDimensions(changes);
+      }
+      this.canvas.style.cursor = this.getResizeCursor(handle, 0);
+    }
   }
 
   private resetDirectSelect(): void {

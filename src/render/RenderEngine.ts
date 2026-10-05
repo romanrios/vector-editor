@@ -1,6 +1,7 @@
 import {
   isGroup,
   isShape,
+  type AABB,
   type Document,
   type Ellipse,
   type Group,
@@ -490,36 +491,89 @@ export class RenderEngine {
       }
     }
 
-    // 2. Un recuadro delimitador combinado (getSelectionBounds) sin tiradores
+    // 2. Un recuadro delimitador combinado (getSelectionBounds) con tiradores
     const combinedBounds = getSelectionBounds(selectedNodes);
     if (combinedBounds) {
-      this.ctx.save();
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.setLineDash([]);
-      this.ctx.strokeRect(
-        combinedBounds.minX,
-        combinedBounds.minY,
-        combinedBounds.width,
-        combinedBounds.height
-      );
-      this.ctx.restore();
+      this.renderBoxWithHandles(combinedBounds, zoom);
     }
   }
 
   /**
-   * Dibuja el recuadro delimitador de un grupo seleccionado con grosor constante (1.5 / zoom),
-   * sin ningún manejador de redimensionado ni rotación.
+   * Dibuja el recuadro delimitador de un grupo seleccionado con sus 4 tiradores de esquina y de rotación.
    */
   private renderSingleGroupSelection(group: Group, zoom: number): void {
-    const aabb = getGroupAABB(group);
+    const aabb = getSelectionBounds([group]) ?? getGroupAABB(group);
     if (!aabb) return;
+    this.renderBoxWithHandles(aabb, zoom);
+  }
+
+  /**
+   * Dibuja la caja delimitadora combinada (AABB), conector vertical, los 4 manejadores cuadrados
+   * de esquina y el manejador flotante de rotación para un conjunto (grupo o multiselección).
+   */
+  private renderBoxWithHandles(bounds: AABB, zoom: number): void {
+    const handleSize = 8 / zoom;
+    const halfHandle = handleSize / 2;
+    const rotationDistance = 30 / zoom;
+    const midX = (bounds.minX + bounds.maxX) / 2;
+    const rotY = bounds.minY - rotationDistance;
 
     this.ctx.save();
+
+    // 1. Recuadro delimitador combinado
     this.ctx.strokeStyle = '#2563eb';
     this.ctx.lineWidth = 1.5 / zoom;
     this.ctx.setLineDash([]);
-    this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
+    this.ctx.strokeRect(bounds.minX, bounds.minY, bounds.width, bounds.height);
+
+    // 2. Conector vertical sutil hacia el manejador de rotación
+    this.ctx.beginPath();
+    this.ctx.strokeStyle = '#2563eb';
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.moveTo(midX, bounds.minY);
+    this.ctx.lineTo(midX, rotY);
+    this.ctx.stroke();
+
+    // 3. Manejadores en las 4 esquinas
+    const corners = [
+      { x: bounds.minX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.maxY },
+      { x: bounds.minX, y: bounds.maxY },
+    ];
+
+    for (const corner of corners) {
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(
+        corner.x - halfHandle,
+        corner.y - halfHandle,
+        handleSize,
+        handleSize
+      );
+
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.strokeRect(
+        corner.x - halfHandle,
+        corner.y - halfHandle,
+        handleSize,
+        handleSize
+      );
+    }
+
+    // 4. Manejador de rotación flotante (círculo verde)
+    this.ctx.beginPath();
+    if (typeof this.ctx.arc === 'function') {
+      this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
+    } else if (typeof this.ctx.ellipse === 'function') {
+      this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
+    }
+    this.ctx.fillStyle = '#10b981';
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#059669';
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.stroke();
+
     this.ctx.restore();
   }
 

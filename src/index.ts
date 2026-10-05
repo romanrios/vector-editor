@@ -4,6 +4,7 @@ export * from './types/scene-graph.ts';
 // Utilidades de Inmutabilidad, Geometría y Traversal
 export * from './utils/immutable.ts';
 export * from './utils/geometry.ts';
+export * from './utils/transform.ts';
 export * from './utils/cloneShape.ts';
 export * from './utils/viewport.ts';
 
@@ -24,6 +25,7 @@ export * from './commands/Command.ts';
 export * from './commands/CommandManager.ts';
 export * from './commands/TranslateCommand.ts';
 export * from './commands/ResizeCommand.ts';
+export * from './commands/TransformShapesCommand.ts';
 export * from './commands/StyleCommand.ts';
 export * from './commands/DeleteCommand.ts';
 export * from './commands/AddShapeCommand.ts';

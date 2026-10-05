@@ -26,6 +26,11 @@ export interface ShapePositionEntry {
   readonly y: number;
 }
 
+export interface ShapeDimensionsEntry {
+  readonly id: string;
+  readonly dimensions: ShapeDimensions;
+}
+
 export interface DocumentIndex {
   readonly nodeMap: Map<string, SceneNode>;
   readonly parentMap: Map<string, ParentNode>;
@@ -1021,10 +1026,43 @@ export class StateManager {
   }
 
   /**
-   * Actualiza las dimensiones espaciales y/o radios de una figura existente (incluso dentro de grupos).
+   * Actualiza las dimensiones espaciales, radios, rotación y/o puntos de múltiples figuras
+   * en UNA sola actualización inmutable y emite UNA sola notificación a los suscriptores.
+   * Utiliza estructura compartida (structural sharing) para ramas y capas no afectadas.
+   *
+   * @param entries Colección de { id, dimensions } para figuras hoja
+   * @returns true si al menos una figura cambió efectivamente, false en caso contrario
    */
-  public updateShapeDimensions(shapeId: string, dimensions: ShapeDimensions): boolean {
-    let updated = false;
+  public updateShapesDimensions(entries: readonly ShapeDimensionsEntry[]): boolean {
+    if (!entries || entries.length === 0) {
+      return false;
+    }
+
+    const dimMap = new Map<string, ShapeDimensions>();
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      dimMap.set(entry.id, entry.dimensions);
+    }
+
+    const docIndex = getDocumentIndex(this._state);
+    const affectedLayerIds = new Set<string>();
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      let current: ParentNode | undefined = docIndex.parentMap.get(entry.id);
+      while (current && current.type !== 'layer') {
+        current = docIndex.parentMap.get(current.id);
+      }
+      if (current && isLayer(current)) {
+        affectedLayerIds.add(current.id);
+      }
+    }
+
+    if (affectedLayerIds.size === 0) {
+      return false;
+    }
+
+    let anyChanged = false;
 
     function updateTree(children: readonly LayerChildNode[]): { updated: readonly LayerChildNode[]; changed: boolean } {
       let changed = false;
@@ -1040,7 +1078,16 @@ export class StateManager {
           } else {
             nextChildren[i] = child;
           }
-        } else if (isShape(child) && child.id === shapeId) {
+        } else if (isShape(child)) {
+          const dimensions = dimMap.get(child.id);
+          if (!dimensions) {
+            nextChildren[i] = child;
+            continue;
+          }
+
+          let shapeChanged = false;
+          let newShape: Shape = child;
+
           if (child.type === 'rectangle') {
             const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
             const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
@@ -1056,26 +1103,25 @@ export class StateManager {
                 : dimensions.radiusY !== undefined
                 ? dimensions.radiusY * 2
                 : child.height;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
 
             if (
-              nextX === child.x &&
-              nextY === child.y &&
-              nextW === child.width &&
-              nextH === child.height
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextW !== child.width ||
+              nextH !== child.height ||
+              nextRot !== child.rotation
             ) {
-              nextChildren[i] = child;
-              continue;
+              shapeChanged = true;
+              newShape = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                width: nextW,
+                height: nextH,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
             }
-
-            changed = true;
-            updated = true;
-            nextChildren[i] = {
-              ...child,
-              x: nextX,
-              y: nextY,
-              width: nextW,
-              height: nextH,
-            };
           } else if (child.type === 'ellipse') {
             const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
             const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
@@ -1091,48 +1137,54 @@ export class StateManager {
                 : dimensions.height !== undefined
                 ? dimensions.height / 2
                 : child.radiusY;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
 
             if (
-              nextX === child.x &&
-              nextY === child.y &&
-              nextRx === child.radiusX &&
-              nextRy === child.radiusY
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextRx !== child.radiusX ||
+              nextRy !== child.radiusY ||
+              nextRot !== child.rotation
             ) {
-              nextChildren[i] = child;
-              continue;
+              shapeChanged = true;
+              newShape = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                radiusX: nextRx,
+                radiusY: nextRy,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
             }
-
-            changed = true;
-            updated = true;
-            nextChildren[i] = {
-              ...child,
-              x: nextX,
-              y: nextY,
-              radiusX: nextRx,
-              radiusY: nextRy,
-            };
           } else if (child.type === 'path') {
             const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
             const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
             const nextPoints = dimensions.points !== undefined ? dimensions.points : child.points;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+
+            const pointsDiffer = dimensions.points !== undefined && dimensions.points !== child.points;
 
             if (
-              nextX === child.x &&
-              nextY === child.y &&
-              nextPoints === child.points
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextRot !== child.rotation ||
+              pointsDiffer
             ) {
-              nextChildren[i] = child;
-              continue;
+              shapeChanged = true;
+              newShape = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                points: nextPoints,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
             }
+          }
 
+          if (shapeChanged) {
             changed = true;
-            updated = true;
-            nextChildren[i] = {
-              ...child,
-              x: nextX,
-              y: nextY,
-              points: nextPoints,
-            };
+            anyChanged = true;
+            nextChildren[i] = newShape;
           } else {
             nextChildren[i] = child;
           }
@@ -1144,25 +1196,44 @@ export class StateManager {
       return { updated: changed ? nextChildren : children, changed };
     }
 
-    const nextLayers = this._state.children.map((layer) => {
+    const layers = this._state.children;
+    const nextLayers: Layer[] = new Array(layers.length);
+
+    for (let l = 0; l < layers.length; l++) {
+      const layer = layers[l];
+      if (!affectedLayerIds.has(layer.id)) {
+        nextLayers[l] = layer;
+        continue;
+      }
+
       const res = updateTree(layer.children);
       if (res.changed) {
-        return {
+        nextLayers[l] = {
           ...layer,
           children: res.updated,
         };
+      } else {
+        nextLayers[l] = layer;
       }
-      return layer;
-    });
-
-    if (updated) {
-      this.setState({
-        ...this._state,
-        children: nextLayers,
-      });
     }
 
-    return updated;
+    if (!anyChanged) {
+      return false;
+    }
+
+    this.setState({
+      ...this._state,
+      children: nextLayers,
+    });
+
+    return true;
+  }
+
+  /**
+   * Actualiza las dimensiones espaciales y/o radios de una figura existente (incluso dentro de grupos).
+   */
+  public updateShapeDimensions(shapeId: string, dimensions: ShapeDimensions): boolean {
+    return this.updateShapesDimensions([{ id: shapeId, dimensions }]);
   }
 
   /**

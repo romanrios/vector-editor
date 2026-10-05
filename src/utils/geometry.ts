@@ -1460,5 +1460,206 @@ export function computeNodesDistribution(
   return entries;
 }
 
+export { getLeafShapes } from '../state/StateManager.ts';
+
+/**
+ * Normaliza un ángulo en grados al rango semiabierto (-180, 180].
+ */
+export function normalizeAngle(deg: number): number {
+  let angle = ((deg % 360) + 360) % 360;
+  if (angle > 180) {
+    angle -= 360;
+  }
+  return Object.is(angle, -0) ? 0 : angle;
+}
+
+/**
+ * Genera los 5 manejadores de selección (4 esquinas y rotación) para un AABB envolvente.
+ * Utiliza los mismos tipos que getSelectionHandles.
+ *
+ * @param bounds Caja delimitadora (AABB) de la selección
+ * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
+ * @param rotationDistance Distancia del tirador de rotación (por defecto 30px)
+ * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
+ */
+export function getSelectionBoxHandles(
+  bounds: AABB,
+  handleSize: number = 8,
+  rotationDistance: number = 30
+): SelectionHandle[] {
+  const half = handleSize / 2;
+  const midX = (bounds.minX + bounds.maxX) / 2;
+  const rotY = bounds.minY - rotationDistance;
+
+  return [
+    {
+      type: 'top-left',
+      minX: bounds.minX - half,
+      minY: bounds.minY - half,
+      maxX: bounds.minX + half,
+      maxY: bounds.minY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'top-right',
+      minX: bounds.maxX - half,
+      minY: bounds.minY - half,
+      maxX: bounds.maxX + half,
+      maxY: bounds.minY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'bottom-right',
+      minX: bounds.maxX - half,
+      minY: bounds.maxY - half,
+      maxX: bounds.maxX + half,
+      maxY: bounds.maxY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'bottom-left',
+      minX: bounds.minX - half,
+      minY: bounds.maxY - half,
+      maxX: bounds.minX + half,
+      maxY: bounds.maxY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+    {
+      type: 'rotation-handle',
+      minX: midX - half,
+      minY: rotY - half,
+      maxX: midX + half,
+      maxY: rotY + half,
+      width: handleSize,
+      height: handleSize,
+    },
+  ];
+}
+
+/**
+ * Calcula el ancla opuesta y los factores de escala (sx, sy) al arrastrar un tirador de caja,
+ * garantizando un tamaño mínimo de 5 px para el conjunto y respetando aspect ratio si se indica.
+ *
+ * @param bounds Caja delimitadora (AABB) de la selección
+ * @param handle Tirador arrastrado ('top-left' | 'top-right' | 'bottom-right' | 'bottom-left')
+ * @param dx Desplazamiento horizontal del ratón
+ * @param dy Desplazamiento vertical del ratón
+ * @param preserveAspect Si es true, restringe la escala para preservar proporciones
+ * @returns { anchor, sx, sy }
+ */
+export function computeBoxScale(
+  bounds: AABB,
+  handle: HandleType,
+  dx: number,
+  dy: number,
+  preserveAspect: boolean = false
+): { anchor: Vector2D; sx: number; sy: number } {
+  let anchor: Vector2D;
+  let dxSign = 1;
+  let dySign = 1;
+
+  switch (handle) {
+    case 'top-left':
+      anchor = { x: bounds.maxX, y: bounds.maxY };
+      dxSign = -1;
+      dySign = -1;
+      break;
+    case 'top-right':
+      anchor = { x: bounds.minX, y: bounds.maxY };
+      dxSign = 1;
+      dySign = -1;
+      break;
+    case 'bottom-right':
+      anchor = { x: bounds.minX, y: bounds.minY };
+      dxSign = 1;
+      dySign = 1;
+      break;
+    case 'bottom-left':
+      anchor = { x: bounds.maxX, y: bounds.minY };
+      dxSign = -1;
+      dySign = 1;
+      break;
+    default:
+      anchor = { x: bounds.minX, y: bounds.minY };
+      dxSign = 1;
+      dySign = 1;
+      break;
+  }
+
+  const initW = bounds.width;
+  const initH = bounds.height;
+  const safeInitW = Math.max(1, initW);
+  const safeInitH = Math.max(1, initH);
+
+  const rawW = initW + dxSign * dx;
+  const rawH = initH + dySign * dy;
+
+  if (!preserveAspect) {
+    const newW = Math.max(5, rawW);
+    const newH = Math.max(5, rawH);
+    return {
+      anchor,
+      sx: newW / safeInitW,
+      sy: newH / safeInitH,
+    };
+  }
+
+  const rawSx = rawW / safeInitW;
+  const rawSy = rawH / safeInitH;
+  let scale = Math.abs(rawSx - 1) >= Math.abs(rawSy - 1) ? rawSx : rawSy;
+
+  const minScale = Math.max(5 / safeInitW, 5 / safeInitH);
+  scale = Math.max(minScale, scale);
+
+  return {
+    anchor,
+    sx: scale,
+    sy: scale,
+  };
+}
+
+/**
+ * Calcula la variación angular (Δθ) en grados respecto a un pivote, normalizada en (-180, 180].
+ * Si snap está activo, redondea en incrementos discretos de 15°.
+ *
+ * @param pivot Punto pivote de rotación
+ * @param startMouse Posición inicial del ratón
+ * @param currentMouse Posición actual del ratón
+ * @param snap Si es true, ajusta el delta a múltiplos de 15°
+ * @returns Delta de rotación en grados
+ */
+export function computeRotationDelta(
+  pivot: Vector2D,
+  startMouse: Vector2D,
+  currentMouse: Vector2D,
+  snap: boolean = false
+): number {
+  const startDx = startMouse.x - pivot.x;
+  const startDy = startMouse.y - pivot.y;
+  const curDx = currentMouse.x - pivot.x;
+  const curDy = currentMouse.y - pivot.y;
+
+  if ((startDx === 0 && startDy === 0) || (curDx === 0 && curDy === 0)) {
+    return 0;
+  }
+
+  const startAngle = Math.atan2(startDy, startDx);
+  const curAngle = Math.atan2(curDy, curDx);
+
+  let deltaDeg = ((curAngle - startAngle) * 180) / Math.PI;
+  deltaDeg = normalizeAngle(deltaDeg);
+
+  if (snap) {
+    deltaDeg = Math.round(deltaDeg / 15) * 15;
+    deltaDeg = normalizeAngle(deltaDeg);
+  }
+
+  return deltaDeg;
+}
+
 
 
