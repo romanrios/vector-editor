@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Group, Path, Rectangle, SelectableNode, Shape, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, Shape, Vector2D } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
 
@@ -1659,6 +1659,31 @@ export function computeRotationDelta(
   }
 
   return deltaDeg;
+}
+
+/**
+ * Desplaza las anclas especificadas por (dx, dy).
+ * Para cada índice de `indices` desplaza x, y, handleIn y handleOut (si existen) por (dx, dy).
+ * Los demás puntos se devuelven sin cambios (misma referencia). No muta la entrada.
+ */
+export function translatePathAnchors(
+  points: readonly PathPoint[],
+  indices: ReadonlySet<number>,
+  dx: number,
+  dy: number
+): PathPoint[] {
+  return points.map((pt, i) => {
+    if (!indices.has(i)) {
+      return pt;
+    }
+    return {
+      ...pt,
+      x: pt.x + dx,
+      y: pt.y + dy,
+      ...(pt.handleIn ? { handleIn: { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } } : {}),
+      ...(pt.handleOut ? { handleOut: { x: pt.handleOut.x + dx, y: pt.handleOut.y + dy } } : {}),
+    };
+  });
 }
 
 

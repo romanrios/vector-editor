@@ -29,6 +29,7 @@ import {
   isPointInPath,
   isPointInShape,
   normalizeShapeBounds,
+  translatePathAnchors,
   type AlignmentMode,
   type DistributionAxis,
   type HandleType,
@@ -2675,35 +2676,32 @@ export class InputController {
         deltaY = rotDy;
       }
 
-      const nextPoints = this.initialPathPoints.map((pt, idx) => {
-        if (idx !== pointIndex) return pt;
-        if (type === 'anchor') {
-          return {
-            ...pt,
-            x: pt.x + deltaX,
-            y: pt.y + deltaY,
-          };
-        } else if (type === 'handleIn') {
-          const initH = pt.handleIn ?? { x: pt.x, y: pt.y };
-          return {
-            ...pt,
-            handleIn: {
-              x: initH.x + deltaX,
-              y: initH.y + deltaY,
-            },
-          };
-        } else if (type === 'handleOut') {
-          const initH = pt.handleOut ?? { x: pt.x, y: pt.y };
-          return {
-            ...pt,
-            handleOut: {
-              x: initH.x + deltaX,
-              y: initH.y + deltaY,
-            },
-          };
-        }
-        return pt;
-      });
+      const nextPoints =
+        type === 'anchor'
+          ? translatePathAnchors(this.initialPathPoints, new Set([pointIndex]), deltaX, deltaY)
+          : this.initialPathPoints.map((pt, idx) => {
+              if (idx !== pointIndex) return pt;
+              if (type === 'handleIn') {
+                const initH = pt.handleIn ?? { x: pt.x, y: pt.y };
+                return {
+                  ...pt,
+                  handleIn: {
+                    x: initH.x + deltaX,
+                    y: initH.y + deltaY,
+                  },
+                };
+              } else if (type === 'handleOut') {
+                const initH = pt.handleOut ?? { x: pt.x, y: pt.y };
+                return {
+                  ...pt,
+                  handleOut: {
+                    x: initH.x + deltaX,
+                    y: initH.y + deltaY,
+                  },
+                };
+              }
+              return pt;
+            });
 
       this.stateManager.updateShape<Path>(pathId, { points: nextPoints });
       this.canvas.style.cursor = 'grabbing';
