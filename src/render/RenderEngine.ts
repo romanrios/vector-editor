@@ -18,6 +18,7 @@ import {
   getPathBaseAABB,
   getSelectionBounds,
   getShapeAABB,
+  getVisiblePathHandles,
 } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
@@ -38,6 +39,10 @@ export interface RenderEngineOptions {
    * Proveedor funcional opcional de la vista previa de figuras en creación.
    */
   previewProvider?: () => ShapePreview | null;
+  /**
+   * Proveedor funcional opcional del estado de edición de nodos para Selección Directa.
+   */
+  pathEditProvider?: () => { pathId: string; selectedAnchors: ReadonlySet<number> } | null;
   /**
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
@@ -472,30 +477,41 @@ export class RenderEngine {
       return;
     }
 
+    const pathEdit = this.options.pathEditProvider?.() ?? null;
+
     if (selectedNodes.length === 1) {
       const node = selectedNodes[0];
       if (isGroup(node)) {
         this.renderSingleGroupSelection(node, zoom);
       } else if (isShape(node)) {
-        this.renderSingleShapeSelection(node, zoom);
+        if (!pathEdit || pathEdit.pathId !== node.id) {
+          this.renderSingleShapeSelection(node, zoom);
+        }
       }
-      return;
+    } else if (selectedNodes.length > 1) {
+      // Múltiples elementos seleccionados:
+      // 1. Contorno fino sobre cada elemento seleccionado
+      for (const node of selectedNodes) {
+        if (isGroup(node)) {
+          this.renderGroupOutline(node, zoom);
+        } else if (isShape(node)) {
+          this.renderShapeOutline(node, zoom);
+        }
+      }
+
+      // 2. Un recuadro delimitador combinado (getSelectionBounds) con tiradores
+      const combinedBounds = getSelectionBounds(selectedNodes);
+      if (combinedBounds) {
+        this.renderBoxWithHandles(combinedBounds, zoom);
+      }
     }
 
-    // Múltiples elementos seleccionados:
-    // 1. Contorno fino sobre cada elemento seleccionado
-    for (const node of selectedNodes) {
-      if (isGroup(node)) {
-        this.renderGroupOutline(node, zoom);
-      } else if (isShape(node)) {
-        this.renderShapeOutline(node, zoom);
+    // Dibujar overlay de edición de trazado DESPUÉS de dibujar todo, para que quede por encima
+    if (pathEdit) {
+      const pathNode = this.stateManager.findNode(pathEdit.pathId);
+      if (pathNode && pathNode.type === 'path' && this.stateManager.isEffectivelyVisible(pathNode.id)) {
+        this.renderPathEditOverlay(pathNode as Path, pathEdit, zoom);
       }
-    }
-
-    // 2. Un recuadro delimitador combinado (getSelectionBounds) con tiradores
-    const combinedBounds = getSelectionBounds(selectedNodes);
-    if (combinedBounds) {
-      this.renderBoxWithHandles(combinedBounds, zoom);
     }
   }
 
@@ -771,7 +787,7 @@ export class RenderEngine {
   /**
    * Dibuja un nodo Path utilizando curvas de Bézier cúbicas (bezierCurveTo) en Canvas 2D.
    */
-  private renderPath(path: Path, zoom: number): void {
+  private renderPath(path: Path, _zoom?: number): void {
     if (!path.points || path.points.length === 0) {
       return;
     }
@@ -829,59 +845,68 @@ export class RenderEngine {
       this.ctx.stroke();
     }
 
-    // Si el trazado está seleccionado y es la única figura seleccionada, dibujar sus puntos de ancla y manejadores de control Bézier
-    if (this.stateManager.isSelected(path.id) && this.stateManager.getSelection().length === 1) {
-      this.renderPathControls(path, zoom);
-    }
-
     this.ctx.restore();
   }
 
   /**
-   * Dibuja los puntos de ancla y manejadores de control Bézier para un Path seleccionado
-   * con tamaño constante en pantalla.
+   * Dibuja los manejadores visibles y los puntos de ancla en modo de edición de trazado (Selección Directa).
    */
-  private renderPathControls(path: Path, zoom: number): void {
-    const handleRadius = 3.5 / zoom;
-    const anchorSize = 6 / zoom;
+  private renderPathEditOverlay(
+    path: Path,
+    state: { pathId: string; selectedAnchors: ReadonlySet<number> },
+    zoom: number
+  ): void {
+    if (!path.points || path.points.length === 0) {
+      return;
+    }
 
-    for (const pt of path.points) {
+    this.ctx.save();
+
+    // 1. Aplica la misma transformación de rotación que renderPath (centro de getPathBaseAABB)
+    if (path.rotation) {
+      const baseAABB = getPathBaseAABB(path);
+      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+      this.ctx.translate(cx, cy);
+      this.ctx.rotate((path.rotation * Math.PI) / 180);
+      this.ctx.translate(-cx, -cy);
+    }
+
+    // 2. Dibuja solo los manejadores de getVisiblePathHandles: línea ancla→manejador + círculo
+    const handleRadius = 3.5 / zoom;
+    const visibleHandles = getVisiblePathHandles(path, state.selectedAnchors);
+    for (const h of visibleHandles) {
+      // Línea ancla -> manejador
+      this.ctx.beginPath();
       this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)'; // Celeste suave
       this.ctx.lineWidth = 1 / zoom;
+      this.ctx.moveTo(h.anchorX, h.anchorY);
+      this.ctx.lineTo(h.x, h.y);
+      this.ctx.stroke();
 
-      // Línea y círculo para handleIn
-      if (pt.handleIn) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(pt.x, pt.y);
-        this.ctx.lineTo(pt.handleIn.x, pt.handleIn.y);
-        this.ctx.stroke();
+      // Círculo para el manejador
+      this.ctx.beginPath();
+      this.ctx.arc(h.x, h.y, handleRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#38bdf8';
+      this.ctx.fill();
+    }
 
-        this.ctx.beginPath();
-        this.ctx.arc(pt.handleIn.x, pt.handleIn.y, handleRadius, 0, Math.PI * 2);
-        this.ctx.fillStyle = '#38bdf8';
-        this.ctx.fill();
-      }
+    // 3. Dibuja TODAS las anclas: cuadrado blanco con borde azul; las seleccionadas, rellenas de azul
+    const anchorSize = 6 / zoom;
+    const halfAnchor = anchorSize / 2;
 
-      // Línea y círculo para handleOut
-      if (pt.handleOut) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(pt.x, pt.y);
-        this.ctx.lineTo(pt.handleOut.x, pt.handleOut.y);
-        this.ctx.stroke();
+    for (let i = 0; i < path.points.length; i++) {
+      const pt = path.points[i];
+      const isSelected = state.selectedAnchors.has(i);
 
-        this.ctx.beginPath();
-        this.ctx.arc(pt.handleOut.x, pt.handleOut.y, handleRadius, 0, Math.PI * 2);
-        this.ctx.fillStyle = '#38bdf8';
-        this.ctx.fill();
-      }
-
-      // Punto de ancla (cuadrado con borde azul)
-      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillStyle = isSelected ? '#0284c7' : '#ffffff';
       this.ctx.strokeStyle = '#0284c7';
       this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.fillRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
-      this.ctx.strokeRect(pt.x - anchorSize / 2, pt.y - anchorSize / 2, anchorSize, anchorSize);
+      this.ctx.fillRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
+      this.ctx.strokeRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
     }
+
+    this.ctx.restore();
   }
 
   /**

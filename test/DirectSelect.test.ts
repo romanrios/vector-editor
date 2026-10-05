@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
+import { RenderEngine } from '../src/render/RenderEngine.ts';
 import { translatePathAnchors, getVisiblePathHandles } from '../src/utils/geometry.ts';
 import type { Path, PathPoint } from '../src/types/scene-graph.ts';
 
@@ -421,4 +422,79 @@ describe('DirectSelect & translatePathAnchors', () => {
       controller.destroy();
     });
   });
+
+  describe('e) RenderEngine con edición de nodos', () => {
+    it('en herramienta select: dibuja solo bbox y tiradores, sin anclas', () => {
+      const stateManager = new StateManager();
+      const layerId = stateManager.getState().children[0].id;
+      const path: Path = {
+        id: 'p-render-select',
+        type: 'path',
+        name: 'Path Select',
+        x: 0,
+        y: 0,
+        points: [{ x: 10, y: 10 }, { x: 50, y: 50 }],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+      stateManager.selectNode('p-render-select');
+
+      const canvas = createMockCanvas();
+      const engine = new RenderEngine(canvas, stateManager, {
+        highDpi: false,
+        pathEditProvider: () => null, // Modo select (sin edición de anclas)
+      });
+      engine.render();
+
+      // En modo select para una sola figura: dibuja la bounding box y los 4 manejadores de esquina (al menos 5 strokeRect)
+      const strokeRects = canvas.calls.filter((c) => c === 'strokeRect');
+      assert.ok(strokeRects.length >= 5, 'Debe dibujar la bounding box y sus manejadores');
+    });
+
+    it('en herramienta direct-select: omite bbox y dibuja overlay con anclas y manejadores', () => {
+      const stateManager = new StateManager();
+      const layerId = stateManager.getState().children[0].id;
+      const path: Path = {
+        id: 'p-render-direct',
+        type: 'path',
+        name: 'Path Direct',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100, handleOut: { x: 120, y: 100 } },
+          { x: 200, y: 200, handleIn: { x: 180, y: 200 } },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+      stateManager.selectNode('p-render-direct');
+
+      const fillStyles: string[] = [];
+      const canvas = createMockCanvas();
+      const ctx = canvas.getContext('2d') as any;
+      const origFillRect = ctx.fillRect;
+      ctx.fillRect = () => {
+        fillStyles.push(ctx.fillStyle);
+        origFillRect();
+      };
+
+      const engine = new RenderEngine(canvas, stateManager, {
+        highDpi: false,
+        pathEditProvider: () => ({
+          pathId: 'p-render-direct',
+          selectedAnchors: new Set([0]),
+        }),
+      });
+      engine.render();
+
+      // Debe haber dibujado ambas anclas: una seleccionada (#0284c7) y una no seleccionada (#ffffff)
+      assert.ok(fillStyles.includes('#0284c7'), 'El ancla 0 seleccionada debe rellenarse de azul #0284c7');
+      assert.ok(fillStyles.includes('#ffffff'), 'El ancla 1 no seleccionada debe rellenarse de blanco #ffffff');
+
+      // Se dibujan las líneas y círculos de manejadores visibles
+      assert.ok(canvas.calls.includes('arc'), 'Debe dibujar círculo del manejador visible');
+      assert.ok(canvas.calls.includes('lineTo'), 'Debe dibujar la línea conector del manejador visible');
+    });
+  });
 });
+

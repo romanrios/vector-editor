@@ -2231,6 +2231,7 @@ if (typeof document !== 'undefined') {
       backgroundColor: '#141416',
       viewportManager,
       previewProvider: () => inputController?.shapePreview ?? null,
+      pathEditProvider: () => inputController?.pathEditState ?? null,
     });
     renderEngine.start();
 

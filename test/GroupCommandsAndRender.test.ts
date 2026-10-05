@@ -527,13 +527,12 @@ describe('Comandos de Grupos y RenderEngine', () => {
       );
       assert.ok(boxStroke, 'Debe dibujar strokeRect con las dimensiones exactas de getGroupAABB');
 
-      // NO debe dibujar tiradores (en single shape selection se dibujan 4 manejadores con strokeRect/fillRect pequeños de 8x8 y el conector de rotación con moveTo/lineTo)
-      // Como un grupo seleccionado NO tiene tiradores, el número de strokeRect en el overlay debe ser exactamente 1 (la caja)
-      // Y no debe haber conectores de rotación dibujados
+      // Con la regla 5 (redimensionado y rotación en multi-selección y grupos),
+      // se muestran los 4 tiradores de esquina (8x8) para escalar el conjunto
       const smallHandleStrokes = strokeRectCalls.filter(
         (c) => c.args?.[2] === 8 && c.args?.[3] === 8
       );
-      assert.equal(smallHandleStrokes.length, 0, 'No debe haber tiradores de redimensionado');
+      assert.equal(smallHandleStrokes.length, 4, 'Debe haber 4 tiradores de redimensionado');
     });
   });
 });
