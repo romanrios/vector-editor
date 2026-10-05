@@ -36,6 +36,7 @@ Incluye manipulación de trazados Bézier, transformaciones geométricas y Undo/
 12. **Selección normalizada**: La selección no permite la coexistencia simultánea de un nodo y alguno de sus ancestros (el ancestro prevalece; los descendientes se descartan automáticamente).
 13. **Gestión de grupos vacíos por comandos**: `StateManager` (`removeNode`, `addNode`, etc.) NO poda grupos vacíos automáticamente. La poda y restauración de grupos vacíos la gestionan explícitamente los comandos (`DeleteCommand`, `GroupCommand`, `UngroupCommand`).
 14. **Límite de profundidad 32**: La profundidad máxima de anidamiento de grupos en el Scene Graph es 32 niveles para prevenir desbordamientos de pila.
+15. 'none' es la representación canónica de sin relleno y sin borde.
 
 ## No hacer
 - No mutar propiedades del Scene Graph ni arrays de capas sin pasar por `StateManager`.

@@ -1,14 +1,16 @@
-import { StateManager, getLeafShapes } from './state/StateManager.ts';
+import { StateManager, getLeafShapes, type ShapeStyleEntry } from './state/StateManager.ts';
 import { injectSampleShapes, SAMPLE_SHAPES } from './state/injectSampleShapes.ts';
 import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
 import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
 import { StyleCommand } from './commands/StyleCommand.ts';
+import { StyleShapesCommand, type ShapeStyleChangeEntry } from './commands/StyleShapesCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
+import { getPaintState, parseHexColor, isNonePaint, normalizeColor } from './utils/color.ts';
 import { isGroup, isSelectable, isShape, type Path, type SelectableNode, type Shape } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 
@@ -113,7 +115,15 @@ export function setupUIBindings(
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
   const selectionState = document.querySelector<HTMLElement>('#selection-state');
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
+  const inputFillHex = document.querySelector<HTMLInputElement>('#input-fill-hex');
+  const btnFillNone = document.querySelector<HTMLButtonElement>('#btn-fill-none');
+  const swatchFillPreview = document.querySelector<HTMLElement>('#swatch-fill-preview');
+
   const inputStroke = document.querySelector<HTMLInputElement>('#input-stroke');
+  const inputStrokeHex = document.querySelector<HTMLInputElement>('#input-stroke-hex');
+  const btnStrokeNone = document.querySelector<HTMLButtonElement>('#btn-stroke-none');
+  const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
+
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
   const btnBringToFront = document.querySelector<HTMLButtonElement>('#btn-bring-to-front');
   const btnSendToBack = document.querySelector<HTMLButtonElement>('#btn-send-to-back');
@@ -564,6 +574,8 @@ export function setupUIBindings(
     readonly strokeWidth?: number;
   }
   let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
+  let lastRememberedFill = '#38bdf8';
+  let lastRememberedStroke = '#0284c7';
 
   const captureInitialStyle = () => {
     const selectedNodes = stateManager.getSelectedNodes();
@@ -605,12 +617,86 @@ export function setupUIBindings(
       const firstShape = leafShapes[0];
       const isEditing = initialStyleSnapshots !== null;
       if (firstShape) {
+        const fillState = getPaintState(leafShapes, 'fill');
+        const strokeState = getPaintState(leafShapes, 'stroke');
+
+        if (fillState.kind === 'color') {
+          lastRememberedFill = fillState.hex;
+        }
+        if (strokeState.kind === 'color') {
+          lastRememberedStroke = strokeState.hex;
+        }
+
+        // 1. Relleno: Muestra, input nativo, hex input y botón none
+        if (swatchFillPreview) {
+          if (fillState.kind === 'none') {
+            swatchFillPreview.className = 'color-swatch-preview state-none';
+            swatchFillPreview.style.backgroundColor = 'transparent';
+          } else if (fillState.kind === 'mixed') {
+            swatchFillPreview.className = 'color-swatch-preview state-mixed';
+            swatchFillPreview.style.backgroundColor = 'transparent';
+          } else {
+            swatchFillPreview.className = 'color-swatch-preview';
+            swatchFillPreview.style.backgroundColor = fillState.hex;
+          }
+        }
+
         if (inputFill && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputFill))) {
-          inputFill.value = toValidHexColor(firstShape.fill, '#000000');
+          inputFill.value = fillState.kind === 'color' ? fillState.hex : toValidHexColor(firstShape.fill, '#000000');
         }
+
+        if (inputFillHex && (typeof document === 'undefined' || document.activeElement !== inputFillHex)) {
+          if (fillState.kind === 'none') {
+            inputFillHex.value = '';
+            inputFillHex.placeholder = 'ninguno';
+          } else if (fillState.kind === 'mixed') {
+            inputFillHex.value = '';
+            inputFillHex.placeholder = 'Mixto';
+          } else {
+            inputFillHex.value = fillState.hex;
+            inputFillHex.placeholder = fillState.hex;
+          }
+        }
+
+        if (btnFillNone) {
+          btnFillNone.setAttribute('aria-pressed', String(fillState.kind === 'none'));
+        }
+
+        // 2. Borde: Muestra, input nativo, hex input y botón none
+        if (swatchStrokePreview) {
+          if (strokeState.kind === 'none') {
+            swatchStrokePreview.className = 'color-swatch-preview state-none';
+            swatchStrokePreview.style.backgroundColor = 'transparent';
+          } else if (strokeState.kind === 'mixed') {
+            swatchStrokePreview.className = 'color-swatch-preview state-mixed';
+            swatchStrokePreview.style.backgroundColor = 'transparent';
+          } else {
+            swatchStrokePreview.className = 'color-swatch-preview';
+            swatchStrokePreview.style.backgroundColor = strokeState.hex;
+          }
+        }
+
         if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
-          inputStroke.value = toValidHexColor(firstShape.stroke, '#000000');
+          inputStroke.value = strokeState.kind === 'color' ? strokeState.hex : toValidHexColor(firstShape.stroke, '#000000');
         }
+
+        if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {
+          if (strokeState.kind === 'none') {
+            inputStrokeHex.value = '';
+            inputStrokeHex.placeholder = 'ninguno';
+          } else if (strokeState.kind === 'mixed') {
+            inputStrokeHex.value = '';
+            inputStrokeHex.placeholder = 'Mixto';
+          } else {
+            inputStrokeHex.value = strokeState.hex;
+            inputStrokeHex.placeholder = strokeState.hex;
+          }
+        }
+
+        if (btnStrokeNone) {
+          btnStrokeNone.setAttribute('aria-pressed', String(strokeState.kind === 'none'));
+        }
+
         if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
           inputStrokeWidth.value = String(firstShape.strokeWidth ?? 1);
         }
@@ -693,31 +779,108 @@ export function setupUIBindings(
   inputStrokeWidth?.addEventListener('click', onInputStart);
   inputStrokeWidth?.addEventListener('focus', onInputStart);
 
-  // Previsualización en vivo (evento 'input'): actualiza directamente en StateManager sin registrar comando
-  const onFillInput = () => {
+  // Previsualización y consolidación genéricas parametrizadas por propiedad
+  const previewColor = (property: 'fill' | 'stroke', color: string) => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputFill) return;
+    if (leafShapes.length === 0) return;
     if (!initialStyleSnapshots) {
       captureInitialStyle();
     }
-    const val = inputFill.value;
-    for (const shape of leafShapes) {
-      stateManager.updateShape(shape.id, { fill: val });
+    const entries: ShapeStyleEntry[] = leafShapes.map((shape) => {
+      if (property === 'fill') {
+        return { id: shape.id, style: { fill: color } };
+      } else {
+        const needsStrokeWidth =
+          !isNonePaint(color) && (shape.strokeWidth === undefined || shape.strokeWidth <= 0);
+        return {
+          id: shape.id,
+          style: {
+            stroke: color,
+            ...(needsStrokeWidth ? { strokeWidth: 1 } : {}),
+          },
+        };
+      }
+    });
+    stateManager.updateShapesStyle(entries);
+  };
+
+  const commitColor = (property: 'fill' | 'stroke', color: string) => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
     }
+    if (!initialStyleSnapshots) {
+      captureInitialStyle();
+    }
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => {
+      const snapshot = initialStyleSnapshots?.get(shape.id);
+      if (property === 'fill') {
+        const beforeFill = snapshot?.fill ?? shape.fill;
+        return {
+          id: shape.id,
+          before: { fill: beforeFill },
+          after: { fill: color },
+        };
+      } else {
+        const beforeStroke = snapshot?.stroke ?? shape.stroke;
+        const beforeStrokeWidth = snapshot?.strokeWidth ?? shape.strokeWidth;
+        const needsStrokeWidth =
+          !isNonePaint(color) && (beforeStrokeWidth === undefined || beforeStrokeWidth <= 0);
+        return {
+          id: shape.id,
+          before: {
+            stroke: beforeStroke,
+            ...(needsStrokeWidth ? { strokeWidth: beforeStrokeWidth ?? 0 } : {}),
+          },
+          after: {
+            stroke: color,
+            ...(needsStrokeWidth ? { strokeWidth: 1 } : {}),
+          },
+        };
+      }
+    });
+
+    stateManager.updateShapesStyle(entries.map((e) => ({ id: e.id, style: e.after })));
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) {
+      commandManager.recordCommand(command);
+    }
+    initialStyleSnapshots = null;
+  };
+
+  // Previsualización en vivo (evento 'input'): actualiza directamente en StateManager sin registrar comando
+  const onFillInput = () => {
+    if (!inputFill) return;
+    const color = inputFill.value.toLowerCase();
+    previewColor('fill', color);
+    if (swatchFillPreview) {
+      swatchFillPreview.className = 'color-swatch-preview';
+      swatchFillPreview.style.backgroundColor = color;
+    }
+    if (inputFillHex && (typeof document === 'undefined' || document.activeElement !== inputFillHex)) {
+      inputFillHex.value = color;
+      inputFillHex.placeholder = color;
+    }
+    btnFillNone?.setAttribute('aria-pressed', 'false');
   };
 
   const onStrokeInput = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
-    const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputStroke) return;
-    if (!initialStyleSnapshots) {
-      captureInitialStyle();
+    if (!inputStroke) return;
+    const color = inputStroke.value.toLowerCase();
+    previewColor('stroke', color);
+    if (swatchStrokePreview) {
+      swatchStrokePreview.className = 'color-swatch-preview';
+      swatchStrokePreview.style.backgroundColor = color;
     }
-    const val = inputStroke.value;
-    for (const shape of leafShapes) {
-      stateManager.updateShape(shape.id, { stroke: val });
+    if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {
+      inputStrokeHex.value = color;
+      inputStrokeHex.placeholder = color;
     }
+    btnStrokeNone?.setAttribute('aria-pressed', 'false');
   };
 
   const onStrokeWidthInput = () => {
@@ -738,80 +901,188 @@ export function setupUIBindings(
   inputStroke?.addEventListener('input', onStrokeInput);
   inputStrokeWidth?.addEventListener('input', onStrokeWidthInput);
 
-  // Consolidación final (evento 'change'): genera StyleCommand y registra en CommandManager
+  // Consolidación final (evento 'change'): genera StyleShapesCommand y registra en CommandManager
   const onFillChange = () => {
-    const selectedNodes = stateManager.getSelectedNodes();
-    const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputFill) return;
-
-    if (!initialStyleSnapshots) {
-      captureInitialStyle();
-    }
-
-    const finalVal = inputFill.value;
-    const commands: StyleCommand[] = [];
-
-    for (const shape of leafShapes) {
-      const initialVal = initialStyleSnapshots?.get(shape.id)?.fill ?? shape.fill;
-      stateManager.updateShape(shape.id, { fill: finalVal });
-
-      if (initialVal !== finalVal) {
-        commands.push(
-          new StyleCommand(
-            stateManager,
-            shape.id,
-            { fill: initialVal },
-            { fill: finalVal }
-          )
-        );
-      }
-    }
-
-    if (commands.length === 1) {
-      commandManager.recordCommand(commands[0]);
-    } else if (commands.length > 1) {
-      commandManager.recordCommand(new BatchCommand(commands, 'Style Fill'));
-    }
-
-    initialStyleSnapshots = null;
+    if (!inputFill) return;
+    commitColor('fill', inputFill.value.toLowerCase());
   };
 
   const onStrokeChange = () => {
+    if (!inputStroke) return;
+    commitColor('stroke', inputStroke.value.toLowerCase());
+  };
+
+  // Manejadores para campos de texto Hex y botones "sin color"
+  let fillInvalidTimer: ReturnType<typeof setTimeout> | null = null;
+  let strokeInvalidTimer: ReturnType<typeof setTimeout> | null = null;
+
+  let isFillHexSubmitting = false;
+  let isStrokeHexSubmitting = false;
+
+  const handleHexCommit = (property: 'fill' | 'stroke', inputEl: HTMLInputElement) => {
+    const text = inputEl.value;
+    const parsed = parseHexColor(text);
+    if (parsed !== null) {
+      inputEl.removeAttribute('aria-invalid');
+      commitColor(property, parsed);
+      inputEl.value = parsed;
+      syncPropertiesPanel();
+    } else {
+      if (property === 'fill') {
+        if (fillInvalidTimer) clearTimeout(fillInvalidTimer);
+        inputEl.setAttribute('aria-invalid', 'true');
+        fillInvalidTimer = setTimeout(() => {
+          inputEl.removeAttribute('aria-invalid');
+          fillInvalidTimer = null;
+        }, 1000);
+      } else {
+        if (strokeInvalidTimer) clearTimeout(strokeInvalidTimer);
+        inputEl.setAttribute('aria-invalid', 'true');
+        strokeInvalidTimer = setTimeout(() => {
+          inputEl.removeAttribute('aria-invalid');
+          strokeInvalidTimer = null;
+        }, 1000);
+      }
+
+      const selectedNodes = stateManager.getSelectedNodes();
+      const leafShapes = getLeafShapes(selectedNodes);
+      const paintState = getPaintState(leafShapes, property);
+      if (paintState.kind === 'color') {
+        inputEl.value = paintState.hex;
+        inputEl.placeholder = paintState.hex;
+      } else if (paintState.kind === 'none') {
+        inputEl.value = '';
+        inputEl.placeholder = 'ninguno';
+      } else {
+        inputEl.value = '';
+        inputEl.placeholder = 'Mixto';
+      }
+      initialStyleSnapshots = null;
+    }
+  };
+
+  const handleHexRevert = (property: 'fill' | 'stroke', inputEl: HTMLInputElement) => {
+    inputEl.removeAttribute('aria-invalid');
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    if (leafShapes.length === 0 || !inputStroke) return;
-
-    if (!initialStyleSnapshots) {
-      captureInitialStyle();
+    const paintState = getPaintState(leafShapes, property);
+    if (paintState.kind === 'color') {
+      inputEl.value = paintState.hex;
+      inputEl.placeholder = paintState.hex;
+    } else if (paintState.kind === 'none') {
+      inputEl.value = '';
+      inputEl.placeholder = 'ninguno';
+    } else {
+      inputEl.value = '';
+      inputEl.placeholder = 'Mixto';
     }
-
-    const finalVal = inputStroke.value;
-    const commands: StyleCommand[] = [];
-
-    for (const shape of leafShapes) {
-      const initialVal = initialStyleSnapshots?.get(shape.id)?.stroke ?? shape.stroke;
-      stateManager.updateShape(shape.id, { stroke: finalVal });
-
-      if (initialVal !== finalVal) {
-        commands.push(
-          new StyleCommand(
-            stateManager,
-            shape.id,
-            { stroke: initialVal },
-            { stroke: finalVal }
-          )
-        );
-      }
-    }
-
-    if (commands.length === 1) {
-      commandManager.recordCommand(commands[0]);
-    } else if (commands.length > 1) {
-      commandManager.recordCommand(new BatchCommand(commands, 'Style Stroke'));
-    }
-
     initialStyleSnapshots = null;
   };
+
+  const onFillHexFocus = () => {
+    captureInitialStyle();
+  };
+
+  const onFillHexKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (inputFillHex) {
+        isFillHexSubmitting = true;
+        handleHexCommit('fill', inputFillHex);
+        inputFillHex.blur();
+        isFillHexSubmitting = false;
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (inputFillHex) {
+        isFillHexSubmitting = true;
+        handleHexRevert('fill', inputFillHex);
+        inputFillHex.blur();
+        isFillHexSubmitting = false;
+      }
+    }
+  };
+
+  const onFillHexBlur = () => {
+    if (isFillHexSubmitting) return;
+    if (inputFillHex) {
+      handleHexCommit('fill', inputFillHex);
+    }
+  };
+
+  const onStrokeHexFocus = () => {
+    captureInitialStyle();
+  };
+
+  const onStrokeHexKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (inputStrokeHex) {
+        isStrokeHexSubmitting = true;
+        handleHexCommit('stroke', inputStrokeHex);
+        inputStrokeHex.blur();
+        isStrokeHexSubmitting = false;
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (inputStrokeHex) {
+        isStrokeHexSubmitting = true;
+        handleHexRevert('stroke', inputStrokeHex);
+        inputStrokeHex.blur();
+        isStrokeHexSubmitting = false;
+      }
+    }
+  };
+
+  const onStrokeHexBlur = () => {
+    if (isStrokeHexSubmitting) return;
+    if (inputStrokeHex) {
+      handleHexCommit('stroke', inputStrokeHex);
+    }
+  };
+
+  const onFillNoneClick = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0) return;
+    captureInitialStyle();
+    const fillState = getPaintState(leafShapes, 'fill');
+    if (fillState.kind === 'color' || fillState.kind === 'mixed') {
+      if (fillState.kind === 'color') {
+        lastRememberedFill = fillState.hex;
+      }
+      commitColor('fill', 'none');
+    } else {
+      commitColor('fill', lastRememberedFill);
+    }
+  };
+
+  const onStrokeNoneClick = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (leafShapes.length === 0) return;
+    captureInitialStyle();
+    const strokeState = getPaintState(leafShapes, 'stroke');
+    if (strokeState.kind === 'color' || strokeState.kind === 'mixed') {
+      if (strokeState.kind === 'color') {
+        lastRememberedStroke = strokeState.hex;
+      }
+      commitColor('stroke', 'none');
+    } else {
+      commitColor('stroke', lastRememberedStroke);
+    }
+  };
+
+  inputFillHex?.addEventListener('focus', onFillHexFocus);
+  inputFillHex?.addEventListener('keydown', onFillHexKeyDown);
+  inputFillHex?.addEventListener('blur', onFillHexBlur);
+
+  inputStrokeHex?.addEventListener('focus', onStrokeHexFocus);
+  inputStrokeHex?.addEventListener('keydown', onStrokeHexKeyDown);
+  inputStrokeHex?.addEventListener('blur', onStrokeHexBlur);
+
+  btnFillNone?.addEventListener('click', onFillNoneClick);
+  btnStrokeNone?.addEventListener('click', onStrokeNoneClick);
 
   const onStrokeWidthChange = () => {
     const selectedNodes = stateManager.getSelectedNodes();
@@ -1826,6 +2097,26 @@ export function setupUIBindings(
       inputStroke?.removeEventListener('focus', onInputStart);
       inputStroke?.removeEventListener('input', onStrokeInput);
       inputStroke?.removeEventListener('change', onStrokeChange);
+
+      inputFillHex?.removeEventListener('focus', onFillHexFocus);
+      inputFillHex?.removeEventListener('keydown', onFillHexKeyDown);
+      inputFillHex?.removeEventListener('blur', onFillHexBlur);
+
+      inputStrokeHex?.removeEventListener('focus', onStrokeHexFocus);
+      inputStrokeHex?.removeEventListener('keydown', onStrokeHexKeyDown);
+      inputStrokeHex?.removeEventListener('blur', onStrokeHexBlur);
+
+      btnFillNone?.removeEventListener('click', onFillNoneClick);
+      btnStrokeNone?.removeEventListener('click', onStrokeNoneClick);
+
+      if (fillInvalidTimer) {
+        clearTimeout(fillInvalidTimer);
+        fillInvalidTimer = null;
+      }
+      if (strokeInvalidTimer) {
+        clearTimeout(strokeInvalidTimer);
+        strokeInvalidTimer = null;
+      }
 
       inputStrokeWidth?.removeEventListener('mousedown', onInputStart);
       inputStrokeWidth?.removeEventListener('click', onInputStart);
