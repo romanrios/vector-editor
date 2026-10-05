@@ -25,6 +25,7 @@ import {
   getSelectionHandles,
   getShapeAABB,
   getShapesIntersectingRect,
+  getVisiblePathHandles,
   isPointInAABB,
   isPointInPath,
   isPointInShape,
@@ -263,6 +264,8 @@ export class InputController {
   private _isDraggingPoint: boolean = false;
   private directSelectOrigin: { x: number; y: number } | null = null;
   private initialPathPoints: readonly PathPoint[] | null = null;
+  private _selectedAnchors: Set<number> = new Set();
+  private _anchorsPathId: string | null = null;
 
   // Estado de la herramienta Pluma (modo Pen)
   private activePathId: string | null = null;
@@ -369,6 +372,7 @@ export class InputController {
     } else {
       this.canvas.style.cursor = 'default';
     }
+    this.stateManager.markDirty();
     this.emit('toolChange', tool);
   }
 
@@ -495,6 +499,28 @@ export class InputController {
 
   public get directSelectTarget(): DirectSelectTarget | null {
     return this._directSelectTarget;
+  }
+
+  public get pathEditState(): { pathId: string; selectedAnchors: ReadonlySet<number> } | null {
+    if (this._currentTool !== 'direct-select') {
+      return null;
+    }
+    this.ensureAnchorsPathSync();
+    if (!this._anchorsPathId) {
+      return null;
+    }
+    const selection = this.stateManager.getSelection();
+    if (selection.length !== 1 || selection[0] !== this._anchorsPathId) {
+      return null;
+    }
+    const node = this.stateManager.findNode(this._anchorsPathId);
+    if (!node || node.type !== 'path') {
+      return null;
+    }
+    return {
+      pathId: this._anchorsPathId,
+      selectedAnchors: this._selectedAnchors,
+    };
   }
 
   public get isDraggingPoint(): boolean {
@@ -993,7 +1019,7 @@ export class InputController {
     }
 
     if (this._currentTool === 'direct-select') {
-      this.handleDirectSelectMouseDown(x, y);
+      this.handleDirectSelectMouseDown(x, y, Boolean(event.shiftKey));
       return;
     }
 
@@ -2591,6 +2617,24 @@ export class InputController {
     }
   }
 
+  private clearSelectedAnchors(): void {
+    if (this._selectedAnchors.size > 0 || this._anchorsPathId !== null) {
+      this._selectedAnchors.clear();
+      this._anchorsPathId = null;
+      this.stateManager.markDirty();
+    }
+  }
+
+  private ensureAnchorsPathSync(): void {
+    const selection = this.stateManager.getSelection();
+    if (
+      this._anchorsPathId !== null &&
+      (selection.length !== 1 || selection[0] !== this._anchorsPathId)
+    ) {
+      this.clearSelectedAnchors();
+    }
+  }
+
   private resetDirectSelect(): void {
     this._draggedPointIndex = null;
     this._draggedTargetType = null;
@@ -2600,6 +2644,7 @@ export class InputController {
     this._isDraggingPoint = false;
     this.directSelectOrigin = null;
     this.initialPathPoints = null;
+    this.clearSelectedAnchors();
   }
 
   /**
@@ -2608,7 +2653,8 @@ export class InputController {
    * Si el usuario hace clic sobre un punto de ancla o manejador de control (AABB de 10x10px),
    * marca ese vértice o manejador específico como objetivo de arrastre.
    */
-  private handleDirectSelectMouseDown(x: number, y: number): void {
+  private handleDirectSelectMouseDown(x: number, y: number, shiftKey: boolean = false): void {
+    this.ensureAnchorsPathSync();
     const selectedNode = this.stateManager.getSelectedNode();
     let activePath: Path | null =
       selectedNode && selectedNode.type === 'path' ? (selectedNode as Path) : null;
@@ -2618,13 +2664,48 @@ export class InputController {
       // Evaluar hitTest sobre figuras ignorando grupos: si es un Path, seleccionarlo directamente
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.type === 'path') {
+        if (this._anchorsPathId !== hitShape.id) {
+          this.clearSelectedAnchors();
+        }
         this.stateManager.setSelection([hitShape.id]);
         activePath = hitShape as Path;
         hitPoint = this.findPathPointHit(activePath, x, y);
+      } else {
+        this.clearSelectedAnchors();
+        this.resetDirectSelect();
+        this.canvas.style.cursor = 'default';
+        return;
       }
     }
 
     if (activePath && hitPoint) {
+      if (hitPoint.type === 'anchor') {
+        if (this._anchorsPathId !== activePath.id) {
+          this._selectedAnchors.clear();
+          this._anchorsPathId = activePath.id;
+        }
+
+        if (!shiftKey) {
+          if (!this._selectedAnchors.has(hitPoint.index)) {
+            this._selectedAnchors.clear();
+            this._selectedAnchors.add(hitPoint.index);
+            this._anchorsPathId = activePath.id;
+            this.stateManager.markDirty();
+          }
+        } else {
+          if (this._selectedAnchors.has(hitPoint.index)) {
+            this._selectedAnchors.delete(hitPoint.index);
+            if (this._selectedAnchors.size === 0) {
+              this._anchorsPathId = null;
+            }
+          } else {
+            this._selectedAnchors.add(hitPoint.index);
+            this._anchorsPathId = activePath.id;
+          }
+          this.stateManager.markDirty();
+        }
+      }
+
       this._draggedPointIndex = hitPoint.index;
       this._draggedTargetType = hitPoint.type;
       const target: DirectSelectTarget = {
@@ -2644,6 +2725,7 @@ export class InputController {
       this.initialPathPoints = structuredClone(activePath.points);
       this.canvas.style.cursor = 'grabbing';
     } else {
+      this.clearSelectedAnchors();
       this.resetDirectSelect();
       this.canvas.style.cursor = 'default';
     }
@@ -2678,7 +2760,12 @@ export class InputController {
 
       const nextPoints =
         type === 'anchor'
-          ? translatePathAnchors(this.initialPathPoints, new Set([pointIndex]), deltaX, deltaY)
+          ? translatePathAnchors(
+              this.initialPathPoints,
+              this._selectedAnchors.size > 0 ? this._selectedAnchors : new Set([pointIndex]),
+              deltaX,
+              deltaY
+            )
           : this.initialPathPoints.map((pt, idx) => {
               if (idx !== pointIndex) return pt;
               if (type === 'handleIn') {
@@ -2768,21 +2855,12 @@ export class InputController {
       testY = cy + dx * sin + dy * cos;
     }
 
-    // 1. Evaluar primero colisiones con manejadores de control Bézier extendidos (handleIn y handleOut)
-    for (let i = 0; i < path.points.length; i++) {
-      const pt = path.points[i];
-      if (pt.handleIn && (pt.handleIn.x !== pt.x || pt.handleIn.y !== pt.y)) {
-        const handleInAABB = this.createHandleAABB(pt.handleIn.x, pt.handleIn.y, handleSize);
-        if (isPointInAABB(testX, testY, handleInAABB)) {
-          return { index: i, type: 'handleIn' };
-        }
-      }
-
-      if (pt.handleOut && (pt.handleOut.x !== pt.x || pt.handleOut.y !== pt.y)) {
-        const handleOutAABB = this.createHandleAABB(pt.handleOut.x, pt.handleOut.y, handleSize);
-        if (isPointInAABB(testX, testY, handleOutAABB)) {
-          return { index: i, type: 'handleOut' };
-        }
+    // 1. Evaluar primero colisiones con manejadores de control Bézier visibles
+    const visibleHandles = getVisiblePathHandles(path, this._selectedAnchors);
+    for (const h of visibleHandles) {
+      const handleAABB = this.createHandleAABB(h.x, h.y, handleSize);
+      if (isPointInAABB(testX, testY, handleAABB)) {
+        return { index: h.index, type: h.type };
       }
     }
 

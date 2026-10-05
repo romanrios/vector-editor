@@ -1686,5 +1686,84 @@ export function translatePathAnchors(
   });
 }
 
+/**
+ * Referencia a un punto de control Bézier (manejador) visible para un trazado.
+ */
+export interface PathHandleRef {
+  index: number;
+  type: 'handleIn' | 'handleOut';
+  x: number;
+  y: number;
+  anchorX: number;
+  anchorY: number;
+}
 
+/**
+ * Determina los manejadores de control Bézier visibles según las anclas seleccionadas.
+ * Para cada índice válido i de `selected`: handleIn(i), handleOut(i), handleOut(i-1) y handleIn(i+1).
+ * Si path.closed, i-1 e i+1 hacen wrap; si no, se omiten los que salen de rango.
+ * Ignora manejadores undefined o coincidentes con su ancla. Sin duplicados. Ignora índices >= points.length.
+ */
+export function getVisiblePathHandles(
+  path: Path,
+  selected: ReadonlySet<number>
+): PathHandleRef[] {
+  if (!path.points || path.points.length === 0 || selected.size === 0) {
+    return [];
+  }
 
+  const n = path.points.length;
+  const isClosed = Boolean(path.closed);
+  const result: PathHandleRef[] = [];
+  const seen = new Set<string>();
+
+  const checkAndAdd = (idx: number, type: 'handleIn' | 'handleOut') => {
+    const key = `${idx}:${type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const pt = path.points[idx];
+    if (!pt) return;
+
+    const handle = type === 'handleIn' ? pt.handleIn : pt.handleOut;
+    if (!handle) return;
+    if (handle.x === pt.x && handle.y === pt.y) return;
+
+    result.push({
+      index: idx,
+      type,
+      x: handle.x,
+      y: handle.y,
+      anchorX: pt.x,
+      anchorY: pt.y,
+    });
+  };
+
+  for (const i of selected) {
+    if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= n) {
+      continue;
+    }
+
+    // handleIn(i) y handleOut(i)
+    checkAndAdd(i, 'handleIn');
+    checkAndAdd(i, 'handleOut');
+
+    // handleOut(i - 1)
+    if (isClosed) {
+      const prevIdx = (i - 1 + n) % n;
+      checkAndAdd(prevIdx, 'handleOut');
+    } else if (i - 1 >= 0) {
+      checkAndAdd(i - 1, 'handleOut');
+    }
+
+    // handleIn(i + 1)
+    if (isClosed) {
+      const nextIdx = (i + 1) % n;
+      checkAndAdd(nextIdx, 'handleIn');
+    } else if (i + 1 < n) {
+      checkAndAdd(i + 1, 'handleIn');
+    }
+  }
+
+  return result;
+}
