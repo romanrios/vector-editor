@@ -274,6 +274,8 @@ export class InputController {
   private activePathId: string | null = null;
   private isCreatingAnchor: boolean = false;
   private currentAnchorIndex: number = -1;
+  private _penAnchorIndex: number = -1;
+  private _penSelectedAnchors: Set<number> = new Set();
 
   private _hoveredShapeId: string | null = null;
 
@@ -505,25 +507,48 @@ export class InputController {
   }
 
   public get pathEditState(): { pathId: string; selectedAnchors: ReadonlySet<number> } | null {
-    if (this._currentTool !== 'direct-select') {
+    if (this._currentTool === 'pen') {
+      if (this.activePathId !== null) {
+        const pathNode = this.stateManager.findNode(this.activePathId) as Path | null;
+        if (pathNode && pathNode.type === 'path' && pathNode.points && pathNode.points.length > 0) {
+          const lastIndex = pathNode.points.length - 1;
+          if (this._penAnchorIndex !== lastIndex) {
+            this._penAnchorIndex = lastIndex;
+            this._penSelectedAnchors = new Set([lastIndex]);
+          }
+          return {
+            pathId: this.activePathId,
+            selectedAnchors: this._penSelectedAnchors,
+          };
+        }
+      }
       return null;
     }
-    this.ensureAnchorsPathSync();
-    if (!this._anchorsPathId) {
+
+    if (this._currentTool === 'direct-select') {
+      const selection = this.stateManager.getSelection();
+      if (selection.length === 1) {
+        const selectedId = selection[0];
+        const node = this.stateManager.findNode(selectedId);
+        if (node && node.type === 'path') {
+          if (this._anchorsPathId !== selectedId) {
+            this._selectedAnchors.clear();
+            this._anchorsPathId = selectedId;
+          }
+          return {
+            pathId: selectedId,
+            selectedAnchors: this._selectedAnchors,
+          };
+        }
+      }
+      if (this._anchorsPathId !== null || this._selectedAnchors.size > 0) {
+        this._selectedAnchors.clear();
+        this._anchorsPathId = null;
+      }
       return null;
     }
-    const selection = this.stateManager.getSelection();
-    if (selection.length !== 1 || selection[0] !== this._anchorsPathId) {
-      return null;
-    }
-    const node = this.stateManager.findNode(this._anchorsPathId);
-    if (!node || node.type !== 'path') {
-      return null;
-    }
-    return {
-      pathId: this._anchorsPathId,
-      selectedAnchors: this._selectedAnchors,
-    };
+
+    return null;
   }
 
   public get isDraggingPoint(): boolean {
@@ -984,6 +1009,9 @@ export class InputController {
     this.activePathId = null;
     this.isCreatingAnchor = false;
     this.currentAnchorIndex = -1;
+    this._penAnchorIndex = -1;
+    this._penSelectedAnchors = new Set();
+    this.stateManager.markDirty();
   }
 
   /**
@@ -2676,6 +2704,7 @@ export class InputController {
         activePath = hitShape as Path;
         hitPoint = this.findPathPointHit(activePath, x, y);
       } else {
+        this.stateManager.setSelection([]);
         this.clearSelectedAnchors();
         this.resetDirectSelect();
         this.canvas.style.cursor = 'default';
@@ -2700,9 +2729,6 @@ export class InputController {
         } else {
           if (this._selectedAnchors.has(hitPoint.index)) {
             this._selectedAnchors.delete(hitPoint.index);
-            if (this._selectedAnchors.size === 0) {
-              this._anchorsPathId = null;
-            }
           } else {
             this._selectedAnchors.add(hitPoint.index);
             this._anchorsPathId = activePath.id;

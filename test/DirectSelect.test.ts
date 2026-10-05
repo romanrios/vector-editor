@@ -710,5 +710,99 @@ describe('DirectSelect & translatePathAnchors', () => {
       controller.destroy();
     });
   });
+
+  describe('g) pathEditState derivado de selección en direct-select y Pluma', () => {
+    it('a) Seleccionar un path con select, setTool("direct-select") -> pathEditState no es null, con pathId correcto y selectedAnchors vacío', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const layerId = stateManager.getState().children[0].id;
+
+      const path: Path = {
+        id: 'path-select-to-direct',
+        type: 'path',
+        name: 'Path Select To Direct',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100 },
+          { x: 200, y: 200 },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+      stateManager.selectNode('path-select-to-direct');
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      // Por defecto está en 'select'
+      const initialEditState = controller.pathEditState;
+      assert.equal(initialEditState, null);
+
+      // Cambiar a direct-select
+      controller.setTool('direct-select');
+      const editState = controller.pathEditState;
+      assert.ok(editState);
+      assert.equal(editState.pathId, 'path-select-to-direct');
+      assert.equal(editState.selectedAnchors.size, 0);
+
+      controller.destroy();
+    });
+
+    it('b) setTool("pen"), mousedown + mousemove arrastrando -> pathEditState.pathId === activePenPathId y selectedAnchors contiene el último índice; tras un segundo punto, contiene el nuevo índice y getVisiblePathHandles incluye el handleOut del punto anterior', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('pen');
+
+      // 1. Mousedown y arrastre en primer punto (100, 100) -> (130, 100)
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 130, clientY: 100 });
+
+      assert.ok(controller.activePenPathId);
+      assert.equal(controller.pathEditState?.pathId, controller.activePenPathId);
+      assert.equal(controller.pathEditState?.selectedAnchors.size, 1);
+      assert.ok(controller.pathEditState?.selectedAnchors.has(0));
+
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 130, clientY: 100 });
+
+      // 2. Mousedown y arrastre en segundo punto (200, 200) -> (230, 200)
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200 });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 230, clientY: 200 });
+
+      assert.equal(controller.pathEditState?.pathId, controller.activePenPathId);
+      assert.equal(controller.pathEditState?.selectedAnchors.size, 1);
+      assert.ok(controller.pathEditState?.selectedAnchors.has(1));
+
+      // Verificar que getVisiblePathHandles incluye el handleOut del punto 0 y los del punto 1
+      const activePath = stateManager.findNode(controller.activePenPathId!) as Path;
+      const handles = getVisiblePathHandles(activePath, controller.pathEditState!.selectedAnchors);
+      assert.ok(handles.some((h) => h.index === 0 && h.type === 'handleOut'), 'Debe incluir handleOut del punto anterior');
+      assert.ok(handles.some((h) => h.index === 1), 'Debe incluir manejadores del punto vigente');
+
+      controller.destroy();
+    });
+
+    it('c) finishActivePath() -> pathEditState null', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('pen');
+
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+      canvas.dispatchSimulatedEvent('mousemove', { clientX: 120, clientY: 100 });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 120, clientY: 100 });
+
+      assert.ok(controller.pathEditState !== null);
+
+      controller.finishActivePath();
+      assert.equal(controller.pathEditState, null);
+
+      controller.destroy();
+    });
+  });
 });
 

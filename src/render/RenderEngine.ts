@@ -473,11 +473,11 @@ export class RenderEngine {
       }
     }
 
-    if (selectedNodes.length === 0) {
+    const pathEdit = this.options.pathEditProvider?.() ?? null;
+
+    if (selectedNodes.length === 0 && !pathEdit) {
       return;
     }
-
-    const pathEdit = this.options.pathEditProvider?.() ?? null;
 
     if (selectedNodes.length === 1) {
       const node = selectedNodes[0];
