@@ -1270,6 +1270,7 @@ export class InputController {
         handleOut: { x, y },
       };
 
+      const style = this.stateManager.getDrawingStyle();
       const newPath: Path = {
         id: newPathId,
         type: 'path',
@@ -1278,8 +1279,8 @@ export class InputController {
         y,
         points: [initialPoint],
         closed: false,
-        stroke: '#38bdf8', // Celeste vector
-        strokeWidth: 2.5,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
         fill: 'transparent',
       };
 
@@ -1655,6 +1656,7 @@ export class InputController {
         return;
       }
 
+      const style = this.stateManager.getDrawingStyle();
       let newShape: Shape;
       if (this._currentTool === 'rectangle') {
         const bounds = normalizeShapeBounds(start, { x, y }, 'rectangle', isLocked);
@@ -1667,10 +1669,10 @@ export class InputController {
           y: bounds.y,
           width: bounds.width,
           height: bounds.height,
-          fill: '#38bdf8',
-          stroke: '#0284c7',
-          strokeWidth: 2,
-          opacity: 0.85,
+          fill: style.fill,
+          stroke: style.stroke,
+          strokeWidth: style.strokeWidth,
+          opacity: 1,
           visible: true,
           locked: false,
           rotation: 0,
@@ -1687,10 +1689,10 @@ export class InputController {
           y: bounds.y,
           radiusX: bounds.radiusX,
           radiusY: bounds.radiusY,
-          fill: '#38bdf8',
-          stroke: '#0284c7',
-          strokeWidth: 2,
-          opacity: 0.85,
+          fill: style.fill,
+          stroke: style.stroke,
+          strokeWidth: style.strokeWidth,
+          opacity: 1,
           visible: true,
           locked: false,
           rotation: 0,

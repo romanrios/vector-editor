@@ -11,6 +11,7 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { RenderEngine } from '../src/render/RenderEngine.ts';
 import { StyleShapesCommand } from '../src/commands/StyleShapesCommand.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
+import { InputController } from '../src/input/InputController.ts';
 import { toValidHexColor } from '../src/main.ts';
 import type { Rectangle, Ellipse, Path, Layer, Group, Shape } from '../src/types/scene-graph.ts';
 
@@ -73,15 +74,33 @@ function createMockCanvas(): {
     globalAlpha: 1,
   };
 
+  const listeners: Record<string, ((e: unknown) => void)[]> = {};
+
   const mockCanvas = {
     width: 800,
     height: 600,
-    getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 }),
+    style: { cursor: 'default' },
+    getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0 }),
     getContext: (contextId: string) => {
       if (contextId === '2d') return mockCtx as CanvasRenderingContext2D;
       return null;
     },
-  } as unknown as HTMLCanvasElement;
+    addEventListener: (type: string, listener: (e: unknown) => void) => {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(listener);
+    },
+    removeEventListener: (type: string, listener: (e: unknown) => void) => {
+      if (!listeners[type]) return;
+      listeners[type] = listeners[type].filter((l) => l !== listener);
+    },
+    dispatchSimulatedEvent: (type: string, event: unknown) => {
+      if (listeners[type]) {
+        for (const listener of listeners[type]) {
+          listener(event);
+        }
+      }
+    },
+  } as unknown as HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
 
   return { canvas: mockCanvas, calls, fillStyles, strokeStyles };
 }
@@ -482,5 +501,55 @@ describe('toValidHexColor (compatibilidad)', () => {
     assert.equal(toValidHexColor(undefined, '#123456'), '#123456');
     assert.equal(toValidHexColor(null, '#123456'), '#123456');
     assert.equal(toValidHexColor('none', '#000000'), '#000000');
+  });
+});
+
+describe('Estilo de dibujo actual (drawingStyle)', () => {
+  it('tras setDrawingStyle({fill:"#ff0000", stroke:"#00ff00", strokeWidth:5}), un rectángulo y una elipse creados por arrastre nacen con esos valores y opacity 1', () => {
+    const manager = new StateManager();
+    const cmdManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const controller = new InputController(canvas, manager, cmdManager);
+
+    manager.setDrawingStyle({
+      fill: '#ff0000',
+      stroke: '#00ff00',
+      strokeWidth: 5,
+    });
+
+    const style = manager.getDrawingStyle();
+    assert.equal(style.fill, '#ff0000');
+    assert.equal(style.stroke, '#00ff00');
+    assert.equal(style.strokeWidth, 5);
+
+    // 1. Crear rectángulo por arrastre
+    controller.setTool('rectangle');
+    (canvas as any).dispatchSimulatedEvent('mousedown', { clientX: 50, clientY: 50 });
+    (canvas as any).dispatchSimulatedEvent('mousemove', { clientX: 150, clientY: 120 });
+    (canvas as any).dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 120 });
+
+    const shapes = manager.getState().children[0].children;
+    const rect = shapes[shapes.length - 1] as Rectangle;
+    assert.equal(rect.type, 'rectangle');
+    assert.equal(rect.fill, '#ff0000');
+    assert.equal(rect.stroke, '#00ff00');
+    assert.equal(rect.strokeWidth, 5);
+    assert.equal(rect.opacity, 1);
+
+    // 2. Crear elipse por arrastre
+    controller.setTool('ellipse');
+    (canvas as any).dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200 });
+    (canvas as any).dispatchSimulatedEvent('mousemove', { clientX: 300, clientY: 280 });
+    (canvas as any).dispatchSimulatedEvent('mouseup', { clientX: 300, clientY: 280 });
+
+    const updatedShapes = manager.getState().children[0].children;
+    const ellipse = updatedShapes[updatedShapes.length - 1] as Ellipse;
+    assert.equal(ellipse.type, 'ellipse');
+    assert.equal(ellipse.fill, '#ff0000');
+    assert.equal(ellipse.stroke, '#00ff00');
+    assert.equal(ellipse.strokeWidth, 5);
+    assert.equal(ellipse.opacity, 1);
+
+    controller.destroy();
   });
 });

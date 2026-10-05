@@ -140,6 +140,12 @@ export function hasCachedDocumentIndex(doc: Document): boolean {
   return documentIndexCache.has(doc);
 }
 
+export interface DrawingStyle {
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+}
+
 /**
  * Gestor de estado inmutable para el Scene Graph de un editor vectorial.
  * Toda modificación produce un nuevo estado a través de persistencia estructural,
@@ -152,6 +158,11 @@ export class StateManager {
   private _listeners: Set<StateListener> = new Set();
   private _isDirty: boolean = true;
   private commandManager: CommandManager | null = null;
+  private _drawingStyle: DrawingStyle = {
+    fill: '#38bdf8',
+    stroke: '#0284c7',
+    strokeWidth: 2,
+  };
 
   constructor(initialState?: Document, commandManager?: CommandManager) {
     const defaultState: Document = {
@@ -178,6 +189,35 @@ export class StateManager {
     if (commandManager) {
       this.commandManager = commandManager;
     }
+  }
+
+  /**
+   * Obtiene una copia del estilo de dibujo actual para nuevas figuras.
+   */
+  public getDrawingStyle(): DrawingStyle {
+    return { ...this._drawingStyle };
+  }
+
+  /**
+   * Actualiza el estilo de dibujo actual y notifica a los suscriptores.
+   */
+  public setDrawingStyle(partial: Partial<DrawingStyle>): void {
+    const nextStyle: DrawingStyle = {
+      fill: partial.fill !== undefined ? partial.fill : this._drawingStyle.fill,
+      stroke: partial.stroke !== undefined ? partial.stroke : this._drawingStyle.stroke,
+      strokeWidth:
+        partial.strokeWidth !== undefined ? partial.strokeWidth : this._drawingStyle.strokeWidth,
+    };
+    if (
+      nextStyle.fill === this._drawingStyle.fill &&
+      nextStyle.stroke === this._drawingStyle.stroke &&
+      nextStyle.strokeWidth === this._drawingStyle.strokeWidth
+    ) {
+      return;
+    }
+    this._drawingStyle = nextStyle;
+    this.markDirty();
+    this.notify();
   }
 
   /**
