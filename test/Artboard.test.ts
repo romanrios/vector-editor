@@ -8,7 +8,9 @@ import { ResizeArtboardCommand } from '../src/commands/ResizeArtboardCommand.ts'
 import { InputController } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
 import { ARTBOARD_PRESETS, getPresetById, findPresetForSize } from '../src/utils/artboardPresets.ts';
-import type { Rectangle, Document } from '../src/types/scene-graph.ts';
+import { serializeDocument, parseDocument, DocumentParseError } from '../src/state/Serializer.ts';
+import { injectSampleShapes } from '../src/state/injectSampleShapes.ts';
+import type { Rectangle, Document, Path } from '../src/types/scene-graph.ts';
 
 // Helper mock para Canvas y CanvasRenderingContext2D
 function createMockCanvas(width: number = 800, height: number = 600) {
@@ -1624,6 +1626,424 @@ describe('Selección de Presets de Mesa de Trabajo (setupUIBindings)', () => {
     assert.equal(selectPreset.value, 'custom', 'Al cambiar manualmente a una medida arbitraria el selector debe ser "custom"');
 
     cleanup();
+  });
+});
+
+describe('Persistencia de la Mesa de Trabajo (Exportación, Importación y Validaciones)', () => {
+  it('1. exportar un documento conserva width y height en el JSON resultante', () => {
+    const manager = new StateManager();
+    manager.setDocumentSize(1280, 720);
+    const doc = manager.getState();
+
+    // Exportar con formato pretty
+    const prettyJson = serializeDocument(doc, true);
+    assert.ok(prettyJson.includes('"width": 1280'));
+    assert.ok(prettyJson.includes('"height": 720'));
+    const parsedPretty = JSON.parse(prettyJson);
+    assert.equal(parsedPretty.width, 1280);
+    assert.equal(parsedPretty.height, 720);
+
+    // Exportar con formato compacto
+    const compactJson = serializeDocument(doc, false);
+    const parsedCompact = JSON.parse(compactJson);
+    assert.equal(parsedCompact.width, 1280);
+    assert.equal(parsedCompact.height, 720);
+  });
+
+  it('2. importar un documento conserva width y height y actualiza el StateManager y la UI', async () => {
+    const jsonToImport = JSON.stringify({
+      id: 'doc-imported-test',
+      type: 'document',
+      name: 'Documento Importado',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-import-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [],
+        },
+      ],
+    });
+
+    // parseDocument valida y deserializa
+    const importedDoc = await parseDocument(jsonToImport);
+    assert.equal(importedDoc.width, 800);
+    assert.equal(importedDoc.height, 600);
+
+    // Configurar entorno DOM para verificar reactividad de UI
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#select-artboard-preset': selectPreset,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Dimensiones iniciales del manager por defecto (1920x1080)
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+
+    // Cargar el documento importado
+    stateManager.loadState(importedDoc);
+
+    // StateManager conserva las dimensiones
+    assert.equal(stateManager.getState().width, 800);
+    assert.equal(stateManager.getState().height, 600);
+
+    // La UI reacciona y actualiza los campos de entrada
+    assert.equal(inputWidth.value, '800');
+    assert.equal(inputHeight.value, '600');
+    assert.equal(selectPreset.value, 'custom');
+
+    cleanup();
+  });
+
+  it('3. un documento antiguo válido sigue funcionando completamente tras serialización y carga', async () => {
+    const manager = new StateManager();
+    injectSampleShapes(manager);
+
+    const layer0 = manager.getState().children[0];
+
+    // Agregar figura con rotación, opacidad y estilos
+    const customRect: Rectangle = {
+      id: 'rect-legacy-test',
+      type: 'rectangle',
+      name: 'Rectángulo Legado',
+      x: 150,
+      y: 250,
+      width: 300,
+      height: 150,
+      fill: '#f43f5e',
+      stroke: '#881337',
+      strokeWidth: 4,
+      rotation: 45,
+      opacity: 0.8,
+      cornerRadius: 8,
+    };
+    manager.addShape(layer0.id, customRect);
+
+    // Agregar un trazado con curvas Bézier
+    const customPath: Path = {
+      id: 'path-legacy-test',
+      type: 'path',
+      name: 'Trazado Legado',
+      x: 50,
+      y: 50,
+      points: [
+        { x: 50, y: 50, handleOut: { x: 70, y: 30 } },
+        { x: 200, y: 200, handleIn: { x: 180, y: 220 } },
+      ],
+      closed: true,
+      fill: '#10b981',
+      stroke: '#047857',
+      strokeWidth: 2,
+    };
+    manager.addShape(layer0.id, customPath);
+
+    const docBefore = manager.getState();
+    assert.equal(docBefore.width, 1920);
+    assert.equal(docBefore.height, 1080);
+
+    // Serializar
+    const serialized = serializeDocument(docBefore);
+
+    // Parsear
+    const parsedDoc = await parseDocument(serialized);
+    assert.equal(parsedDoc.type, 'document');
+    assert.equal(parsedDoc.width, 1920);
+    assert.equal(parsedDoc.height, 1080);
+    assert.equal(parsedDoc.children.length, docBefore.children.length);
+
+    // Cargar en nuevo StateManager
+    const newManager = new StateManager();
+    newManager.loadState(parsedDoc);
+
+    const docAfter = newManager.getState();
+    assert.equal(docAfter.width, 1920);
+    assert.equal(docAfter.height, 1080);
+
+    // El documento cargado es totalmente operativo: se pueden modificar dimensiones normalmente
+    newManager.setDocumentSize(1000, 1000);
+    assert.equal(newManager.getState().width, 1000);
+    assert.equal(newManager.getState().height, 1000);
+  });
+
+  it('4. las validaciones existentes continúan funcionando y rechazan documentos con dimensiones inválidas o estructura corrupta', async () => {
+    // A) Falta width
+    const missingWidthJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Sin Ancho',
+      height: 600,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(missingWidthJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /width debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // B) width = 0
+    const zeroWidthJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Ancho Cero',
+      width: 0,
+      height: 600,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(zeroWidthJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /width debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // C) width negativo
+    const negativeWidthJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Ancho Negativo',
+      width: -500,
+      height: 600,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(negativeWidthJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /width debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // D) width no numérico / string
+    const stringWidthJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Ancho String',
+      width: '1000',
+      height: 600,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(stringWidthJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /width debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // E) Falta height
+    const missingHeightJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Sin Alto',
+      width: 800,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(missingHeightJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /height debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // F) height <= 0
+    const zeroHeightJson = JSON.stringify({
+      id: 'doc-invalid',
+      type: 'document',
+      name: 'Alto Cero',
+      width: 800,
+      height: 0,
+      children: [],
+    });
+    await assert.rejects(
+      async () => parseDocument(zeroHeightJson),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /height debe ser un número finito > 0/);
+        return true;
+      }
+    );
+
+    // G) Sintaxis JSON corrupta
+    await assert.rejects(
+      async () => parseDocument('{ "type": "document", width: corrupt }'),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        assert.match(err.message, /Sintaxis JSON inválida/);
+        return true;
+      }
+    );
+
+    // H) Raíz inválida (no objeto)
+    await assert.rejects(
+      async () => parseDocument('["array"]'),
+      (err: any) => {
+        assert.ok(err instanceof DocumentParseError);
+        return true;
+      }
+    );
+  });
+
+  it('5. Fit Artboard funciona después de importar encajando el viewport a las nuevas dimensiones de la mesa', async () => {
+    const canvasSize = { width: 800, height: 600 };
+    const viewportManager = new ViewportManager();
+
+    // Documento a importar: 1440 × 900
+    const jsonImport = JSON.stringify({
+      id: 'doc-imported-fit',
+      type: 'document',
+      name: 'Doc Fit',
+      width: 1440,
+      height: 900,
+      children: [
+        {
+          id: 'layer-fit-1',
+          type: 'layer',
+          name: 'Capa Fit',
+          children: [
+            {
+              id: 'rect-fit-1',
+              type: 'rectangle',
+              name: 'Rect Fit',
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              fill: '#00ff00',
+              stroke: '#000000',
+              strokeWidth: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsedDoc = await parseDocument(jsonImport);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas(800, 600);
+    const inputController = new InputController(canvas, stateManager, commandManager, { viewportManager });
+
+    // Cargar estado importado
+    stateManager.loadState(parsedDoc);
+    assert.equal(stateManager.getState().width, 1440);
+    assert.equal(stateManager.getState().height, 900);
+
+    // Ajustar a los límites de la Mesa de Trabajo (0, 0, doc.width, doc.height)
+    const artboardBounds = {
+      minX: 0,
+      minY: 0,
+      maxX: parsedDoc.width,
+      maxY: parsedDoc.height,
+      width: parsedDoc.width,
+      height: parsedDoc.height,
+    };
+    viewportManager.fitToBounds(canvasSize, artboardBounds, 40);
+
+    // Con canvas 800x600 y margen 40:
+    // ancho disponible = 800 - 80 = 720
+    // alto disponible = 600 - 80 = 520
+    // scaleX = 720 / 1440 = 0.5
+    // scaleY = 520 / 900 = 0.5777...
+    // zoom esperado = min(0.5, 0.5777) = 0.5
+    assert.equal(Math.abs(viewportManager.zoom - 0.5) < 1e-4, true);
+
+    // Centro del artboard (720, 450) debe proyectarse en el centro del canvas (400, 300):
+    // panX = 400 - 720 * 0.5 = 40
+    // panY = 300 - 450 * 0.5 = 75
+    assert.equal(Math.abs(viewportManager.panX - 40) < 1e-4, true);
+    assert.equal(Math.abs(viewportManager.panY - 75) < 1e-4, true);
+
+    // Ejecutar zoomFit() de InputController después de importar
+    inputController.zoomFit();
+    assert.ok(viewportManager.zoom > 0);
+  });
+
+  it('6. cambiar el tamaño y luego exportar conserva las nuevas dimensiones (con y sin Undo/Redo)', async () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    stateManager.setCommandManager(commandManager);
+
+    // Dimensiones iniciales
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+
+    // 1) Cambiar tamaño mediante ResizeArtboardCommand a HD (1280 × 720)
+    const resizeHdCmd = new ResizeArtboardCommand(stateManager, 1920, 1080, 1280, 720);
+    resizeHdCmd.execute();
+    commandManager.recordCommand(resizeHdCmd);
+
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+
+    // Exportar y verificar que conserva 1280 × 720
+    const hdJson = serializeDocument(stateManager.getState());
+    const parsedHd = await parseDocument(hdJson);
+    assert.equal(parsedHd.width, 1280);
+    assert.equal(parsedHd.height, 720);
+
+    // 2) Cambiar nuevamente a A4 vertical (794 × 1123)
+    const resizeA4Cmd = new ResizeArtboardCommand(stateManager, 1280, 720, 794, 1123);
+    resizeA4Cmd.execute();
+    commandManager.recordCommand(resizeA4Cmd);
+
+    assert.equal(stateManager.getState().width, 794);
+    assert.equal(stateManager.getState().height, 1123);
+
+    // Exportar y verificar que conserva 794 × 1123
+    const a4Json = serializeDocument(stateManager.getState());
+    const parsedA4 = await parseDocument(a4Json);
+    assert.equal(parsedA4.width, 794);
+    assert.equal(parsedA4.height, 1123);
+
+    // 3) Deshacer (Undo) -> vuelve a 1280 × 720 y exportar conserva 1280 × 720
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+
+    const undoJson = serializeDocument(stateManager.getState());
+    const parsedUndo = await parseDocument(undoJson);
+    assert.equal(parsedUndo.width, 1280);
+    assert.equal(parsedUndo.height, 720);
+
+    // 4) Rehacer (Redo) -> vuelve a 794 × 1123 y exportar conserva 794 × 1123
+    commandManager.redo();
+    assert.equal(stateManager.getState().width, 794);
+    assert.equal(stateManager.getState().height, 1123);
+
+    const redoJson = serializeDocument(stateManager.getState());
+    const parsedRedo = await parseDocument(redoJson);
+    assert.equal(parsedRedo.width, 794);
+    assert.equal(parsedRedo.height, 1123);
   });
 });
 
