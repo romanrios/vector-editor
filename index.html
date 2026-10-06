@@ -872,6 +872,63 @@
         padding-right: 20px;
       }
 
+      .checkbox-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        user-select: none;
+      }
+
+      .checkbox-label:hover {
+        color: var(--text-primary);
+      }
+
+      .control-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        background: var(--bg-control);
+        cursor: pointer;
+        outline: none;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: all var(--transition);
+      }
+
+      .control-checkbox:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-control-hover);
+      }
+
+      .control-checkbox:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .control-checkbox:checked {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .control-checkbox:checked::after {
+        content: '';
+        width: 4px;
+        height: 7px;
+        border: solid #18181b;
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg);
+        margin-top: -1.5px;
+      }
+
       .panel-btn-group {
         display: flex;
         gap: 6px;
@@ -1488,6 +1545,12 @@
               <input type="number" id="input-artboard-height" min="1" step="1" value="1080" aria-label="Alto de la mesa de trabajo en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
+          </div>
+          <div class="control-group">
+            <label for="check-artboard-ratio" class="checkbox-label">
+              <input type="checkbox" id="check-artboard-ratio" class="control-checkbox" aria-label="Bloquear proporción del tamaño de la mesa de trabajo">
+              <span>Bloquear proporción</span>
+            </label>
           </div>
         </div>
       </details>

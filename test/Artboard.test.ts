@@ -578,6 +578,7 @@ class MockUIElement {
   public disabled: boolean = false;
   public textContent: string = '';
   public value: string = '';
+  public checked: boolean = false;
   public style: Record<string, string> = {};
   private attributes: Map<string, string> = new Map();
   private classes: Set<string> = new Set();
@@ -912,4 +913,390 @@ describe('Controles de UI de Mesa de Trabajo (setupUIBindings)', () => {
     assert.equal(stateManager.getState().width, 1920, 'No debe cambiar tras cleanup');
   });
 });
+
+describe('Bloquear proporción en el tamaño de la Mesa de Trabajo', () => {
+  it('cuando está activo, modificar ancho recalcula alto proporcionalmente en tiempo real y permite Undo/Redo', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(); // Inicial: 1920x1080 (16:9)
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Activar bloqueo de proporción
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    // Modificar ancho a 960 (la mitad de 1920)
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '960';
+    inputWidth.dispatchEvent({ type: 'input' });
+
+    // El alto debe haberse recalculado proporcionalmente a 540 (la mitad de 1080)
+    assert.equal(inputHeight.value, '540', 'El campo alto debe recalcularse a 540');
+    assert.equal(stateManager.getState().width, 960);
+    assert.equal(stateManager.getState().height, 540);
+
+    // Confirmar cambio (change)
+    inputWidth.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(commandManager.canUndo(), true);
+
+    // Deshacer (Undo): debe restaurar ambos valores (1920x1080)
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+
+    // Rehacer (Redo): debe reaplicar ambos valores (960x540)
+    commandManager.redo();
+    assert.equal(stateManager.getState().width, 960);
+    assert.equal(stateManager.getState().height, 540);
+    assert.equal(inputWidth.value, '960');
+    assert.equal(inputHeight.value, '540');
+
+    cleanup();
+  });
+
+  it('cuando está activo, modificar alto recalcula ancho proporcionalmente en tiempo real y permite Undo/Redo', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(); // Inicial: 1920x1080
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Activar bloqueo de proporción
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    // Modificar alto al doble: 2160 (el ancho debe duplicarse a 3840)
+    inputHeight.focus();
+    (globalThis as any).document.activeElement = inputHeight;
+    inputHeight.value = '2160';
+    inputHeight.dispatchEvent({ type: 'input' });
+
+    assert.equal(inputWidth.value, '3840', 'El campo ancho debe recalcularse a 3840');
+    assert.equal(stateManager.getState().width, 3840);
+    assert.equal(stateManager.getState().height, 2160);
+
+    // Confirmar cambio (change)
+    inputHeight.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(commandManager.canUndo(), true);
+
+    // Deshacer (Undo)
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+
+    // Rehacer (Redo)
+    commandManager.redo();
+    assert.equal(stateManager.getState().width, 3840);
+    assert.equal(stateManager.getState().height, 2160);
+    assert.equal(inputWidth.value, '3840');
+    assert.equal(inputHeight.value, '2160');
+
+    cleanup();
+  });
+
+  it('la proporción inicial se calcula a partir del Document actual (ej. 800x600 con ratio 4:3)', () => {
+    const customDoc: Document = {
+      id: 'doc-4-3',
+      type: 'document',
+      name: 'Custom 4:3',
+      width: 800,
+      height: 600,
+      children: [
+        {
+          id: 'layer-1',
+          type: 'layer',
+          name: 'Capa 1',
+          children: [],
+        },
+      ],
+    };
+
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(customDoc);
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(inputWidth.value, '800');
+    assert.equal(inputHeight.value, '600');
+
+    // Activar bloqueo con documento 800x600
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    // Modificar ancho a 400 -> alto debe ser 300 (4:3)
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '400';
+    inputWidth.dispatchEvent({ type: 'input' });
+
+    assert.equal(inputHeight.value, '300');
+    assert.equal(stateManager.getState().width, 400);
+    assert.equal(stateManager.getState().height, 300);
+
+    // Modificar alto a 1200 -> ancho debe ser 1600 (4:3)
+    (globalThis as any).document.activeElement = inputHeight;
+    inputHeight.focus();
+    inputHeight.value = '1200';
+    inputHeight.dispatchEvent({ type: 'input' });
+
+    assert.equal(inputWidth.value, '1600');
+    assert.equal(stateManager.getState().width, 1600);
+    assert.equal(stateManager.getState().height, 1200);
+
+    cleanup();
+  });
+
+  it('cuando Bloquear proporción NO está activo, las dimensiones se modifican independientemente', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    checkRatio.checked = false; // Inactivo
+
+    // Cambiar solo ancho
+    inputWidth.value = '1000';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1000);
+    assert.equal(stateManager.getState().height, 1080, 'El alto no debe cambiar');
+    assert.equal(inputHeight.value, '1080');
+
+    // Cambiar solo alto
+    inputHeight.value = '500';
+    inputHeight.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1000, 'El ancho no debe cambiar');
+    assert.equal(stateManager.getState().height, 500);
+    assert.equal(inputWidth.value, '1000');
+
+    cleanup();
+  });
+
+  it('no modifica objetos existentes en el Scene Graph al recalcular proporcionalmente', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const layer = stateManager.getState().children[0];
+    const rect: Rectangle = {
+      id: 'rect-in-artboard',
+      type: 'rectangle',
+      name: 'Rect 1',
+      x: 100,
+      y: 200,
+      width: 300,
+      height: 150,
+    };
+    stateManager.addShape(layer.id, rect);
+
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    inputWidth.value = '960';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+
+    const shape = stateManager.findNode('rect-in-artboard') as Rectangle;
+    assert.ok(shape, 'La figura debe permanecer en el árbol');
+    assert.equal(shape.x, 100, 'x no debe cambiar');
+    assert.equal(shape.y, 200, 'y no debe cambiar');
+    assert.equal(shape.width, 300, 'width no debe cambiar');
+    assert.equal(shape.height, 150, 'height no debe cambiar');
+
+    cleanup();
+  });
+
+  it('con Bloquear proporción activo, valores inválidos (0, negativos) son ignorados y revertidos', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    // Intento con valor negativo en ancho
+    inputWidth.value = '-100';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920, 'No debe aceptar negativos');
+    assert.equal(stateManager.getState().height, 1080);
+
+    inputWidth.dispatchEvent({ type: 'change' });
+    assert.equal(inputWidth.value, '1920', 'Debe revertir ancho');
+    assert.equal(inputHeight.value, '1080', 'Debe revertir alto');
+
+    // Intento con valor 0 en alto
+    inputHeight.value = '0';
+    inputHeight.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080, 'No debe aceptar 0');
+
+    inputHeight.dispatchEvent({ type: 'change' });
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+
+    cleanup();
+  });
+
+  it('con Bloquear proporción activo, la tecla Escape cancela y restaura ambas dimensiones', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#check-artboard-ratio': checkRatio,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    checkRatio.checked = true;
+    checkRatio.dispatchEvent({ type: 'change' });
+
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '960';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 960);
+    assert.equal(stateManager.getState().height, 540);
+
+    // Cancelar con Escape
+    inputWidth.dispatchEvent({ type: 'keydown', key: 'Escape' });
+    assert.equal(inputWidth.value, '1920', 'Escape debe restaurar ancho');
+    assert.equal(inputHeight.value, '1080', 'Escape debe restaurar alto');
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+
+    cleanup();
+  });
+});
+
 

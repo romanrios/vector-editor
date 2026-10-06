@@ -126,6 +126,7 @@ export function setupUIBindings(
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
   const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
   const inputArtboardHeight = document.querySelector<HTMLInputElement>('#input-artboard-height');
+  const checkArtboardRatio = document.querySelector<HTMLInputElement>('#check-artboard-ratio');
   const btnBringToFront = document.querySelector<HTMLButtonElement>('#btn-bring-to-front');
   const btnSendToBack = document.querySelector<HTMLButtonElement>('#btn-send-to-back');
   const btnDuplicate = document.querySelector<HTMLButtonElement>('#btn-duplicate');
@@ -745,6 +746,10 @@ export function setupUIBindings(
     if (inputArtboardHeight && (typeof document === 'undefined' || document.activeElement !== inputArtboardHeight)) {
       inputArtboardHeight.value = String(currentDoc.height);
     }
+    if (checkArtboardRatio?.checked && currentDoc.height > 0 &&
+        (typeof document === 'undefined' || (document.activeElement !== inputArtboardWidth && document.activeElement !== inputArtboardHeight))) {
+      artboardAspectRatio = currentDoc.width / currentDoc.height;
+    }
 
     if (hasSelection) {
       const canAlign = selectedNodes.length >= 2;
@@ -1212,20 +1217,41 @@ export function setupUIBindings(
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
 
-  // 6. Controles de Mesa de Trabajo (Ancho y Alto)
+  // 6. Controles de Mesa de Trabajo (Ancho, Alto y Proporción)
   let initialArtboardWidth = stateManager.getState().width;
   let initialArtboardHeight = stateManager.getState().height;
+  let artboardAspectRatio = initialArtboardHeight > 0 ? initialArtboardWidth / initialArtboardHeight : 1;
+
+  const onArtboardRatioChange = () => {
+    if (checkArtboardRatio?.checked) {
+      const currentDoc = stateManager.getState();
+      if (currentDoc.height > 0) {
+        artboardAspectRatio = currentDoc.width / currentDoc.height;
+      }
+    }
+  };
 
   const onArtboardFocus = () => {
     initialArtboardWidth = stateManager.getState().width;
     initialArtboardHeight = stateManager.getState().height;
+    if (checkArtboardRatio?.checked && initialArtboardHeight > 0) {
+      artboardAspectRatio = initialArtboardWidth / initialArtboardHeight;
+    }
   };
 
   const onArtboardWidthInput = () => {
     if (!inputArtboardWidth) return;
     const parsed = parseFloat(inputArtboardWidth.value);
     if (Number.isFinite(parsed) && parsed > 0) {
-      stateManager.setDocumentSize(parsed, stateManager.getState().height);
+      if (checkArtboardRatio?.checked && artboardAspectRatio > 0) {
+        const calculatedHeight = Math.max(1, Math.round(parsed / artboardAspectRatio));
+        if (inputArtboardHeight) {
+          inputArtboardHeight.value = String(calculatedHeight);
+        }
+        stateManager.setDocumentSize(parsed, calculatedHeight);
+      } else {
+        stateManager.setDocumentSize(parsed, stateManager.getState().height);
+      }
     }
   };
 
@@ -1234,16 +1260,27 @@ export function setupUIBindings(
     const parsed = parseFloat(inputArtboardWidth.value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       inputArtboardWidth.value = String(stateManager.getState().width);
+      if (checkArtboardRatio?.checked && inputArtboardHeight) {
+        inputArtboardHeight.value = String(stateManager.getState().height);
+      }
       return;
     }
-    const currentH = stateManager.getState().height;
-    stateManager.setDocumentSize(parsed, currentH);
-    if (commandManager && initialArtboardWidth !== parsed) {
+
+    let targetHeight = stateManager.getState().height;
+    if (checkArtboardRatio?.checked && artboardAspectRatio > 0) {
+      targetHeight = Math.max(1, Math.round(parsed / artboardAspectRatio));
+      if (inputArtboardHeight) {
+        inputArtboardHeight.value = String(targetHeight);
+      }
+    }
+
+    stateManager.setDocumentSize(parsed, targetHeight);
+    if (commandManager && (initialArtboardWidth !== parsed || initialArtboardHeight !== targetHeight)) {
       commandManager.recordCommand(
-        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, parsed, currentH)
+        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, parsed, targetHeight)
       );
       initialArtboardWidth = parsed;
-      initialArtboardHeight = currentH;
+      initialArtboardHeight = targetHeight;
     }
   };
 
@@ -1251,7 +1288,15 @@ export function setupUIBindings(
     if (!inputArtboardHeight) return;
     const parsed = parseFloat(inputArtboardHeight.value);
     if (Number.isFinite(parsed) && parsed > 0) {
-      stateManager.setDocumentSize(stateManager.getState().width, parsed);
+      if (checkArtboardRatio?.checked && artboardAspectRatio > 0) {
+        const calculatedWidth = Math.max(1, Math.round(parsed * artboardAspectRatio));
+        if (inputArtboardWidth) {
+          inputArtboardWidth.value = String(calculatedWidth);
+        }
+        stateManager.setDocumentSize(calculatedWidth, parsed);
+      } else {
+        stateManager.setDocumentSize(stateManager.getState().width, parsed);
+      }
     }
   };
 
@@ -1260,15 +1305,26 @@ export function setupUIBindings(
     const parsed = parseFloat(inputArtboardHeight.value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       inputArtboardHeight.value = String(stateManager.getState().height);
+      if (checkArtboardRatio?.checked && inputArtboardWidth) {
+        inputArtboardWidth.value = String(stateManager.getState().width);
+      }
       return;
     }
-    const currentW = stateManager.getState().width;
-    stateManager.setDocumentSize(currentW, parsed);
-    if (commandManager && initialArtboardHeight !== parsed) {
+
+    let targetWidth = stateManager.getState().width;
+    if (checkArtboardRatio?.checked && artboardAspectRatio > 0) {
+      targetWidth = Math.max(1, Math.round(parsed * artboardAspectRatio));
+      if (inputArtboardWidth) {
+        inputArtboardWidth.value = String(targetWidth);
+      }
+    }
+
+    stateManager.setDocumentSize(targetWidth, parsed);
+    if (commandManager && (initialArtboardWidth !== targetWidth || initialArtboardHeight !== parsed)) {
       commandManager.recordCommand(
-        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, currentW, parsed)
+        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, targetWidth, parsed)
       );
-      initialArtboardWidth = currentW;
+      initialArtboardWidth = targetWidth;
       initialArtboardHeight = parsed;
     }
   };
@@ -1279,7 +1335,10 @@ export function setupUIBindings(
     } else if (e.key === 'Escape') {
       if (inputArtboardWidth) {
         inputArtboardWidth.value = String(initialArtboardWidth);
-        stateManager.setDocumentSize(initialArtboardWidth, stateManager.getState().height);
+        if (inputArtboardHeight) {
+          inputArtboardHeight.value = String(initialArtboardHeight);
+        }
+        stateManager.setDocumentSize(initialArtboardWidth, initialArtboardHeight);
         inputArtboardWidth.blur();
       }
     }
@@ -1291,11 +1350,16 @@ export function setupUIBindings(
     } else if (e.key === 'Escape') {
       if (inputArtboardHeight) {
         inputArtboardHeight.value = String(initialArtboardHeight);
-        stateManager.setDocumentSize(stateManager.getState().width, initialArtboardHeight);
+        if (inputArtboardWidth) {
+          inputArtboardWidth.value = String(initialArtboardWidth);
+        }
+        stateManager.setDocumentSize(initialArtboardWidth, initialArtboardHeight);
         inputArtboardHeight.blur();
       }
     }
   };
+
+  checkArtboardRatio?.addEventListener('change', onArtboardRatioChange);
 
   inputArtboardWidth?.addEventListener('focus', onArtboardFocus);
   inputArtboardWidth?.addEventListener('input', onArtboardWidthInput);
@@ -2304,6 +2368,8 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('focus', onInputStart);
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
+
+      checkArtboardRatio?.removeEventListener('change', onArtboardRatioChange);
 
       inputArtboardWidth?.removeEventListener('focus', onArtboardFocus);
       inputArtboardWidth?.removeEventListener('input', onArtboardWidthInput);
