@@ -196,6 +196,53 @@ describe('Representación Visual de la Mesa de Trabajo (Artboard)', () => {
     assert.equal(artboardStroke?.lineWidth, 0.5, 'lineWidth debe ser 1 / zoom');
   });
 
+  it('soporta pantallas HiDPI (devicePixelRatio > 1) aplicando la transformación combinada dpr * zoom y dibujando la mesa en espacio del mundo', () => {
+    const { canvas, calls, fillRects } = createMockCanvas();
+    const manager = new StateManager();
+    const doc = manager.getState();
+    const viewportManager = new ViewportManager({ zoom: 1.5, panX: 40, panY: 60 });
+
+    const originalWindow = (globalThis as any).window;
+    (globalThis as any).window = {
+      devicePixelRatio: 2,
+      innerWidth: 800,
+      innerHeight: 600,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+
+    try {
+      const engine = new RenderEngine(canvas, manager, {
+        highDpi: true,
+        viewportManager,
+      });
+      engine.render();
+
+      // Comprobar que setTransform se invocó con la matriz combinada (dpr * zoom, 0, 0, dpr * zoom, dpr * panX, dpr * panY)
+      // dpr * zoom = 2 * 1.5 = 3
+      // dpr * panX = 2 * 40 = 80
+      // dpr * panY = 2 * 60 = 120
+      const transformCalls = calls.filter((c) => c.method === 'setTransform');
+      const combinedTransform = transformCalls.find(
+        (c) => c.args && c.args[0] === 3 && c.args[3] === 3 && c.args[4] === 80 && c.args[5] === 120
+      );
+      assert.ok(combinedTransform, 'Debe aplicar la matriz combinada con dpr = 2 y zoom = 1.5');
+
+      // La mesa se dibuja en coordenadas del mundo (0, 0, width, height)
+      const artboardFill = fillRects.find(
+        (r) => r.x === 0 && r.y === 0 && r.w === doc.width && r.h === doc.height
+      );
+      assert.ok(artboardFill, 'Debe renderizar la mesa de trabajo en coordenadas del mundo con fondo blanco');
+      assert.equal(artboardFill?.fillStyle, '#ffffff');
+    } finally {
+      if (originalWindow !== undefined) {
+        (globalThis as any).window = originalWindow;
+      } else {
+        delete (globalThis as any).window;
+      }
+    }
+  });
+
   it('las figuras del Scene Graph se renderizan después de la mesa de trabajo (quedan superpuestas sobre el fondo blanco)', () => {
     const { canvas, calls } = createMockCanvas();
     const manager = new StateManager();
