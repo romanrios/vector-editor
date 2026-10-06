@@ -7,6 +7,7 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { ResizeArtboardCommand } from '../src/commands/ResizeArtboardCommand.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
+import { ARTBOARD_PRESETS, getPresetById, findPresetForSize } from '../src/utils/artboardPresets.ts';
 import type { Rectangle, Document } from '../src/types/scene-graph.ts';
 
 // Helper mock para Canvas y CanvasRenderingContext2D
@@ -1298,5 +1299,333 @@ describe('Bloquear proporción en el tamaño de la Mesa de Trabajo', () => {
     cleanup();
   });
 });
+
+describe('Presets de tamaño de la Mesa de Trabajo (Definición y Búsqueda)', () => {
+  it('contiene los presets requeridos con sus dimensiones exactas en píxeles', () => {
+    const ids = ARTBOARD_PRESETS.map((p) => p.id);
+    assert.deepEqual(ids, ['a4-portrait', 'a4-landscape', 'hd', 'full-hd', 'square']);
+
+    const a4Portrait = getPresetById('a4-portrait');
+    assert.ok(a4Portrait);
+    assert.equal(a4Portrait?.width, 794);
+    assert.equal(a4Portrait?.height, 1123);
+
+    const a4Landscape = getPresetById('a4-landscape');
+    assert.ok(a4Landscape);
+    assert.equal(a4Landscape?.width, 1123);
+    assert.equal(a4Landscape?.height, 794);
+
+    const hd = getPresetById('hd');
+    assert.ok(hd);
+    assert.equal(hd?.width, 1280);
+    assert.equal(hd?.height, 720);
+
+    const fullHd = getPresetById('full-hd');
+    assert.ok(fullHd);
+    assert.equal(fullHd?.width, 1920);
+    assert.equal(fullHd?.height, 1080);
+
+    const square = getPresetById('square');
+    assert.ok(square);
+    assert.equal(square?.width, 1080);
+    assert.equal(square?.height, 1080);
+  });
+
+  it('findPresetForSize identifica el preset correspondiente o retorna null si es personalizado', () => {
+    assert.equal(findPresetForSize(794, 1123)?.id, 'a4-portrait');
+    assert.equal(findPresetForSize(1123, 794)?.id, 'a4-landscape');
+    assert.equal(findPresetForSize(1280, 720)?.id, 'hd');
+    assert.equal(findPresetForSize(1920, 1080)?.id, 'full-hd');
+    assert.equal(findPresetForSize(1080, 1080)?.id, 'square');
+
+    assert.equal(findPresetForSize(1500, 900), null, 'Dimensiones arbitrarias deben retornar null (Personalizado)');
+    assert.equal(findPresetForSize(1920, 1000), null);
+  });
+
+  it('getPresetById retorna undefined para IDs inexistentes', () => {
+    assert.equal(getPresetById('inexistente'), undefined);
+    assert.equal(getPresetById('custom'), undefined);
+  });
+});
+
+describe('Selección de Presets de Mesa de Trabajo (setupUIBindings)', () => {
+  it('inicializa el selector de presets según las dimensiones del documento actual', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(); // Por defecto: 1920x1080
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(selectPreset.value, 'full-hd', 'Debe reconocer inicialmente Full HD (1920x1080)');
+
+    cleanup();
+  });
+
+  it('muestra "custom" si las dimensiones iniciales del documento no coinciden con ningún preset', () => {
+    const customDoc: Document = {
+      id: 'doc-custom',
+      type: 'document',
+      name: 'Custom',
+      width: 1400,
+      height: 900,
+      children: [{ id: 'l1', type: 'layer', name: 'Capa 1', children: [] }],
+    };
+
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(customDoc);
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(selectPreset.value, 'custom', 'Debe reflejar "custom" para 1400x900');
+
+    cleanup();
+  });
+
+  it('seleccionar A4 vertical actualiza Document y los inputs a 794 × 1123 px inmediatamente', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Seleccionar A4 vertical
+    selectPreset.value = 'a4-portrait';
+    selectPreset.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getState().width, 794);
+    assert.equal(stateManager.getState().height, 1123);
+    assert.equal(inputWidth.value, '794');
+    assert.equal(inputHeight.value, '1123');
+    assert.equal(stateManager.isDirty, true, 'Debe marcar isDirty para renderizado inmediato');
+
+    cleanup();
+  });
+
+  it('seleccionar A4 horizontal actualiza Document y los inputs a 1123 × 794 px inmediatamente', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Seleccionar A4 horizontal
+    selectPreset.value = 'a4-landscape';
+    selectPreset.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getState().width, 1123);
+    assert.equal(stateManager.getState().height, 794);
+    assert.equal(inputWidth.value, '1123');
+    assert.equal(inputHeight.value, '794');
+
+    cleanup();
+  });
+
+  it('seleccionar HD actualiza a 1280 × 720 px, y Cuadrado a 1080 × 1080 px', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Cambiar a HD
+    selectPreset.value = 'hd';
+    selectPreset.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+    assert.equal(inputWidth.value, '1280');
+    assert.equal(inputHeight.value, '720');
+
+    // Cambiar a Cuadrado
+    selectPreset.value = 'square';
+    selectPreset.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getState().width, 1080);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1080');
+    assert.equal(inputHeight.value, '1080');
+
+    cleanup();
+  });
+
+  it('la selección de presets se integra con CommandManager y permite Undo/Redo sincronizando el selector', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager(); // 1920x1080
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(selectPreset.value, 'full-hd');
+
+    // Cambiar a A4 vertical
+    selectPreset.value = 'a4-portrait';
+    selectPreset.dispatchEvent({ type: 'change' });
+
+    assert.equal(stateManager.getState().width, 794);
+    assert.equal(stateManager.getState().height, 1123);
+    assert.equal(commandManager.canUndo(), true);
+
+    // Deshacer (Undo) -> debe volver a Full HD
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+    assert.equal(selectPreset.value, 'full-hd', 'El selector debe volver a Full HD tras Undo');
+
+    // Rehacer (Redo) -> debe volver a A4 vertical
+    commandManager.redo();
+    assert.equal(stateManager.getState().width, 794);
+    assert.equal(stateManager.getState().height, 1123);
+    assert.equal(inputWidth.value, '794');
+    assert.equal(inputHeight.value, '1123');
+    assert.equal(selectPreset.value, 'a4-portrait', 'El selector debe volver a A4 vertical tras Redo');
+
+    cleanup();
+  });
+
+  it('modificar manualmente el ancho o alto a una medida arbitraria cambia automáticamente el selector a "custom"', () => {
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#select-artboard-preset': selectPreset,
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(selectPreset.value, 'full-hd');
+
+    // Cambiar manualmente el ancho a 1500
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '1500';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(selectPreset.value, 'custom', 'Al cambiar manualmente a una medida arbitraria el selector debe ser "custom"');
+
+    cleanup();
+  });
+});
+
 
 

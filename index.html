@@ -872,6 +872,37 @@
         padding-right: 20px;
       }
 
+      .control-select {
+        width: 140px;
+        max-width: 140px;
+        height: 24px;
+        padding: 0 6px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+        outline: none;
+        cursor: pointer;
+        transition: border-color var(--transition);
+      }
+
+      .control-select:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-control-hover);
+      }
+
+      .control-select:focus-visible {
+        border-color: var(--border-focus);
+        outline: 1px solid var(--border-focus);
+      }
+
+      .control-select option {
+        background: var(--bg-panel);
+        color: var(--text-primary);
+      }
+
       .checkbox-label {
         display: inline-flex;
         align-items: center;
@@ -1532,6 +1563,17 @@
           </svg>
         </summary>
         <div class="section-content">
+          <div class="control-group">
+            <label for="select-artboard-preset">Preset</label>
+            <select id="select-artboard-preset" class="control-select" aria-label="Preset de tamaño de mesa de trabajo">
+              <option value="custom">Personalizado</option>
+              <option value="a4-portrait">A4 vertical (794 × 1123)</option>
+              <option value="a4-landscape">A4 horizontal (1123 × 794)</option>
+              <option value="hd">HD (1280 × 720)</option>
+              <option value="full-hd">Full HD (1920 × 1080)</option>
+              <option value="square">Cuadrado (1080 × 1080)</option>
+            </select>
+          </div>
           <div class="control-group">
             <label for="input-artboard-width">Ancho</label>
             <div class="input-number-wrapper">

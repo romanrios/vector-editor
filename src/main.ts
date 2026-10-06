@@ -14,6 +14,7 @@ import { ViewportManager } from './utils/viewport.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
 import { isGroup, isSelectable, isShape, type Path, type SelectableNode, type Shape } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
+import { getPresetById, findPresetForSize } from './utils/artboardPresets.ts';
 
 function debug(...args: unknown[]): void {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -124,6 +125,7 @@ export function setupUIBindings(
   const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
 
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+  const selectArtboardPreset = document.querySelector<HTMLSelectElement>('#select-artboard-preset');
   const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
   const inputArtboardHeight = document.querySelector<HTMLInputElement>('#input-artboard-height');
   const checkArtboardRatio = document.querySelector<HTMLInputElement>('#check-artboard-ratio');
@@ -740,6 +742,10 @@ export function setupUIBindings(
     }
 
     const currentDoc = stateManager.getState();
+    if (selectArtboardPreset && (typeof document === 'undefined' || document.activeElement !== selectArtboardPreset)) {
+      const matchingPreset = findPresetForSize(currentDoc.width, currentDoc.height);
+      selectArtboardPreset.value = matchingPreset ? matchingPreset.id : 'custom';
+    }
     if (inputArtboardWidth && (typeof document === 'undefined' || document.activeElement !== inputArtboardWidth)) {
       inputArtboardWidth.value = String(currentDoc.width);
     }
@@ -1359,6 +1365,45 @@ export function setupUIBindings(
     }
   };
 
+  const onArtboardPresetChange = () => {
+    if (!selectArtboardPreset) return;
+    const selectedId = selectArtboardPreset.value;
+    if (selectedId === 'custom') return;
+
+    const preset = getPresetById(selectedId);
+    if (!preset) return;
+
+    const currentDoc = stateManager.getState();
+    if (currentDoc.width === preset.width && currentDoc.height === preset.height) {
+      return;
+    }
+
+    const prevW = currentDoc.width;
+    const prevH = currentDoc.height;
+
+    stateManager.setDocumentSize(preset.width, preset.height);
+
+    if (commandManager) {
+      commandManager.recordCommand(
+        new ResizeArtboardCommand(stateManager, prevW, prevH, preset.width, preset.height)
+      );
+    }
+
+    initialArtboardWidth = preset.width;
+    initialArtboardHeight = preset.height;
+    if (preset.height > 0) {
+      artboardAspectRatio = preset.width / preset.height;
+    }
+
+    if (inputArtboardWidth) {
+      inputArtboardWidth.value = String(preset.width);
+    }
+    if (inputArtboardHeight) {
+      inputArtboardHeight.value = String(preset.height);
+    }
+  };
+
+  selectArtboardPreset?.addEventListener('change', onArtboardPresetChange);
   checkArtboardRatio?.addEventListener('change', onArtboardRatioChange);
 
   inputArtboardWidth?.addEventListener('focus', onArtboardFocus);
@@ -2369,6 +2414,7 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
 
+      selectArtboardPreset?.removeEventListener('change', onArtboardPresetChange);
       checkArtboardRatio?.removeEventListener('change', onArtboardRatioChange);
 
       inputArtboardWidth?.removeEventListener('focus', onArtboardFocus);
