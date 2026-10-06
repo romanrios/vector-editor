@@ -5,12 +5,14 @@ import { RenderEngine } from '../src/render/RenderEngine.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { ResizeArtboardCommand } from '../src/commands/ResizeArtboardCommand.ts';
+import { AddShapeCommand } from '../src/commands/AddShapeCommand.ts';
+import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
 import { ARTBOARD_PRESETS, getPresetById, findPresetForSize } from '../src/utils/artboardPresets.ts';
 import { serializeDocument, parseDocument, DocumentParseError } from '../src/state/Serializer.ts';
 import { injectSampleShapes } from '../src/state/injectSampleShapes.ts';
-import type { Rectangle, Document, Path } from '../src/types/scene-graph.ts';
+import type { Rectangle, Document, Path, Ellipse } from '../src/types/scene-graph.ts';
 
 // Helper mock para Canvas y CanvasRenderingContext2D
 function createMockCanvas(width: number = 800, height: number = 600) {
@@ -571,6 +573,361 @@ describe('ResizeArtboardCommand y Undo/Redo', () => {
     cmdManager.redo();
     assert.equal(stateManager.getState().width, 1024);
     assert.equal(stateManager.getState().height, 768);
+  });
+
+  it('undo restaura exactamente las dimensiones anteriores y redo restaura exactamente las nuevas dimensiones cíclicamente', () => {
+    const cmdManager = new CommandManager();
+    const stateManager = new StateManager(undefined, cmdManager);
+
+    const initialW = 1920;
+    const initialH = 1080;
+    const targetW = 1280;
+    const targetH = 720;
+
+    const cmd = new ResizeArtboardCommand(stateManager, initialW, initialH, targetW, targetH);
+    cmd.execute();
+    cmdManager.recordCommand(cmd);
+
+    assert.equal(stateManager.getState().width, targetW);
+    assert.equal(stateManager.getState().height, targetH);
+
+    // Ciclo 1: Undo y Redo
+    cmdManager.undo();
+    assert.equal(stateManager.getState().width, initialW, 'Undo debe restaurar exactamente el ancho original');
+    assert.equal(stateManager.getState().height, initialH, 'Undo debe restaurar exactamente el alto original');
+
+    cmdManager.redo();
+    assert.equal(stateManager.getState().width, targetW, 'Redo debe restaurar exactamente el nuevo ancho');
+    assert.equal(stateManager.getState().height, targetH, 'Redo debe restaurar exactamente el nuevo alto');
+
+    // Ciclo 2: Repetir para garantizar idempotencia
+    cmdManager.undo();
+    assert.equal(stateManager.getState().width, initialW);
+    assert.equal(stateManager.getState().height, initialH);
+
+    cmdManager.redo();
+    assert.equal(stateManager.getState().width, targetW);
+    assert.equal(stateManager.getState().height, targetH);
+  });
+
+  it('no afecta objetos, posiciones geométricas, jerarquía ni la selección activa del Scene Graph', () => {
+    const cmdManager = new CommandManager();
+    const stateManager = new StateManager(undefined, cmdManager);
+    const layer = stateManager.getState().children[0];
+
+    const rect: Rectangle = {
+      id: 'rect-in-board',
+      type: 'rectangle',
+      name: 'Rectángulo Interior',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 150,
+      fill: '#38bdf8',
+      stroke: '#0284c7',
+      strokeWidth: 2,
+      rotation: 30,
+      opacity: 0.9,
+    };
+    const ellipse: Ellipse = {
+      id: 'ellipse-outside-board',
+      type: 'ellipse',
+      name: 'Elipse Exterior',
+      x: 2500,
+      y: 1500,
+      radiusX: 80,
+      radiusY: 40,
+      fill: '#a855f7',
+      stroke: '#7e22ce',
+    };
+    stateManager.addShape(layer.id, rect);
+    stateManager.addShape(layer.id, ellipse);
+
+    // Seleccionar ambas figuras
+    stateManager.setSelection([rect.id, ellipse.id]);
+    assert.deepEqual(stateManager.getSelection(), [rect.id, ellipse.id]);
+
+    const docBefore = stateManager.getState();
+    const shapesBeforeRef = docBefore.children[0].children;
+
+    // Ejecutar redimensionado de mesa
+    const cmd = new ResizeArtboardCommand(stateManager, 1920, 1080, 800, 600);
+    cmd.execute();
+    cmdManager.recordCommand(cmd);
+
+    const docAfter = stateManager.getState();
+    assert.equal(docAfter.width, 800);
+    assert.equal(docAfter.height, 600);
+
+    // Structural sharing: las capas e hijos son idénticos
+    assert.equal(docAfter.children, docBefore.children, 'children de capas debe conservar structural sharing');
+    assert.equal(docAfter.children[0].children, shapesBeforeRef, 'children de figuras debe ser idéntico');
+
+    // Selección inalterada
+    assert.deepEqual(stateManager.getSelection(), [rect.id, ellipse.id], 'La selección no debe cambiar tras ResizeArtboardCommand');
+
+    // Deshacer
+    cmdManager.undo();
+    const docUndone = stateManager.getState();
+    assert.equal(docUndone.width, 1920);
+    assert.equal(docUndone.height, 1080);
+    const shape0Undone = docUndone.children[0].children[0] as Rectangle;
+    const shape1Undone = docUndone.children[0].children[1] as Ellipse;
+    assert.equal(shape0Undone.x, 100);
+    assert.equal(shape0Undone.y, 100);
+    assert.equal(shape0Undone.rotation, 30);
+    assert.equal(shape1Undone.x, 2500);
+    assert.equal(shape1Undone.y, 1500);
+    assert.deepEqual(stateManager.getSelection(), [rect.id, ellipse.id], 'La selección no debe cambiar tras Undo');
+
+    // Rehacer
+    cmdManager.redo();
+    const docRedone = stateManager.getState();
+    assert.equal(docRedone.width, 800);
+    assert.equal(docRedone.height, 600);
+    const shape0Redone = docRedone.children[0].children[0] as Rectangle;
+    const shape1Redone = docRedone.children[0].children[1] as Ellipse;
+    assert.equal(shape0Redone.x, 100);
+    assert.equal(shape1Redone.x, 2500);
+    assert.deepEqual(stateManager.getSelection(), [rect.id, ellipse.id], 'La selección no debe cambiar tras Redo');
+  });
+
+  it('se integra en la misma pila lineal de CommandManager intercalándose con otros comandos (AddShape, Translate) sin historial paralelo', () => {
+    const cmdManager = new CommandManager();
+    const stateManager = new StateManager(undefined, cmdManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    // 1. Agregar figura (AddShapeCommand)
+    const testShape: Rectangle = {
+      id: 'interleaved-rect',
+      type: 'rectangle',
+      name: 'Figura Intercalada',
+      x: 50,
+      y: 50,
+      width: 100,
+      height: 100,
+    };
+    const addCmd = new AddShapeCommand(stateManager, testShape, layerId);
+    addCmd.execute();
+    cmdManager.recordCommand(addCmd);
+
+    // 2. Redimensionar mesa a HD (1280x720)
+    const resizeCmd1 = new ResizeArtboardCommand(stateManager, 1920, 1080, 1280, 720);
+    resizeCmd1.execute();
+    cmdManager.recordCommand(resizeCmd1);
+
+    // 3. Trasladar figura de (50, 50) a (200, 250)
+    const translateCmd = new TranslateCommand(stateManager, testShape.id, 50, 50, 200, 250);
+    translateCmd.execute();
+    cmdManager.recordCommand(translateCmd);
+
+    // 4. Redimensionar mesa a Cuadrado (1080x1080)
+    const resizeCmd2 = new ResizeArtboardCommand(stateManager, 1280, 720, 1080, 1080);
+    resizeCmd2.execute();
+    cmdManager.recordCommand(resizeCmd2);
+
+    assert.equal(cmdManager.undoCount, 4);
+    assert.equal(cmdManager.redoCount, 0);
+    assert.equal(stateManager.getState().width, 1080);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 200);
+
+    // Deshacer 1: deshace segundo resize -> mesa vuelve a 1280x720, figura sigue en (200, 250)
+    cmdManager.undo();
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 200);
+
+    // Deshacer 2: deshace translate -> figura vuelve a (50, 50), mesa sigue en 1280x720
+    cmdManager.undo();
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 50);
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.y, 50);
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+
+    // Deshacer 3: deshace primer resize -> mesa vuelve a 1920x1080, figura sigue existiendo en (50, 50)
+    cmdManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 50);
+
+    // Deshacer 4: deshace addShape -> figura desaparece, mesa sigue en 1920x1080
+    cmdManager.undo();
+    assert.equal(stateManager.findNode(testShape.id), null);
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(cmdManager.canUndo(), false);
+    assert.equal(cmdManager.redoCount, 4);
+
+    // Rehacer 4 pasos en orden estricto
+    cmdManager.redo(); // Restaura figura
+    assert.ok(stateManager.findNode(testShape.id) !== null);
+    assert.equal(stateManager.getState().width, 1920);
+
+    cmdManager.redo(); // Restaura primer resize (1280x720)
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+
+    cmdManager.redo(); // Restaura translate a (200, 250)
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 200);
+    assert.equal(stateManager.getState().width, 1280);
+
+    cmdManager.redo(); // Restaura segundo resize a (1080x1080)
+    assert.equal(stateManager.getState().width, 1080);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal((stateManager.findNode(testShape.id) as Rectangle)?.x, 200);
+    assert.equal(cmdManager.canRedo(), false);
+  });
+
+  it('la interfaz de usuario (inputs, presets y botones de historial) se sincroniza reactivamente durante Undo y Redo', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const btnUndo = new MockUIElement('btn-undo', 'button');
+    const btnRedo = new MockUIElement('btn-redo', 'button');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#select-artboard-preset': selectPreset,
+      '#btn-undo': btnUndo,
+      '#btn-redo': btnRedo,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(btnUndo.disabled, true);
+    assert.equal(btnRedo.disabled, true);
+
+    // 1. Modificar ancho a 1280 mediante eventos de input y change
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '1280';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(btnUndo.disabled, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // 2. Modificar alto a 720
+    inputHeight.focus();
+    (globalThis as any).document.activeElement = inputHeight;
+    inputHeight.value = '720';
+    inputHeight.dispatchEvent({ type: 'input' });
+    inputHeight.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+    assert.equal(selectPreset.value, 'hd');
+    assert.equal(commandManager.undoCount, 2);
+
+    // 3. Clic en botón Undo -> revierte alto a 1080
+    btnUndo.dispatchEvent({ type: 'click' });
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1280');
+    assert.equal(inputHeight.value, '1080');
+    assert.equal(selectPreset.value, 'custom');
+    assert.equal(btnRedo.disabled, false);
+
+    // 4. Clic en botón Undo -> revierte ancho a 1920
+    btnUndo.dispatchEvent({ type: 'click' });
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1920');
+    assert.equal(inputHeight.value, '1080');
+    assert.equal(selectPreset.value, 'full-hd');
+    assert.equal(btnUndo.disabled, true);
+
+    // 5. Clic en botón Redo -> rehace ancho a 1280
+    btnRedo.dispatchEvent({ type: 'click' });
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(inputWidth.value, '1280');
+    assert.equal(inputHeight.value, '1080');
+    assert.equal(btnUndo.disabled, false);
+
+    // 6. Clic en botón Redo -> rehace alto a 720
+    btnRedo.dispatchEvent({ type: 'click' });
+    assert.equal(stateManager.getState().width, 1280);
+    assert.equal(stateManager.getState().height, 720);
+    assert.equal(inputWidth.value, '1280');
+    assert.equal(inputHeight.value, '720');
+    assert.equal(selectPreset.value, 'hd');
+    assert.equal(btnRedo.disabled, true);
+
+    cleanup();
+  });
+
+  it('tras deshacer un cambio, modificar nuevamente las dimensiones registra un nuevo comando con las dimensiones restauradas como base', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+    const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+    const btnUndo = new MockUIElement('btn-undo', 'button');
+    const btnRedo = new MockUIElement('btn-redo', 'button');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+      '#select-artboard-preset': selectPreset,
+      '#btn-undo': btnUndo,
+      '#btn-redo': btnRedo,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Modificar a 1280
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '1280';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(stateManager.getState().width, 1280);
+
+    // Deshacer a 1920
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+
+    // Modificar ahora a 800
+    inputWidth.focus();
+    (globalThis as any).document.activeElement = inputWidth;
+    inputWidth.value = '800';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+    (globalThis as any).document.activeElement = null;
+
+    assert.equal(stateManager.getState().width, 800);
+
+    // Al deshacer debe volver a 1920 (no a 1280)
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+
+    cleanup();
   });
 });
 
