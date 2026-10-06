@@ -8,6 +8,7 @@ import { StyleCommand } from './commands/StyleCommand.ts';
 import { StyleShapesCommand, type ShapeStyleChangeEntry } from './commands/StyleShapesCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
+import { ResizeArtboardCommand } from './commands/ResizeArtboardCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
@@ -123,6 +124,8 @@ export function setupUIBindings(
   const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
 
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+  const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
+  const inputArtboardHeight = document.querySelector<HTMLInputElement>('#input-artboard-height');
   const btnBringToFront = document.querySelector<HTMLButtonElement>('#btn-bring-to-front');
   const btnSendToBack = document.querySelector<HTMLButtonElement>('#btn-send-to-back');
   const btnDuplicate = document.querySelector<HTMLButtonElement>('#btn-duplicate');
@@ -735,6 +738,14 @@ export function setupUIBindings(
       inputStrokeWidth.value = String(firstShape ? (firstShape.strokeWidth ?? 1) : (defaultStyle?.strokeWidth ?? 2));
     }
 
+    const currentDoc = stateManager.getState();
+    if (inputArtboardWidth && (typeof document === 'undefined' || document.activeElement !== inputArtboardWidth)) {
+      inputArtboardWidth.value = String(currentDoc.width);
+    }
+    if (inputArtboardHeight && (typeof document === 'undefined' || document.activeElement !== inputArtboardHeight)) {
+      inputArtboardHeight.value = String(currentDoc.height);
+    }
+
     if (hasSelection) {
       const canAlign = selectedNodes.length >= 2;
       const canDistribute = selectedNodes.length >= 3;
@@ -1200,6 +1211,101 @@ export function setupUIBindings(
   inputFill?.addEventListener('change', onFillChange);
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
+
+  // 6. Controles de Mesa de Trabajo (Ancho y Alto)
+  let initialArtboardWidth = stateManager.getState().width;
+  let initialArtboardHeight = stateManager.getState().height;
+
+  const onArtboardFocus = () => {
+    initialArtboardWidth = stateManager.getState().width;
+    initialArtboardHeight = stateManager.getState().height;
+  };
+
+  const onArtboardWidthInput = () => {
+    if (!inputArtboardWidth) return;
+    const parsed = parseFloat(inputArtboardWidth.value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      stateManager.setDocumentSize(parsed, stateManager.getState().height);
+    }
+  };
+
+  const onArtboardWidthChange = () => {
+    if (!inputArtboardWidth) return;
+    const parsed = parseFloat(inputArtboardWidth.value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      inputArtboardWidth.value = String(stateManager.getState().width);
+      return;
+    }
+    const currentH = stateManager.getState().height;
+    stateManager.setDocumentSize(parsed, currentH);
+    if (commandManager && initialArtboardWidth !== parsed) {
+      commandManager.recordCommand(
+        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, parsed, currentH)
+      );
+      initialArtboardWidth = parsed;
+      initialArtboardHeight = currentH;
+    }
+  };
+
+  const onArtboardHeightInput = () => {
+    if (!inputArtboardHeight) return;
+    const parsed = parseFloat(inputArtboardHeight.value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      stateManager.setDocumentSize(stateManager.getState().width, parsed);
+    }
+  };
+
+  const onArtboardHeightChange = () => {
+    if (!inputArtboardHeight) return;
+    const parsed = parseFloat(inputArtboardHeight.value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      inputArtboardHeight.value = String(stateManager.getState().height);
+      return;
+    }
+    const currentW = stateManager.getState().width;
+    stateManager.setDocumentSize(currentW, parsed);
+    if (commandManager && initialArtboardHeight !== parsed) {
+      commandManager.recordCommand(
+        new ResizeArtboardCommand(stateManager, initialArtboardWidth, initialArtboardHeight, currentW, parsed)
+      );
+      initialArtboardWidth = currentW;
+      initialArtboardHeight = parsed;
+    }
+  };
+
+  const onArtboardWidthKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      inputArtboardWidth?.blur();
+    } else if (e.key === 'Escape') {
+      if (inputArtboardWidth) {
+        inputArtboardWidth.value = String(initialArtboardWidth);
+        stateManager.setDocumentSize(initialArtboardWidth, stateManager.getState().height);
+        inputArtboardWidth.blur();
+      }
+    }
+  };
+
+  const onArtboardHeightKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      inputArtboardHeight?.blur();
+    } else if (e.key === 'Escape') {
+      if (inputArtboardHeight) {
+        inputArtboardHeight.value = String(initialArtboardHeight);
+        stateManager.setDocumentSize(stateManager.getState().width, initialArtboardHeight);
+        inputArtboardHeight.blur();
+      }
+    }
+  };
+
+  inputArtboardWidth?.addEventListener('focus', onArtboardFocus);
+  inputArtboardWidth?.addEventListener('input', onArtboardWidthInput);
+  inputArtboardWidth?.addEventListener('change', onArtboardWidthChange);
+  inputArtboardWidth?.addEventListener('keydown', onArtboardWidthKeyDown as EventListener);
+
+  inputArtboardHeight?.addEventListener('focus', onArtboardFocus);
+  inputArtboardHeight?.addEventListener('input', onArtboardHeightInput);
+  inputArtboardHeight?.addEventListener('change', onArtboardHeightChange);
+  inputArtboardHeight?.addEventListener('keydown', onArtboardHeightKeyDown as EventListener);
 
   // Botones de orden de apilado (Traer al frente / Enviar al fondo)
   const onBringToFrontClick = () => {
@@ -2199,6 +2305,16 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
 
+      inputArtboardWidth?.removeEventListener('focus', onArtboardFocus);
+      inputArtboardWidth?.removeEventListener('input', onArtboardWidthInput);
+      inputArtboardWidth?.removeEventListener('change', onArtboardWidthChange);
+      inputArtboardWidth?.removeEventListener('keydown', onArtboardWidthKeyDown as EventListener);
+
+      inputArtboardHeight?.removeEventListener('focus', onArtboardFocus);
+      inputArtboardHeight?.removeEventListener('input', onArtboardHeightInput);
+      inputArtboardHeight?.removeEventListener('change', onArtboardHeightChange);
+      inputArtboardHeight?.removeEventListener('keydown', onArtboardHeightKeyDown as EventListener);
+
       btnBringToFront?.removeEventListener('click', onBringToFrontClick);
       btnSendToBack?.removeEventListener('click', onSendToBackClick);
       btnDuplicate?.removeEventListener('click', onDuplicateClick);
@@ -2337,6 +2453,7 @@ const globals = {
   TranslateCommand,
   StyleCommand,
   ReorderCommand,
+  ResizeArtboardCommand,
   toValidHexColor,
   injectSampleShapes,
   setupUIBindings,

@@ -251,6 +251,32 @@ export class StateManager {
   }
 
   /**
+   * Actualiza las dimensiones de la Mesa de Trabajo / Documento (Document.width y Document.height).
+   * Acepta únicamente números finitos positivos (> 0).
+   * Genera un nuevo estado inmutable conservando capas y figuras intactas, marca isDirty y notifica a los suscriptores.
+   */
+  public setDocumentSize(width: number, height: number): void {
+    if (!Number.isFinite(width) || width <= 0) {
+      throw new Error(`[StateManager] El ancho del documento debe ser un número finito mayor a 0: ${width}`);
+    }
+    if (!Number.isFinite(height) || height <= 0) {
+      throw new Error(`[StateManager] El alto del documento debe ser un número finito mayor a 0: ${height}`);
+    }
+
+    if (this._state.width === width && this._state.height === height) {
+      return;
+    }
+
+    const nextState: Document = {
+      ...this._state,
+      width,
+      height,
+    };
+
+    this.setState(nextState);
+  }
+
+  /**
    * Vincula una instancia de CommandManager para permitir la invalidación automática
    * del historial de operaciones al cargar un nuevo estado.
    */

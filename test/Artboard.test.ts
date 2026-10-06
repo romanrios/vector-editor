@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { StateManager } from '../src/state/StateManager.ts';
 import { RenderEngine } from '../src/render/RenderEngine.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
+import { CommandManager } from '../src/commands/CommandManager.ts';
+import { ResizeArtboardCommand } from '../src/commands/ResizeArtboardCommand.ts';
+import { InputController } from '../src/input/InputController.ts';
+import { setupUIBindings } from '../src/main.ts';
 import type { Rectangle, Document } from '../src/types/scene-graph.ts';
 
 // Helper mock para Canvas y CanvasRenderingContext2D
@@ -119,6 +123,8 @@ function createMockCanvas(width: number = 800, height: number = 600) {
       if (id === '2d') return mockCtx as CanvasRenderingContext2D;
       return null;
     },
+    addEventListener: () => {},
+    removeEventListener: () => {},
   } as unknown as HTMLCanvasElement;
 
   return { canvas, mockCtx, calls, fillRects, strokeRects };
@@ -427,3 +433,483 @@ describe('Representación Visual de la Mesa de Trabajo (Artboard)', () => {
     });
   });
 });
+
+describe('Configuración Manual del Tamaño de la Mesa de Trabajo (StateManager)', () => {
+  it('actualiza Document.width y Document.height de forma inmutable conservando capas y figuras intactas', () => {
+    const manager = new StateManager();
+    const docBefore = manager.getState();
+    const layer = docBefore.children[0];
+
+    const rect: Rectangle = {
+      id: 'rect-preserved',
+      type: 'rectangle',
+      name: 'Rect Preserved',
+      x: 150,
+      y: 250,
+      width: 100,
+      height: 80,
+    };
+    manager.addShape(layer.id, rect);
+
+    const docWithShape = manager.getState();
+    assert.equal(docWithShape.width, 1920);
+    assert.equal(docWithShape.height, 1080);
+
+    // Modificar tamaño de la mesa
+    manager.setDocumentSize(1280, 720);
+
+    const docAfter = manager.getState();
+    assert.notEqual(docAfter, docWithShape, 'Debe retornar una nueva instancia inmutable');
+    assert.equal(docAfter.width, 1280, 'El ancho debe actualizarse a 1280');
+    assert.equal(docAfter.height, 720, 'El alto debe actualizarse a 720');
+    assert.ok(Object.isFrozen(docAfter), 'El estado del documento debe estar congelado');
+
+    // Comprobar que los objetos y capas existentes no fueron alterados
+    const shapeAfter = manager.findNode('rect-preserved') as Rectangle;
+    assert.ok(shapeAfter, 'La figura debe seguir existiendo');
+    assert.equal(shapeAfter.x, 150);
+    assert.equal(shapeAfter.y, 250);
+    assert.equal(shapeAfter.width, 100);
+    assert.equal(shapeAfter.height, 80);
+    assert.equal(docAfter.children[0].children[0], docWithShape.children[0].children[0], 'Las figuras conservan sus referencias exactas');
+  });
+
+  it('marca isDirty como true y notifica a los suscriptores cuando las dimensiones cambian', () => {
+    const manager = new StateManager();
+    let notifications = 0;
+    manager.subscribe(() => {
+      notifications++;
+    });
+
+    manager.setDocumentSize(2560, 1440);
+    assert.equal(manager.isDirty, true, 'isDirty debe marcarse como true');
+    assert.equal(notifications, 1, 'Debe emitir 1 notificación a los suscriptores');
+  });
+
+  it('no altera el estado ni emite notificaciones si las dimensiones son idénticas', () => {
+    const manager = new StateManager();
+    const docBefore = manager.getState();
+    let notifications = 0;
+    manager.subscribe(() => {
+      notifications++;
+    });
+
+    manager.setDocumentSize(docBefore.width, docBefore.height);
+    assert.equal(manager.getState(), docBefore, 'La referencia debe permanecer intacta');
+    assert.equal(notifications, 0, 'No debe notificar si no hubo cambios');
+  });
+
+  it('rechaza valores de 0 arrojando excepción', () => {
+    const manager = new StateManager();
+    assert.throws(() => manager.setDocumentSize(0, 1080), /mayor a 0/);
+    assert.throws(() => manager.setDocumentSize(1920, 0), /mayor a 0/);
+  });
+
+  it('rechaza valores negativos arrojando excepción', () => {
+    const manager = new StateManager();
+    assert.throws(() => manager.setDocumentSize(-500, 1080), /mayor a 0/);
+    assert.throws(() => manager.setDocumentSize(1920, -100), /mayor a 0/);
+  });
+
+  it('rechaza valores no finitos (NaN, Infinity) arrojando excepción', () => {
+    const manager = new StateManager();
+    assert.throws(() => manager.setDocumentSize(NaN, 1080), /finito/);
+    assert.throws(() => manager.setDocumentSize(1920, NaN), /finito/);
+    assert.throws(() => manager.setDocumentSize(Infinity, 1080), /finito/);
+    assert.throws(() => manager.setDocumentSize(1920, -Infinity), /finito/);
+  });
+});
+
+describe('ResizeArtboardCommand y Undo/Redo', () => {
+  it('aplica las nuevas dimensiones en execute() y restaura las anteriores en undo()', () => {
+    const manager = new StateManager();
+    assert.equal(manager.getState().width, 1920);
+    assert.equal(manager.getState().height, 1080);
+
+    const cmd = new ResizeArtboardCommand(manager, 1920, 1080, 800, 600);
+    assert.equal(cmd.name, 'ResizeArtboardCommand');
+    assert.equal(cmd.initialWidth, 1920);
+    assert.equal(cmd.initialHeight, 1080);
+    assert.equal(cmd.finalWidth, 800);
+    assert.equal(cmd.finalHeight, 600);
+
+    // execute
+    cmd.execute();
+    assert.equal(manager.getState().width, 800);
+    assert.equal(manager.getState().height, 600);
+
+    // undo
+    cmd.undo();
+    assert.equal(manager.getState().width, 1920);
+    assert.equal(manager.getState().height, 1080);
+  });
+
+  it('se integra limpiamente con CommandManager permitiendo historial de deshacer y rehacer', () => {
+    const cmdManager = new CommandManager();
+    const stateManager = new StateManager(undefined, cmdManager);
+
+    assert.equal(cmdManager.canUndo(), false);
+    assert.equal(cmdManager.canRedo(), false);
+
+    const cmd = new ResizeArtboardCommand(stateManager, 1920, 1080, 1024, 768);
+    cmd.execute();
+    cmdManager.recordCommand(cmd);
+    assert.equal(stateManager.getState().width, 1024);
+    assert.equal(stateManager.getState().height, 768);
+    assert.equal(cmdManager.canUndo(), true);
+
+    // Deshacer
+    cmdManager.undo();
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(stateManager.getState().height, 1080);
+    assert.equal(cmdManager.canRedo(), true);
+
+    // Rehacer
+    cmdManager.redo();
+    assert.equal(stateManager.getState().width, 1024);
+    assert.equal(stateManager.getState().height, 768);
+  });
+});
+
+// Mock simple de elemento DOM para testear setupUIBindings
+class MockUIElement {
+  public id: string;
+  public tagName: string;
+  public disabled: boolean = false;
+  public textContent: string = '';
+  public value: string = '';
+  public style: Record<string, string> = {};
+  private attributes: Map<string, string> = new Map();
+  private classes: Set<string> = new Set();
+  private listeners: Map<string, Set<(e: any) => void>> = new Map();
+
+  constructor(id: string, tagName: string = 'div') {
+    this.id = id;
+    this.tagName = tagName.toUpperCase();
+  }
+
+  public get classList() {
+    return {
+      add: (cls: string) => this.classes.add(cls),
+      remove: (cls: string) => this.classes.delete(cls),
+      contains: (cls: string) => this.classes.has(cls),
+      toggle: (cls: string) => {
+        if (this.classes.has(cls)) {
+          this.classes.delete(cls);
+          return false;
+        }
+        this.classes.add(cls);
+        return true;
+      },
+    };
+  }
+
+  public setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  public getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
+  public addEventListener(event: string, listener: (e: any) => void): void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(listener);
+  }
+
+  public removeEventListener(event: string, listener: (e: any) => void): void {
+    const set = this.listeners.get(event);
+    if (set) {
+      set.delete(listener);
+    }
+  }
+
+  public focus(): void {
+    const set = this.listeners.get('focus');
+    if (set) {
+      for (const listener of set) {
+        listener({ type: 'focus', target: this, stopPropagation: () => {} });
+      }
+    }
+  }
+
+  public blur(): void {
+    const set = this.listeners.get('blur');
+    if (set) {
+      for (const listener of set) {
+        listener({ type: 'blur', target: this, stopPropagation: () => {} });
+      }
+    }
+  }
+
+  public dispatchEvent(e: any): void {
+    if (!e.stopPropagation) {
+      e.stopPropagation = () => {};
+    }
+    if (!e.target) {
+      e.target = this;
+    }
+    const set = this.listeners.get(e.type);
+    if (set) {
+      for (const listener of set) {
+        listener(e);
+      }
+    }
+  }
+}
+
+describe('Controles de UI de Mesa de Trabajo (setupUIBindings)', () => {
+  it('inicializa los campos de ancho y alto con las dimensiones actuales del documento', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(inputWidth.value, '1920', 'El ancho inicial debe reflejar Document.width');
+    assert.equal(inputHeight.value, '1080', 'El alto inicial debe reflejar Document.height');
+
+    cleanup();
+  });
+
+  it('el evento input actualiza inmediatamente las dimensiones del Document en tiempo real', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Escribir 1440 en ancho
+    inputWidth.value = '1440';
+    inputWidth.dispatchEvent({ type: 'input' });
+
+    assert.equal(stateManager.getState().width, 1440, 'StateManager debe reflejar inmediatamente el ancho');
+    assert.equal(stateManager.getState().height, 1080, 'El alto no debe haberse alterado');
+
+    // Escribir 900 en alto
+    inputHeight.value = '900';
+    inputHeight.dispatchEvent({ type: 'input' });
+
+    assert.equal(stateManager.getState().width, 1440);
+    assert.equal(stateManager.getState().height, 900, 'StateManager debe reflejar inmediatamente el alto');
+
+    cleanup();
+  });
+
+  it('ignora valores inválidos o no positivos en evento input sin alterar el estado', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Entrada inválida: 0
+    inputWidth.value = '0';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920, 'No debe aceptar 0');
+
+    // Entrada inválida: negativo
+    inputWidth.value = '-250';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920, 'No debe aceptar valores negativos');
+
+    // Entrada inválida: texto o vacío
+    inputWidth.value = 'abc';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920, 'No debe aceptar texto');
+
+    cleanup();
+  });
+
+  it('el evento change consolida la modificación y registra ResizeArtboardCommand en el historial', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Iniciar edición con focus
+    inputWidth.focus();
+    inputWidth.value = '1600';
+    inputWidth.dispatchEvent({ type: 'input' });
+    inputWidth.dispatchEvent({ type: 'change' });
+
+    assert.equal(commandManager.canUndo(), true, 'Debe haber registrado un comando en CommandManager');
+    assert.equal(stateManager.getState().width, 1600);
+
+    // Deshacer el cambio de tamaño
+    commandManager.undo();
+    assert.equal(stateManager.getState().width, 1920, 'Undo debe restaurar el ancho inicial');
+    assert.equal(inputWidth.value, '1920', 'Undo debe sincronizar el campo de texto');
+
+    // Rehacer el cambio de tamaño
+    commandManager.redo();
+    assert.equal(stateManager.getState().width, 1600, 'Redo debe reaplicar el nuevo ancho');
+    assert.equal(inputWidth.value, '1600', 'Redo debe sincronizar el campo de texto');
+
+    cleanup();
+  });
+
+  it('el evento change revierte el input al valor válido actual si el valor es 0, negativo o inválido', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    inputWidth.focus();
+    inputWidth.value = '-100';
+    inputWidth.dispatchEvent({ type: 'change' });
+
+    assert.equal(inputWidth.value, '1920', 'Debe revertir a 1920');
+    assert.equal(stateManager.getState().width, 1920);
+    assert.equal(commandManager.canUndo(), false, 'No debe registrar comandos para valores inválidos');
+
+    cleanup();
+  });
+
+  it('la tecla Escape revierte la dimensión previa y cancela la edición', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    inputWidth.focus();
+    inputWidth.value = '3840';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 3840);
+
+    // Presionar Escape
+    inputWidth.dispatchEvent({ type: 'keydown', key: 'Escape' });
+    assert.equal(inputWidth.value, '1920', 'Escape debe restaurar el valor inicial');
+    assert.equal(stateManager.getState().width, 1920, 'Escape debe restaurar el StateManager');
+
+    cleanup();
+  });
+
+  it('cleanup() desvincula los event listeners de los inputs', () => {
+    const inputWidth = new MockUIElement('input-artboard-width', 'input');
+    const inputHeight = new MockUIElement('input-artboard-height', 'input');
+
+    const domMap: Record<string, MockUIElement> = {
+      '#input-artboard-width': inputWidth,
+      '#input-artboard-height': inputHeight,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (sel: string) => domMap[sel] || null,
+      querySelectorAll: () => [],
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const { canvas } = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    cleanup();
+
+    // Tras cleanup, los eventos no deben modificar el estado
+    inputWidth.value = '500';
+    inputWidth.dispatchEvent({ type: 'input' });
+    assert.equal(stateManager.getState().width, 1920, 'No debe cambiar tras cleanup');
+  });
+});
+

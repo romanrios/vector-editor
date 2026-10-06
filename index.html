@@ -866,6 +866,12 @@
         pointer-events: none;
       }
 
+      #input-artboard-width,
+      #input-artboard-height {
+        width: 72px;
+        padding-right: 20px;
+      }
+
       .panel-btn-group {
         display: flex;
         gap: 6px;
@@ -1454,6 +1460,32 @@
             <label for="input-stroke-width">Grosor</label>
             <div class="input-number-wrapper">
               <input type="number" id="input-stroke-width" min="0" max="100" value="2">
+              <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección: Mesa de trabajo -->
+      <details class="collapsible-section" id="section-artboard" open>
+        <summary class="section-header" tabindex="0">
+          <span class="section-title">Mesa de trabajo</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="section-content">
+          <div class="control-group">
+            <label for="input-artboard-width">Ancho</label>
+            <div class="input-number-wrapper">
+              <input type="number" id="input-artboard-width" min="1" step="1" value="1920" aria-label="Ancho de la mesa de trabajo en píxeles">
+              <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+          <div class="control-group">
+            <label for="input-artboard-height">Alto</label>
+            <div class="input-number-wrapper">
+              <input type="number" id="input-artboard-height" min="1" step="1" value="1080" aria-label="Alto de la mesa de trabajo en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
