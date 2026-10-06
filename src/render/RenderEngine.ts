@@ -52,12 +52,6 @@ export interface RenderEngineOptions {
    * Por defecto es true.
    */
   showArtboard?: boolean;
-  /**
-   * Indica si se aplica recorte (clipping) a las figuras del Documento
-   * según las dimensiones de la mesa de trabajo (Document.width × Document.height).
-   * Por defecto es true.
-   */
-  clipToArtboard?: boolean;
 }
 
 /**
@@ -256,24 +250,8 @@ export class RenderEngine {
       this.renderArtboard(documentState, zoom);
     }
 
-    // Iterar sobre el array de nodos (Document -> Layers -> Shapes) con recorte a la mesa de trabajo
-    const shouldClip =
-      this.options.clipToArtboard !== false &&
-      this.options.showArtboard !== false &&
-      documentState.width > 0 &&
-      documentState.height > 0 &&
-      typeof this.ctx.clip === 'function';
-
-    if (shouldClip) {
-      this.ctx.save();
-      this.ctx.beginPath();
-      this.ctx.rect(0, 0, documentState.width, documentState.height);
-      this.ctx.clip();
-      this.renderDocument(documentState, zoom);
-      this.ctx.restore();
-    } else {
-      this.renderDocument(documentState, zoom);
-    }
+    // Iterar sobre el array de nodos (Document -> Layers -> Shapes)
+    this.renderDocument(documentState, zoom);
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
     this.renderSelectionOverlay(documentState, zoom);

@@ -269,26 +269,9 @@ describe('Representación Visual de la Mesa de Trabajo (Artboard)', () => {
     assert.ok(artboardFill, 'Debe dibujar la mesa con las dimensiones 800x600 provistas en el Document');
   });
 
-  describe('Clipping de renderizado de la Mesa de Trabajo', () => {
-    it('aplica clipping de renderizado con rect(0, 0, Document.width, Document.height) y ctx.clip()', () => {
+  describe('Comportamiento sin clipping (estilo Illustrator / Pasteboard infinito)', () => {
+    it('los objetos fuera o desbordando la mesa de trabajo se renderizan completamente sin invocar ctx.clip()', () => {
       const { canvas, calls } = createMockCanvas();
-      const manager = new StateManager();
-      const doc = manager.getState();
-
-      const engine = new RenderEngine(canvas, manager, { highDpi: false });
-      engine.render();
-
-      const clipCall = calls.find((c) => c.method === 'clip');
-      assert.ok(clipCall, 'Debe invocar ctx.clip() para delimitar el renderizado a la mesa');
-
-      const clipRectCall = calls.find(
-        (c) => c.method === 'rect' && c.args?.[0] === 0 && c.args?.[1] === 0 && c.args?.[2] === doc.width && c.args?.[3] === doc.height
-      );
-      assert.ok(clipRectCall, `Debe definir la ruta de recorte con las medidas exactas de la mesa (0, 0, ${doc.width}, ${doc.height})`);
-    });
-
-    it('los objetos que sobresalen siguen existiendo en el Scene Graph con sus coordenadas y dimensiones intactas', () => {
-      const { canvas } = createMockCanvas();
       const manager = new StateManager();
       const doc = manager.getState();
       const layer = doc.children[0];
@@ -309,82 +292,126 @@ describe('Representación Visual de la Mesa de Trabajo (Artboard)', () => {
       const engine = new RenderEngine(canvas, manager, { highDpi: false });
       engine.render();
 
-      // Verificar que el Scene Graph NO ha sido mutado en lo absoluto
-      const shapeInState = manager.findNode('rect-overflow') as Rectangle;
-      assert.ok(shapeInState, 'La figura debe seguir existiendo en el Scene Graph');
-      assert.equal(shapeInState.x, doc.width - 50, 'Coordenada x no debe modificarse');
-      assert.equal(shapeInState.y, doc.height - 50, 'Coordenada y no debe modificarse');
-      assert.equal(shapeInState.width, 300, 'El ancho no debe modificarse');
-      assert.equal(shapeInState.height, 200, 'El alto no debe modificarse');
-    });
+      // No debe aplicarse ningún clip
+      const clipCall = calls.find((c) => c.method === 'clip');
+      assert.equal(clipCall, undefined, 'No debe invocar ctx.clip() para que el workspace exterior muestre todo el contenido');
 
-    it('selection overlays y controles de edición se dibujan fuera de la región de recorte (después de restore)', () => {
-      const { canvas, calls } = createMockCanvas();
-      const manager = new StateManager();
-      const doc = manager.getState();
-      const layer = doc.children[0];
-
-      const overflowingRect: Rectangle = {
-        id: 'rect-overflow-select',
-        type: 'rectangle',
-        name: 'Rect Overflow Select',
-        x: doc.width - 50,
-        y: doc.height - 50,
-        width: 300,
-        height: 200,
-        fill: '#ef4444',
-      };
-      manager.addShape(layer.id, overflowingRect);
-      manager.selectNode(overflowingRect.id);
-
-      const engine = new RenderEngine(canvas, manager, { highDpi: false });
-      engine.render();
-
-      const clipIndex = calls.findIndex((c) => c.method === 'clip');
-      assert.ok(clipIndex !== -1);
-
-      // Buscar el strokeRect de la bounding box seleccionada (después del clip)
-      const bboxCallIndex = calls.findIndex(
-        (c, idx) =>
-          idx > clipIndex &&
-          c.method === 'strokeRect' &&
+      // La figura desbordante debe dibujarse íntegramente con sus dimensiones
+      const shapeCall = calls.find(
+        (c) =>
+          (c.method === 'rect' || c.method === 'roundRect') &&
           c.args?.[0] === overflowingRect.x &&
           c.args?.[1] === overflowingRect.y &&
           c.args?.[2] === overflowingRect.width &&
           c.args?.[3] === overflowingRect.height
       );
-      assert.ok(
-        bboxCallIndex !== -1,
-        'La caja delimitadora de selección debe dibujarse DESPUÉS de restaurar el contexto del clip'
-      );
-
-      // Verificar que existe al menos un restore entre clip y la bounding box
-      const restoreBetween = calls.slice(clipIndex, bboxCallIndex).some((c) => c.method === 'restore');
-      assert.ok(restoreBetween, 'Debe restaurarse el contexto para liberar el clip antes del overlay de selección');
+      assert.ok(shapeCall, 'La figura que desborda debe renderizarse en sus coordenadas completas del mundo');
     });
 
-    it('permite desactivar el clipping mediante clipToArtboard: false', () => {
-      const { canvas, calls } = createMockCanvas();
+    it('los objetos fuera de la mesa conservan sus coordenadas y dimensiones intactas en el Scene Graph', () => {
+      const { canvas } = createMockCanvas();
       const manager = new StateManager();
+      const doc = manager.getState();
+      const layer = doc.children[0];
 
-      const engine = new RenderEngine(canvas, manager, {
-        highDpi: false,
-        clipToArtboard: false,
-      });
+      const pasteboardRect: Rectangle = {
+        id: 'rect-outside',
+        type: 'rectangle',
+        name: 'Rect Outside',
+        x: doc.width + 200,
+        y: doc.height + 150,
+        width: 150,
+        height: 100,
+        fill: '#3b82f6',
+      };
+      manager.addShape(layer.id, pasteboardRect);
+
+      const engine = new RenderEngine(canvas, manager, { highDpi: false });
       engine.render();
 
-      const clipCall = calls.find((c) => c.method === 'clip');
-      assert.equal(clipCall, undefined, 'No debe llamar a ctx.clip() cuando clipToArtboard es false');
+      const shapeInState = manager.findNode('rect-outside') as Rectangle;
+      assert.ok(shapeInState, 'La figura debe seguir existiendo en el Scene Graph');
+      assert.equal(shapeInState.x, doc.width + 200, 'Coordenada x no debe modificarse');
+      assert.equal(shapeInState.y, doc.height + 150, 'Coordenada y no debe modificarse');
+      assert.equal(shapeInState.width, 150, 'El ancho no debe modificarse');
+      assert.equal(shapeInState.height, 100, 'El alto no debe modificarse');
     });
 
-    it('respeta zoom y pan del viewport durante el clipping', () => {
+    it('la selección y sus manejadores funcionan correctamente fuera de los límites de la mesa', () => {
       const { canvas, calls } = createMockCanvas();
       const manager = new StateManager();
       const doc = manager.getState();
-      const zoom = 2.5;
-      const panX = 120;
-      const panY = -80;
-      const viewportManager = new ViewportManager({ zoom, panX, panY });
+      const layer = doc.children[0];
+
+      const outsideRect: Rectangle = {
+        id: 'rect-outside-select',
+        type: 'rectangle',
+        name: 'Rect Outside Select',
+        x: doc.width + 100,
+        y: doc.height + 100,
+        width: 200,
+        height: 150,
+        fill: '#10b981',
+      };
+      manager.addShape(layer.id, outsideRect);
+      manager.selectNode(outsideRect.id);
+
+      const engine = new RenderEngine(canvas, manager, { highDpi: false });
+      engine.render();
+
+      // Debe dibujar la bounding box de la figura seleccionada en el pasteboard
+      const bboxCall = calls.find(
+        (c) =>
+          c.method === 'strokeRect' &&
+          c.args?.[0] === outsideRect.x &&
+          c.args?.[1] === outsideRect.y &&
+          c.args?.[2] === outsideRect.width &&
+          c.args?.[3] === outsideRect.height
+      );
+      assert.ok(bboxCall, 'Debe dibujar la bounding box de selección en el workspace exterior');
+    });
+
+    it('la mesa conserva su fondo blanco y sombra en (0, 0, Document.width, Document.height) independientemente de los objetos exteriores', () => {
+      const { canvas, fillRects } = createMockCanvas();
+      const manager = new StateManager();
+      const doc = manager.getState();
+      const layer = doc.children[0];
+
+      // Añadir figura en el exterior
+      manager.addShape(layer.id, {
+        id: 'rect-far',
+        type: 'rectangle',
+        name: 'Far',
+        x: -500,
+        y: -300,
+        width: 100,
+        height: 100,
+      });
+
+      const engine = new RenderEngine(canvas, manager, { highDpi: false });
+      engine.render();
+
+      const artboardFill = fillRects.find(
+        (r) => r.x === 0 && r.y === 0 && r.w === doc.width && r.h === doc.height
+      );
+      assert.ok(artboardFill, 'La mesa de trabajo debe seguir delimitada por Document.width y Document.height');
+      assert.equal(artboardFill?.fillStyle, '#ffffff');
+      assert.ok(artboardFill?.shadowBlur > 0, 'La sombra visual debe seguir presente');
+    });
+
+    it('respeta zoom y pan del viewport mostrando el contenido dentro y fuera de la mesa', () => {
+      const { canvas, calls } = createMockCanvas();
+      const manager = new StateManager();
+      const doc = manager.getState();
+      const layer = doc.children[0];
+
+      const rectInside: Rectangle = { id: 'r-in', type: 'rectangle', name: 'In', x: 50, y: 50, width: 100, height: 100 };
+      const rectOutside: Rectangle = { id: 'r-out', type: 'rectangle', name: 'Out', x: doc.width + 100, y: 50, width: 100, height: 100 };
+      manager.addShape(layer.id, rectInside);
+      manager.addShape(layer.id, rectOutside);
+
+      const zoom = 0.5;
+      const viewportManager = new ViewportManager({ zoom, panX: 200, panY: 100 });
 
       const engine = new RenderEngine(canvas, manager, {
         highDpi: false,
@@ -392,20 +419,11 @@ describe('Representación Visual de la Mesa de Trabajo (Artboard)', () => {
       });
       engine.render();
 
-      const setTransformIndex = calls.findIndex((c) => c.method === 'setTransform');
-      const clipIndex = calls.findIndex((c) => c.method === 'clip');
-      assert.ok(setTransformIndex !== -1);
-      assert.ok(clipIndex !== -1);
-      assert.ok(
-        setTransformIndex < clipIndex,
-        'setTransform del viewport debe aplicarse antes del clip para que la matriz escale el recorte'
-      );
-
-      // Las coordenadas pasadas a rect siguen siendo las del mundo (0, 0, doc.width, doc.height)
-      const clipRect = calls.find(
-        (c) => c.method === 'rect' && c.args?.[0] === 0 && c.args?.[1] === 0 && c.args?.[2] === doc.width && c.args?.[3] === doc.height
-      );
-      assert.ok(clipRect, 'El rect del clip debe mantener las coordenadas del mundo');
+      // Ambas figuras deben haberse dibujado
+      const drawInside = calls.some((c) => (c.method === 'rect' || c.method === 'roundRect') && c.args?.[0] === 50);
+      const drawOutside = calls.some((c) => (c.method === 'rect' || c.method === 'roundRect') && c.args?.[0] === doc.width + 100);
+      assert.ok(drawInside, 'Debe dibujar la figura interna con zoom y pan');
+      assert.ok(drawOutside, 'Debe dibujar la figura externa con zoom y pan');
     });
   });
 });
