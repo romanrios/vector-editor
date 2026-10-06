@@ -47,6 +47,17 @@ export interface RenderEngineOptions {
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
   viewportManager?: ViewportManager;
+  /**
+   * Indica si se dibuja la mesa de trabajo (Artboard).
+   * Por defecto es true.
+   */
+  showArtboard?: boolean;
+  /**
+   * Indica si se aplica recorte (clipping) a las figuras del Documento
+   * según las dimensiones de la mesa de trabajo (Document.width × Document.height).
+   * Por defecto es true.
+   */
+  clipToArtboard?: boolean;
 }
 
 /**
@@ -240,8 +251,29 @@ export class RenderEngine {
     // Dibujar cuadrícula tenue adaptativa alineada con el mundo
     this.renderGrid(logicalWidth, logicalHeight, viewport);
 
-    // Iterar sobre el array de nodos (Document -> Layers -> Shapes)
-    this.renderDocument(documentState, zoom);
+    // Dibujar la mesa de trabajo (Artboard) en el espacio del mundo
+    if (this.options.showArtboard !== false) {
+      this.renderArtboard(documentState, zoom);
+    }
+
+    // Iterar sobre el array de nodos (Document -> Layers -> Shapes) con recorte a la mesa de trabajo
+    const shouldClip =
+      this.options.clipToArtboard !== false &&
+      this.options.showArtboard !== false &&
+      documentState.width > 0 &&
+      documentState.height > 0 &&
+      typeof this.ctx.clip === 'function';
+
+    if (shouldClip) {
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(0, 0, documentState.width, documentState.height);
+      this.ctx.clip();
+      this.renderDocument(documentState, zoom);
+      this.ctx.restore();
+    } else {
+      this.renderDocument(documentState, zoom);
+    }
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
     this.renderSelectionOverlay(documentState, zoom);
@@ -299,6 +331,41 @@ export class RenderEngine {
       this.ctx.lineTo(endX, y);
     }
     this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /**
+   * Renderiza la Mesa de Trabajo (Artboard) en el espacio de coordenadas del mundo.
+   * Dibuja un rectángulo blanco de (Document.width × Document.height) en el origen (0, 0)
+   * con sombra perimetral visual.
+   */
+  private renderArtboard(document: Document, zoom: number): void {
+    const width = document.width;
+    const height = document.height;
+
+    if (!width || !height || width <= 0 || height <= 0) {
+      return;
+    }
+
+    this.ctx.save();
+
+    // Sombra perimetral visual (drop-shadow) escalada por zoom
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    this.ctx.shadowBlur = 24 / zoom;
+    this.ctx.shadowOffsetX = 0;
+    this.ctx.shadowOffsetY = 4 / zoom;
+
+    // Fondo blanco de la mesa de trabajo
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillRect(0, 0, width, height);
+
+    this.ctx.restore();
+
+    // Borde delimitador sutil de 1 px en pantalla para definir contornos nítidos
+    this.ctx.save();
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    this.ctx.strokeRect(0, 0, width, height);
     this.ctx.restore();
   }
 
