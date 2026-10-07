@@ -62,6 +62,7 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       x: shape.x,
       y: shape.y,
       rotation: shape.rotation ?? 0,
+      fontSize: shape.fontSize ?? 16,
     };
   }
   return {
@@ -380,12 +381,16 @@ export function scaleShapesAboutAnchor(
         });
       }
     } else if (shape.type === 'text') {
+      const oldFontSize = shape.fontSize ?? 16;
+      const scaleFactor = Math.hypot(sx * cosTheta, sy * sinTheta);
+      const newFontSize = Math.max(1, Math.round(oldFontSize * scaleFactor));
       const newX = newCx;
       const newY = newCy;
 
       const changed =
         Math.abs(newX - shape.x) > 1e-10 ||
-        Math.abs(newY - shape.y) > 1e-10;
+        Math.abs(newY - shape.y) > 1e-10 ||
+        newFontSize !== oldFontSize;
 
       if (changed) {
         results.push({
@@ -393,6 +398,7 @@ export function scaleShapesAboutAnchor(
           dimensions: {
             x: newX,
             y: newY,
+            fontSize: newFontSize,
             rotation: rotDeg,
           },
         });

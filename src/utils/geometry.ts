@@ -317,17 +317,147 @@ export function getPathAABB(path: Path): AABB {
   };
 }
 
+let sharedMeasureContext: CanvasRenderingContext2D | null = null;
+
 /**
- * Obtiene el AABB (Axis-Aligned Bounding Box) inicial para un nodo de texto de punto.
+ * Obtiene o crea un contexto 2D compartido para mediciones de texto en entornos con Canvas.
  */
-export function getTextAABB(text: Text): AABB {
+export function getTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (sharedMeasureContext) {
+    return sharedMeasureContext;
+  }
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const canvas = document.createElement('canvas');
+    sharedMeasureContext = canvas.getContext('2d');
+  } else if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(1, 1);
+    sharedMeasureContext = canvas.getContext('2d') as CanvasRenderingContext2D | null;
+  }
+  return sharedMeasureContext;
+}
+
+/**
+ * Permite registrar un contexto 2D para mediciones tipográficas (útil para pruebas unitarias o configuración personalizada).
+ */
+export function setSharedMeasureContext(ctx: CanvasRenderingContext2D | null): void {
+  sharedMeasureContext = ctx;
+}
+
+/**
+ * Mide el ancho de un nodo Text usando CanvasRenderingContext2D.measureText cuando está disponible,
+ * o un fallback determinista basado en fontSize y longitud de texto para entornos sin canvas.
+ */
+export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | null): number {
+  const content = text.text ?? '';
+  if (!content) {
+    return 0;
+  }
+
+  const activeCtx = ctx ?? getTextMeasureContext();
+  const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+  const fontFamily = text.fontFamily ?? 'sans-serif';
+
+  if (activeCtx && typeof activeCtx.measureText === 'function') {
+    const fontParts: string[] = [];
+    if (text.fontStyle && text.fontStyle !== 'normal') {
+      fontParts.push(text.fontStyle);
+    }
+    if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
+      fontParts.push(String(text.fontWeight));
+    }
+    fontParts.push(`${fontSize}px`);
+    fontParts.push(fontFamily);
+    activeCtx.font = fontParts.join(' ');
+
+    const metrics = activeCtx.measureText(content);
+    if (metrics && typeof metrics.width === 'number' && metrics.width > 0) {
+      return metrics.width;
+    }
+  }
+
+  // Fallback heurístico determinista para entornos sin motor tipográfico nativo (ej. Node.js sin canvas mockeado)
+  return content.length * (fontSize * 0.6);
+}
+
+/**
+ * Obtiene el Bounding Box base (sin rotación) de un nodo Text en coordenadas del mundo.
+ * Toma en consideración textAlign ('left', 'center', 'right') y fija textBaseline en 'top'
+ * (de modo que minY = text.y y maxY = text.y + fontSize).
+ */
+export function getTextBaseAABB(text: Text, ctx?: CanvasRenderingContext2D | null): AABB {
+  const width = measureTextWidth(text, ctx);
+  const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+  const height = fontSize;
+
+  let minX = text.x;
+  if (text.textAlign === 'center') {
+    minX = text.x - width / 2;
+  } else if (text.textAlign === 'right') {
+    minX = text.x - width;
+  }
+
+  const minY = text.y;
+  const maxX = minX + width;
+  const maxY = minY + height;
+
   return {
-    minX: text.x,
-    minY: text.y,
-    maxX: text.x,
-    maxY: text.y,
-    width: 0,
-    height: 0,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width,
+    height,
+  };
+}
+
+/**
+ * Obtiene el Axis-Aligned Bounding Box (AABB) de un nodo Text.
+ * Si tiene rotación, calcula la envolvente exacta de sus cuatro esquinas rotadas
+ * respecto al punto de rotación (text.x, text.y).
+ */
+export function getTextAABB(text: Text, ctx?: CanvasRenderingContext2D | null): AABB {
+  const baseAABB = getTextBaseAABB(text, ctx);
+
+  if (!text.rotation) {
+    return baseAABB;
+  }
+
+  const rad = (text.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const cx = text.x;
+  const cy = text.y;
+
+  const corners = [
+    { x: baseAABB.minX, y: baseAABB.minY },
+    { x: baseAABB.maxX, y: baseAABB.minY },
+    { x: baseAABB.maxX, y: baseAABB.maxY },
+    { x: baseAABB.minX, y: baseAABB.maxY },
+  ];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const { x, y } of corners) {
+    const rx = cx + (x - cx) * cos - (y - cy) * sin;
+    const ry = cy + (x - cx) * sin + (y - cy) * cos;
+
+    if (rx < minX) minX = rx;
+    if (rx > maxX) maxX = rx;
+    if (ry < minY) minY = ry;
+    if (ry > maxY) maxY = ry;
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
   };
 }
 
@@ -439,12 +569,83 @@ export function isPointInAABB(px: number, py: number, aabb: AABB): boolean {
  * - Para Ellipse: evalúa la ecuación normalizada con radios ampliados por la tolerancia:
  *   ((localX - cx) / (rx + t))^2 + ((localY - cy) / (ry + t))^2 <= 1, manejando radios cero sin dividir por cero.
  */
+/**
+ * Determina si un punto (x, y) en coordenadas del mundo colisiona con el área visible
+ * de un nodo Text, considerando su orientación y un margen de tolerancia opcional.
+ */
+export function isPointInText(
+  x: number,
+  y: number,
+  text: Text,
+  tolerance: number = 0,
+  ctx?: CanvasRenderingContext2D | null
+): boolean {
+  const t = Math.max(0, tolerance);
+
+  // 1. Fase rápida: descarte mediante AABB ampliado con tolerancia
+  const aabb = getTextAABB(text, ctx);
+  if (
+    x < aabb.minX - t ||
+    x > aabb.maxX + t ||
+    y < aabb.minY - t ||
+    y > aabb.maxY + t
+  ) {
+    return false;
+  }
+
+  // 2. Transformar el punto al espacio local si hay rotación
+  let localX = x;
+  let localY = y;
+
+  const rotation = text.rotation ?? 0;
+  if (rotation !== 0) {
+    const cx = text.x;
+    const cy = text.y;
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const dx = x - cx;
+    const dy = y - cy;
+    // Rotación inversa alrededor de (cx, cy): R(-θ)
+    localX = cx + dx * cos + dy * sin;
+    localY = cy - dx * sin + dy * cos;
+  }
+
+  // 3. Evaluar colisión contra el baseAABB no rotado
+  const baseAABB = getTextBaseAABB(text, ctx);
+  return (
+    localX >= baseAABB.minX - t - 1e-9 &&
+    localX <= baseAABB.maxX + t + 1e-9 &&
+    localY >= baseAABB.minY - t - 1e-9 &&
+    localY <= baseAABB.maxY + t + 1e-9
+  );
+}
+
+/**
+ * Determina de forma pura si un punto (x, y) en coordenadas del mundo colisiona
+ * con una figura de tipo Rectangle, Ellipse o Text, considerando su geometría exacta,
+ * su rotación centrada y un margen de tolerancia opcional.
+ *
+ * - Fase rápida: descarta con el AABB de la figura ampliado por la tolerancia.
+ * - Si la figura tiene rotación, transforma el punto al espacio local invirtiendo
+ *   la rotación respecto al centro geométrico (la misma convención que RenderEngine).
+ * - Para Rectangle: evalúa si el punto local cae dentro del rectángulo ampliado por la tolerancia.
+ * - Para Ellipse: evalúa la ecuación normalizada con radios ampliados por la tolerancia:
+ *   ((localX - cx) / (rx + t))^2 + ((localY - cy) / (ry + t))^2 <= 1, manejando radios cero sin dividir por cero.
+ * - Para Text: delega en isPointInText evaluando colisión contra la caja de texto.
+ */
 export function isPointInShape(
   x: number,
   y: number,
-  shape: Rectangle | Ellipse,
-  tolerance: number = 0
+  shape: Rectangle | Ellipse | Text,
+  tolerance: number = 0,
+  ctx?: CanvasRenderingContext2D | null
 ): boolean {
+  if (shape.type === 'text') {
+    return isPointInText(x, y, shape, tolerance, ctx);
+  }
+
   if (shape.type !== 'rectangle' && shape.type !== 'ellipse') {
     return false;
   }
@@ -623,6 +824,44 @@ export function getSelectionHandles(
     hh = baseAABB.height / 2;
     cx = (baseAABB.minX + baseAABB.maxX) / 2;
     cy = (baseAABB.minY + baseAABB.maxY) / 2;
+  } else if (shape.type === 'text') {
+    const baseAABB = getTextBaseAABB(shape);
+    cx = shape.x;
+    cy = shape.y;
+
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const rotatePoint = (dx: number, dy: number): { x: number; y: number } => ({
+      x: cx + dx * cos - dy * sin,
+      y: cy + dx * sin + dy * cos,
+    });
+
+    const tl = rotatePoint(baseAABB.minX - cx, baseAABB.minY - cy);
+    const tr = rotatePoint(baseAABB.maxX - cx, baseAABB.minY - cy);
+    const br = rotatePoint(baseAABB.maxX - cx, baseAABB.maxY - cy);
+    const bl = rotatePoint(baseAABB.minX - cx, baseAABB.maxY - cy);
+    const midX = (baseAABB.minX + baseAABB.maxX) / 2;
+    const rot = rotatePoint(midX - cx, baseAABB.minY - cy - rotationDistance);
+
+    const createHandle = (pt: { x: number; y: number }, type: HandleType): SelectionHandle => ({
+      type,
+      minX: pt.x - half,
+      minY: pt.y - half,
+      maxX: pt.x + half,
+      maxY: pt.y + half,
+      width: handleSize,
+      height: handleSize,
+    });
+
+    return [
+      createHandle(tl, 'top-left'),
+      createHandle(tr, 'top-right'),
+      createHandle(br, 'bottom-right'),
+      createHandle(bl, 'bottom-left'),
+      createHandle(rot, 'rotation-handle'),
+    ];
   }
 
   const rad = (rotation * Math.PI) / 180;

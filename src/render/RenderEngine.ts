@@ -17,6 +17,7 @@ import type { StateManager } from '../state/StateManager.ts';
 import {
   getGroupAABB,
   getPathBaseAABB,
+  getTextBaseAABB,
   getSelectionBounds,
   getShapeAABB,
   getVisiblePathHandles,
@@ -762,6 +763,14 @@ export class RenderEngine {
       baseHeight = baseAABB.height;
       cx = (baseAABB.minX + baseAABB.maxX) / 2;
       cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    } else if (shape.type === 'text') {
+      const baseAABB = getTextBaseAABB(shape, this.ctx);
+      baseX = baseAABB.minX;
+      baseY = baseAABB.minY;
+      baseWidth = baseAABB.width;
+      baseHeight = baseAABB.height;
+      cx = shape.x;
+      cy = shape.y;
     }
 
     const midX = baseX + baseWidth / 2;

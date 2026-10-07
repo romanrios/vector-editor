@@ -1256,6 +1256,27 @@ export class StateManager {
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
               };
             }
+          } else if (child.type === 'text') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+            const nextFontSize = dimensions.fontSize !== undefined ? dimensions.fontSize : child.fontSize;
+
+            if (
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextRot !== child.rotation ||
+              (dimensions.fontSize !== undefined && nextFontSize !== child.fontSize)
+            ) {
+              shapeChanged = true;
+              newShape = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+                ...(nextFontSize !== undefined ? { fontSize: nextFontSize } : {}),
+              };
+            }
           }
 
           if (shapeChanged) {

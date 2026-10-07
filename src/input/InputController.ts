@@ -26,10 +26,12 @@ import {
   getSelectionHandles,
   getShapeAABB,
   getShapesIntersectingRect,
+  getTextBaseAABB,
   getVisiblePathHandles,
   isPointInAABB,
   isPointInPath,
   isPointInShape,
+  isPointInText,
   isSmoothPoint,
   mirrorHandleCollinear,
   normalizeShapeBounds,
@@ -869,7 +871,10 @@ export class InputController {
           return node;
         }
       } else if (node.type === 'text') {
-        return null;
+        const tolerance = 4 / zoom;
+        if (isPointInText(x, y, node, tolerance, ctx)) {
+          return node;
+        }
       } else {
         const tolerance = 4 / zoom;
         if (isPointInShape(x, y, node, tolerance)) {
@@ -1178,6 +1183,17 @@ export class InputController {
               width: aabb.width,
               height: aabb.height,
               points: selectedNode.points,
+              rotation: selectedNode.rotation ?? 0,
+            };
+          } else if (selectedNode.type === 'text') {
+            const ctx = typeof this.canvas.getContext === 'function' ? this.canvas.getContext('2d') : null;
+            const aabb = getTextBaseAABB(selectedNode, ctx);
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              width: aabb.width,
+              height: aabb.height,
+              fontSize: selectedNode.fontSize ?? 16,
               rotation: selectedNode.rotation ?? 0,
             };
           } else {
@@ -3236,6 +3252,19 @@ export class InputController {
       const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
       const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
 
+      if (initial.fontSize !== undefined) {
+        const scale = newH / Math.max(1, initH);
+        const newFontSize = Math.max(4, Math.round(initial.fontSize * scale));
+        return {
+          x: newCenterX - newW / 2,
+          y: newCenterY - newH / 2,
+          width: newW,
+          height: newH,
+          fontSize: newFontSize,
+          rotation,
+        };
+      }
+
       return {
         x: newCenterX - newW / 2,
         y: newCenterY - newH / 2,
@@ -3290,7 +3319,9 @@ export class InputController {
       a.width !== b.width ||
       a.height !== b.height ||
       a.radiusX !== b.radiusX ||
-      a.radiusY !== b.radiusY
+      a.radiusY !== b.radiusY ||
+      a.fontSize !== b.fontSize ||
+      a.rotation !== b.rotation
     );
   }
 }
