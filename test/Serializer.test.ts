@@ -394,7 +394,7 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
       },
       (err: unknown) => {
         assert.ok(err instanceof DocumentParseError);
-        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.type debe ser 'rectangle', 'ellipse' o 'path'/);
+        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.type debe ser 'rectangle', 'ellipse', 'path' o 'text'/);
         return true;
       }
     );

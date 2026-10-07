@@ -1,4 +1,4 @@
-import type { Document, Group, Layer, LayerChildNode, Path, PathPoint, Rectangle, Ellipse } from '../types/scene-graph.ts';
+import type { Document, Group, Layer, LayerChildNode, Path, PathPoint, Rectangle, Ellipse, Text } from '../types/scene-graph.ts';
 
 /**
  * Serializa el estado completo del Scene Graph (Document) en un string JSON puro.
@@ -153,10 +153,11 @@ function parseLayerChild(
   if (
     child.type !== 'rectangle' &&
     child.type !== 'ellipse' &&
-    child.type !== 'path'
+    child.type !== 'path' &&
+    child.type !== 'text'
   ) {
     throw new DocumentParseError(
-      `${childPath}.type debe ser 'rectangle', 'ellipse' o 'path' (o 'group')`
+      `${childPath}.type debe ser 'rectangle', 'ellipse', 'path' o 'text' (o 'group')`
     );
   }
 
@@ -221,6 +222,43 @@ function parseLayerChild(
 
     const { selected: _sel, isDirty: _dirty, ...rest } = child;
     return rest as unknown as Ellipse;
+  } else if (child.type === 'text') {
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (typeof child.text !== 'string') {
+      throw new DocumentParseError(`${childPath}.text debe ser un string`);
+    }
+    if (child.fontFamily !== undefined && typeof child.fontFamily !== 'string') {
+      throw new DocumentParseError(`${childPath}.fontFamily debe ser un string`);
+    }
+    if (child.fontSize !== undefined && (!isFiniteNumber(child.fontSize) || child.fontSize <= 0)) {
+      throw new DocumentParseError(`${childPath}.fontSize debe ser un número finito positivo`);
+    }
+    if (
+      child.fontWeight !== undefined &&
+      typeof child.fontWeight !== 'string' &&
+      !isFiniteNumber(child.fontWeight)
+    ) {
+      throw new DocumentParseError(`${childPath}.fontWeight debe ser un string o un número finito`);
+    }
+    if (child.fontStyle !== undefined && typeof child.fontStyle !== 'string') {
+      throw new DocumentParseError(`${childPath}.fontStyle debe ser un string`);
+    }
+    if (
+      child.textAlign !== undefined &&
+      child.textAlign !== 'left' &&
+      child.textAlign !== 'center' &&
+      child.textAlign !== 'right'
+    ) {
+      throw new DocumentParseError(`${childPath}.textAlign debe ser 'left', 'center' o 'right'`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as Text;
   } else {
     // path
     if (!isFiniteNumber(child.x)) {
