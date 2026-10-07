@@ -5,6 +5,7 @@ import {
   isLayer,
   isSelectable,
   isShape,
+  isText,
   type AABB,
   type Ellipse,
   type Group,
@@ -56,6 +57,7 @@ import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.t
 import { RotateCommand } from '../commands/RotateCommand.ts';
 import { PointCommand } from '../commands/PointCommand.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
+import { UpdateTextCommand } from '../commands/UpdateTextCommand.ts';
 import { ViewportManager } from '../utils/viewport.ts';
 import {
   SelectionOperations,
@@ -170,6 +172,12 @@ export interface MultiTransformState {
   handle?: HandleType;
 }
 
+export interface TextEditingState {
+  readonly textId: string;
+  readonly originalText: string;
+  currentText: string;
+}
+
 export interface InputControllerOptions {
   /**
    * Permite deseleccionar al hacer clic en un área vacía del lienzo (en modo select).
@@ -224,6 +232,7 @@ export class InputController {
   private rectangleCounter: number = 0;
   private ellipseCounter: number = 0;
   private textCounter: number = 0;
+  private _textEditingState: TextEditingState | null = null;
 
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
@@ -342,6 +351,10 @@ export class InputController {
   public setTool(tool: ToolMode): void {
     if (this._currentTool === tool) return;
 
+    if (this._textEditingState) {
+      this.commitTextEdit();
+    }
+
     if (this._isMarqueeSelecting) {
       this.cancelMarquee();
     }
@@ -452,6 +465,22 @@ export class InputController {
 
   public get isMarqueeSelecting(): boolean {
     return this._isMarqueeSelecting;
+  }
+
+  public get isEditingText(): boolean {
+    return this._textEditingState !== null;
+  }
+
+  public get textEditingState(): TextEditingState | null {
+    return this._textEditingState;
+  }
+
+  public get textEditState(): { textId: string; text: string } | null {
+    if (!this._textEditingState) return null;
+    return {
+      textId: this._textEditingState.textId,
+      text: this._textEditingState.currentText,
+    };
   }
 
   /**
@@ -681,6 +710,7 @@ export class InputController {
     this.resetRotate();
     this.resetMultiTransform();
     this.resetDirectSelect();
+    this._textEditingState = null;
     this.eventListeners.clear();
   }
 
@@ -872,7 +902,15 @@ export class InputController {
         }
       } else if (node.type === 'text') {
         const tolerance = 4 / zoom;
-        if (isPointInText(x, y, node, tolerance, ctx)) {
+        const currentText =
+          this._textEditingState && this._textEditingState.textId === node.id
+            ? this._textEditingState.currentText
+            : node.text;
+        const effectiveText = {
+          ...node,
+          text: currentText.length > 0 ? currentText : ' ',
+        };
+        if (isPointInText(x, y, effectiveText, tolerance, ctx)) {
           return node;
         }
       } else {
@@ -998,6 +1036,11 @@ export class InputController {
       return;
     }
 
+    if (isText(hitShape) && this.stateManager.isSelected(hitShape.id)) {
+      this.startEditingText(hitShape.id);
+      return;
+    }
+
     const selectedNodes = this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 1 && isGroup(selectedNodes[0])) {
       const selectedGroup = selectedNodes[0];
@@ -1051,6 +1094,15 @@ export class InputController {
     }
 
     const { x, y } = this.getLocalCoordinates(event);
+
+    if (this._textEditingState) {
+      const hitShape = this.hitTest(x, y);
+      if (hitShape && hitShape.id === this._textEditingState.textId) {
+        return;
+      }
+      this.commitTextEdit();
+      return;
+    }
 
     if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
       this._isCreatingShape = true;
@@ -1397,6 +1449,84 @@ export class InputController {
     this.commandManager.executeCommand(command);
 
     this.stateManager.selectNode(newText.id);
+  }
+
+  /**
+   * Inicia la edición de contenido en un nodo Text existente.
+   */
+  public startEditingText(textId: string): boolean {
+    if (this._textEditingState?.textId === textId) {
+      return true;
+    }
+    if (this._textEditingState) {
+      this.commitTextEdit();
+    }
+
+    const node = this.stateManager.findNode(textId);
+    if (!node || !isText(node) || node.locked) {
+      return false;
+    }
+
+    this.resetDrag();
+    this.resetResize();
+    this.resetRotate();
+    if (this._isMarqueeSelecting) {
+      this.cancelMarquee();
+    }
+
+    if (!this.stateManager.isSelected(textId) || this.stateManager.getSelection().length !== 1) {
+      this.stateManager.selectNode(textId);
+    }
+
+    this._textEditingState = {
+      textId: node.id,
+      originalText: node.text,
+      currentText: node.text,
+    };
+
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Confirma la edición de texto actual, persistiendo el cambio mediante StateManager
+   * y registrando un UpdateTextCommand en CommandManager si el contenido fue modificado.
+   */
+  public commitTextEdit(): boolean {
+    if (!this._textEditingState) {
+      return false;
+    }
+
+    const { textId, originalText, currentText } = this._textEditingState;
+    this._textEditingState = null;
+
+    const node = this.stateManager.findNode(textId);
+    if (!node || !isText(node)) {
+      this.stateManager.markDirty();
+      return false;
+    }
+
+    if (currentText !== originalText) {
+      const command = new UpdateTextCommand(this.stateManager, textId, originalText, currentText);
+      this.commandManager.executeCommand(command);
+    } else {
+      this.stateManager.markDirty();
+    }
+
+    return true;
+  }
+
+  /**
+   * Cancela la edición de texto activa restaurando el contenido anterior
+   * sin registrar ningún comando.
+   */
+  public cancelTextEdit(): void {
+    if (!this._textEditingState) {
+      return;
+    }
+
+    this._textEditingState = null;
+    this.stateManager.markDirty();
   }
 
   /**
@@ -2082,6 +2212,45 @@ export class InputController {
    * - Escape / Enter para finalizar o cancelar trazado/creación activa
    */
   public handleKeyDown(event: KeyboardEvent): void {
+    if (this.isInputFocused(event)) {
+      return;
+    }
+
+    if (this._textEditingState) {
+      const key = event.key;
+      const keyLower = key ? key.toLowerCase() : '';
+
+      if (keyLower === 'escape') {
+        event.preventDefault?.();
+        this.cancelTextEdit();
+        return;
+      }
+
+      if (keyLower === 'enter') {
+        event.preventDefault?.();
+        this.commitTextEdit();
+        return;
+      }
+
+      if (keyLower === 'backspace' || keyLower === 'delete') {
+        event.preventDefault?.();
+        if (this._textEditingState.currentText.length > 0) {
+          this._textEditingState.currentText = this._textEditingState.currentText.slice(0, -1);
+          this.stateManager.markDirty();
+        }
+        return;
+      }
+
+      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault?.();
+        this._textEditingState.currentText += event.key;
+        this.stateManager.markDirty();
+        return;
+      }
+
+      return;
+    }
+
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
 
     if (isCtrlOrCmd) {
@@ -2371,6 +2540,13 @@ export class InputController {
     } else if (keyLower === 'enter') {
       if (this._currentTool === 'pen') {
         this.finishActivePath();
+      } else {
+        const selectedNodes = this.stateManager.getSelectedNodes();
+        if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+          event.preventDefault?.();
+          this.startEditingText(selectedNodes[0].id);
+          return;
+        }
       }
     }
   }

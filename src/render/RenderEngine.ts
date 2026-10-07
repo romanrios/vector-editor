@@ -1,6 +1,7 @@
 import {
   isGroup,
   isShape,
+  isText,
   type AABB,
   type Document,
   type Ellipse,
@@ -45,6 +46,10 @@ export interface RenderEngineOptions {
    * Proveedor funcional opcional del estado de edición de nodos para Selección Directa.
    */
   pathEditProvider?: () => { pathId: string; selectedAnchors: ReadonlySet<number> } | null;
+  /**
+   * Proveedor funcional opcional del estado de edición de texto en curso.
+   */
+  textEditProvider?: () => { textId: string; text: string } | null;
   /**
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
@@ -533,7 +538,10 @@ export class RenderEngine {
       if (isGroup(node)) {
         this.renderSingleGroupSelection(node, zoom);
       } else if (isShape(node)) {
-        if (!pathEdit || pathEdit.pathId !== node.id) {
+        const textEdit = this.options.textEditProvider?.() ?? null;
+        if (textEdit && textEdit.textId === node.id && isText(node)) {
+          this.renderTextEditOverlay(node, textEdit.text, zoom);
+        } else if (!pathEdit || pathEdit.pathId !== node.id) {
           this.renderSingleShapeSelection(node, zoom);
         }
       }
@@ -951,7 +959,56 @@ export class RenderEngine {
     }
 
     // 5. Dibujo del texto (MVP: texto de una sola línea)
-    this.ctx.fillText(text.text ?? '', text.x, text.y);
+    const textEdit = this.options.textEditProvider?.() ?? null;
+    const isEditingThis = textEdit !== null && textEdit.textId === text.id;
+    const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
+
+    this.ctx.fillText(displayText, text.x, text.y);
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja la indicación visual de un nodo Text en modo de edición interactiva.
+   * Incluye recuadro punteado de acento y cursor/caret al final del texto actual.
+   */
+  private renderTextEditOverlay(text: Text, currentText: string, zoom: number): void {
+    const tempNode: Text = { ...text, text: currentText };
+    const baseAABB = getTextBaseAABB(tempNode, this.ctx);
+
+    this.ctx.save();
+
+    if (text.rotation) {
+      this.ctx.translate(text.x, text.y);
+      this.ctx.rotate((text.rotation * Math.PI) / 180);
+      this.ctx.translate(-text.x, -text.y);
+    }
+
+    const padding = 3 / zoom;
+    const boxX = baseAABB.minX - padding;
+    const boxY = baseAABB.minY - padding;
+    const boxW = Math.max(6, baseAABB.width) + padding * 2;
+    const boxH = Math.max(12, baseAABB.height) + padding * 2;
+
+    // 1. Fondo sutil translúcido para destacar el área activa de escritura
+    this.ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+    this.ctx.fillRect(boxX, boxY, boxW, boxH);
+
+    // 2. Borde punteado azul primario
+    this.ctx.strokeStyle = '#2563eb';
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.setLineDash([4 / zoom, 2 / zoom]);
+    this.ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    // 3. Cursor / Caret visible al final del texto actual
+    const caretX = baseAABB.minX + baseAABB.width;
+    this.ctx.setLineDash([]);
+    this.ctx.beginPath();
+    this.ctx.moveTo(caretX + 1 / zoom, baseAABB.minY);
+    this.ctx.lineTo(caretX + 1 / zoom, baseAABB.maxY);
+    this.ctx.strokeStyle = '#2563eb';
+    this.ctx.lineWidth = 1.5 / zoom;
+    this.ctx.stroke();
 
     this.ctx.restore();
   }

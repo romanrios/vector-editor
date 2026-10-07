@@ -2551,6 +2551,7 @@ if (typeof document !== 'undefined') {
       viewportManager,
       previewProvider: () => inputController?.shapePreview ?? null,
       pathEditProvider: () => inputController?.pathEditState ?? null,
+      textEditProvider: () => inputController?.textEditState ?? null,
     });
     renderEngine.start();
 
