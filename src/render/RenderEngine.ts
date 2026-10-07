@@ -11,6 +11,7 @@ import {
   type Rectangle,
   type SelectableNode,
   type Shape,
+  type Text,
 } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import {
@@ -413,7 +414,7 @@ export class RenderEngine {
   }
 
   /**
-   * Renderiza una figura según su tipo discriminado (Rectangle o Ellipse)
+   * Renderiza una figura según su tipo discriminado (Rectangle, Ellipse, Path o Text)
    */
   private renderShape(shape: Shape, zoom: number): void {
     this.ctx.save();
@@ -428,6 +429,8 @@ export class RenderEngine {
       this.renderEllipse(shape);
     } else if (shape.type === 'path') {
       this.renderPath(shape, zoom);
+    } else if (shape.type === 'text') {
+      this.renderText(shape);
     }
 
     this.ctx.restore();
@@ -889,6 +892,57 @@ export class RenderEngine {
       this.ctx.lineJoin = 'round';
       this.ctx.stroke();
     }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja un nodo Text de una sola línea en Canvas 2D respetando propiedades tipográficas,
+   * color de relleno, rotación y alineación.
+   *
+   * Convención de textBaseline:
+   * Se utiliza 'top' de manera consistente para que la coordenada (x, y) represente el ancla
+   * superior del texto, asegurando coherencia con las demás figuras del editor (como Rectangle)
+   * donde el origen (x, y) define el extremo superior y el eje Y crece hacia abajo.
+   */
+  private renderText(text: Text): void {
+    if (text.fill !== undefined && isNonePaint(text.fill)) {
+      return;
+    }
+
+    this.ctx.save();
+
+    // 1. Configuración tipográfica (CSS font shorthand: [style] [weight] size family)
+    const fontParts: string[] = [];
+    if (text.fontStyle && text.fontStyle !== 'normal') {
+      fontParts.push(text.fontStyle);
+    }
+    if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
+      fontParts.push(String(text.fontWeight));
+    }
+    const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+    const fontFamily = text.fontFamily ?? 'sans-serif';
+    fontParts.push(`${fontSize}px`);
+    fontParts.push(fontFamily);
+    this.ctx.font = fontParts.join(' ');
+
+    // 2. Alineación horizontal y vertical
+    this.ctx.textAlign = text.textAlign ?? 'left';
+    // Convención de alineación vertical: 'top' fija (x, y) en el borde superior del texto.
+    this.ctx.textBaseline = 'top';
+
+    // 3. Color de relleno (negro por defecto si no se indica)
+    this.ctx.fillStyle = text.fill ?? '#000000';
+
+    // 4. Transformación de rotación respecto a la posición (x, y) del nodo
+    if (text.rotation) {
+      this.ctx.translate(text.x, text.y);
+      this.ctx.rotate((text.rotation * Math.PI) / 180);
+      this.ctx.translate(-text.x, -text.y);
+    }
+
+    // 5. Dibujo del texto (MVP: texto de una sola línea)
+    this.ctx.fillText(text.text ?? '', text.x, text.y);
 
     this.ctx.restore();
   }
