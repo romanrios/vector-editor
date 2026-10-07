@@ -14,6 +14,7 @@ import {
   type Rectangle,
   type SelectableNode,
   type Shape,
+  type Text,
   type Vector2D,
 } from '../types/scene-graph.ts';
 import {
@@ -63,7 +64,7 @@ import {
   asShapeArray,
 } from './SelectionOperations.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'hand';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'hand' | 'text';
 export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
 
@@ -85,6 +86,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
+  { key: 'T', description: 'Herramienta Texto', category: 'Herramientas' },
   { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
   { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
   { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
@@ -219,6 +221,7 @@ export class InputController {
   private _shapePreview: ShapePreview | null = null;
   private rectangleCounter: number = 0;
   private ellipseCounter: number = 0;
+  private textCounter: number = 0;
 
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
@@ -378,6 +381,8 @@ export class InputController {
       this.canvas.style.cursor = 'grab';
     } else if (tool === 'pen' || tool === 'rectangle' || tool === 'ellipse') {
       this.canvas.style.cursor = 'crosshair';
+    } else if (tool === 'text') {
+      this.canvas.style.cursor = 'text';
     } else {
       this.canvas.style.cursor = 'default';
     }
@@ -728,6 +733,8 @@ export class InputController {
       this.canvas.style.cursor = 'grab';
     } else if (this._currentTool === 'pen' || this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
       this.canvas.style.cursor = 'crosshair';
+    } else if (this._currentTool === 'text') {
+      this.canvas.style.cursor = 'text';
     } else {
       this.canvas.style.cursor = 'default';
     }
@@ -1060,6 +1067,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'text') {
+      this.handleTextMouseDown(x, y);
+      return;
+    }
+
     // Modo 'select'
     // 1. Manejadores de redimensionado y rotación:
     const selectedNodes = this.stateManager.getSelectedNodes();
@@ -1334,6 +1346,44 @@ export class InputController {
   }
 
   /**
+   * Crea un nuevo nodo Text en las coordenadas indicadas (espacio del mundo),
+   * insertándolo en la capa correspondiente mediante AddShapeCommand y seleccionándolo.
+   */
+  private handleTextMouseDown(x: number, y: number): void {
+    const currentState = this.stateManager.getState();
+    const targetLayer = currentState.children[0];
+    if (!targetLayer) {
+      return;
+    }
+
+    const style = this.stateManager.getDrawingStyle();
+    this.textCounter++;
+    const newText: Text = {
+      id: `text-${Date.now()}-${this.textCounter}`,
+      type: 'text',
+      name: `Texto ${this.textCounter}`,
+      x,
+      y,
+      text: 'Texto',
+      fontFamily: 'Inter',
+      fontSize: 16,
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textAlign: 'left',
+      fill: style.fill && style.fill !== 'none' ? style.fill : '#000000',
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+    };
+
+    const command = new AddShapeCommand(this.stateManager, targetLayer.id, newText);
+    this.commandManager.executeCommand(command);
+
+    this.stateManager.selectNode(newText.id);
+  }
+
+  /**
    * Maneja el evento mousemove según la herramienta activa.
    */
   public handleMouseMove(event: MouseEvent): void {
@@ -1372,6 +1422,11 @@ export class InputController {
 
     if (this._currentTool === 'direct-select') {
       this.handleDirectSelectMouseMove(x, y, Boolean(event.altKey));
+      return;
+    }
+
+    if (this._currentTool === 'text') {
+      this.canvas.style.cursor = 'text';
       return;
     }
 
@@ -1717,6 +1772,10 @@ export class InputController {
 
     if (this._currentTool === 'pen') {
       this.isCreatingAnchor = false;
+      return;
+    }
+
+    if (this._currentTool === 'text') {
       return;
     }
 
@@ -2231,6 +2290,8 @@ export class InputController {
       this.setTool('ellipse');
     } else if (keyLower === 'h') {
       this.setTool('hand');
+    } else if (keyLower === 't') {
+      this.setTool('text');
     } else if (keyLower === 'escape') {
       if (this._multiTransformState) {
         const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({

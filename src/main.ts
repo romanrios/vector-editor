@@ -89,6 +89,7 @@ export function setupUIBindings(
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
   const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
+  const btnText = document.querySelector<HTMLButtonElement>('#tool-text');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
   const btnExport = document.querySelector<HTMLButtonElement>('#btn-export, #btn-export-json');
@@ -242,6 +243,12 @@ export function setupUIBindings(
       btnEllipse.setAttribute('aria-pressed', String(isEllipse));
     }
 
+    if (btnText) {
+      const isText = tool === 'text';
+      btnText.classList.toggle('active', isText);
+      btnText.setAttribute('aria-pressed', String(isText));
+    }
+
     if (statusToolLabel) {
       statusToolLabel.textContent = `Modo: ${
         tool === 'pen'
@@ -252,9 +259,11 @@ export function setupUIBindings(
               ? 'Rectángulo'
               : tool === 'ellipse'
                 ? 'Elipse'
-                : tool === 'hand'
-                  ? 'Mano'
-                  : 'Selección'
+                : tool === 'text'
+                  ? 'Texto'
+                  : tool === 'hand'
+                    ? 'Mano'
+                    : 'Selección'
       }`;
     }
     syncStatusBar();
@@ -329,6 +338,7 @@ export function setupUIBindings(
   const onPenClick = () => inputController.setTool('pen');
   const onRectangleClick = () => inputController.setTool('rectangle');
   const onEllipseClick = () => inputController.setTool('ellipse');
+  const onTextClick = () => inputController.setTool('text');
 
   btnSelect?.addEventListener('click', onSelectClick);
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
@@ -336,6 +346,7 @@ export function setupUIBindings(
   btnPen?.addEventListener('click', onPenClick);
   btnRectangle?.addEventListener('click', onRectangleClick);
   btnEllipse?.addEventListener('click', onEllipseClick);
+  btnText?.addEventListener('click', onTextClick);
 
   // Inicializar estado visual de herramientas
   syncToolButtons(inputController.currentTool);
@@ -2371,6 +2382,7 @@ export function setupUIBindings(
       btnPen?.removeEventListener('click', onPenClick);
       btnRectangle?.removeEventListener('click', onRectangleClick);
       btnEllipse?.removeEventListener('click', onEllipseClick);
+      btnText?.removeEventListener('click', onTextClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
       btnExport?.removeEventListener('click', onExportClick);

@@ -1063,7 +1063,7 @@ describe('InputController & Hit-testing AABB', () => {
     controller.destroy();
   });
 
-  it('atajos de teclado "R" y "E" activan las herramientas rectangle y ellipse y se ignoran al escribir en un input', () => {
+  it('atajos de teclado "R", "E" y "T" activan las herramientas rectangle, ellipse y text y se ignoran al escribir en un input', () => {
     const stateManager = new StateManager();
     const canvas = createMockCanvas();
     const controller = new InputController(canvas, stateManager);
@@ -1078,6 +1078,10 @@ describe('InputController & Hit-testing AABB', () => {
     controller.handleKeyDown({ key: 'e' } as KeyboardEvent);
     assert.equal(controller.currentTool, 'ellipse');
 
+    // 't' activa herramienta text
+    controller.handleKeyDown({ key: 't' } as KeyboardEvent);
+    assert.equal(controller.currentTool, 'text');
+
     // Al escribir en un input o textarea no deben dispararse los atajos
     controller.setTool('select');
     controller.handleKeyDown({ key: 'r', target: { tagName: 'INPUT' } } as unknown as KeyboardEvent);
@@ -1085,6 +1089,9 @@ describe('InputController & Hit-testing AABB', () => {
 
     controller.handleKeyDown({ key: 'e', target: { tagName: 'TEXTAREA' } } as unknown as KeyboardEvent);
     assert.equal(controller.currentTool, 'select', 'No debe cambiar a ellipse si el foco está en un TEXTAREA');
+
+    controller.handleKeyDown({ key: 't', target: { tagName: 'INPUT' } } as unknown as KeyboardEvent);
+    assert.equal(controller.currentTool, 'select', 'No debe cambiar a text si el foco está en un INPUT');
 
     controller.destroy();
   });
