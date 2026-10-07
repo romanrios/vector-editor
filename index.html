@@ -903,6 +903,38 @@
         color: var(--text-primary);
       }
 
+      .control-input {
+        width: 140px;
+        max-width: 140px;
+        height: 24px;
+        padding: 0 6px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+        outline: none;
+        transition: border-color var(--transition);
+      }
+
+      .control-input:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-control-hover);
+      }
+
+      .control-input:focus-visible {
+        border-color: var(--border-focus);
+        outline: 1px solid var(--border-focus);
+      }
+
+      .text-align-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        margin-top: 4px;
+      }
+
       .checkbox-label {
         display: inline-flex;
         align-items: center;
@@ -1520,7 +1552,7 @@
           </svg>
         </summary>
         <div class="section-content">
-          <div class="control-group">
+          <div class="control-group" id="group-fill">
             <label for="input-fill-hex">Relleno</label>
             <div class="color-composite-group">
               <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
@@ -1536,7 +1568,7 @@
               </button>
             </div>
           </div>
-          <div class="control-group">
+          <div class="control-group" id="group-stroke">
             <label for="input-stroke-hex">Borde</label>
             <div class="color-composite-group">
               <div class="color-swatch-wrapper" id="swatch-stroke-wrapper" title="Elegir color de borde">
@@ -1552,7 +1584,7 @@
               </button>
             </div>
           </div>
-          <div class="control-group">
+          <div class="control-group" id="group-stroke-width">
             <label for="input-stroke-width">Grosor</label>
             <div class="input-number-wrapper">
               <input type="number" id="input-stroke-width" min="0" max="100" value="2">
@@ -1608,6 +1640,110 @@
       <div id="no-selection-state" class="no-selection-state">Sin selección</div>
 
       <div id="selection-state" style="display: none;">
+        <!-- Sección: Tipografía (visible solo cuando hay un único Text seleccionado) -->
+        <details class="collapsible-section" id="section-typography" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Tipografía</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="input-text-content">Contenido</label>
+              <input type="text" id="input-text-content" class="control-input" placeholder="Texto" aria-label="Contenido del texto">
+            </div>
+            <div class="control-group">
+              <label for="select-font-family">Fuente</label>
+              <select id="select-font-family" class="control-select" aria-label="Familia tipográfica">
+                <option value="Inter">Inter</option>
+                <option value="Roboto">Roboto</option>
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="monospace">Monospace</option>
+                <option value="sans-serif">Sans-serif</option>
+                <option value="serif">Serif</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="input-font-size">Tamaño</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-font-size" min="1" max="500" value="32" aria-label="Tamaño de fuente">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="select-font-weight">Peso</label>
+              <select id="select-font-weight" class="control-select" aria-label="Peso de fuente">
+                <option value="100">100 - Thin</option>
+                <option value="300">300 - Light</option>
+                <option value="400">400 - Normal</option>
+                <option value="500">500 - Medium</option>
+                <option value="600">600 - Semi Bold</option>
+                <option value="700">700 - Bold</option>
+                <option value="900">900 - Black</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="select-font-style">Estilo</label>
+              <select id="select-font-style" class="control-select" aria-label="Estilo de fuente">
+                <option value="normal">Normal</option>
+                <option value="italic">Cursiva</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="select-text-align">Alineación</label>
+              <select id="select-text-align" class="control-select" aria-label="Alineación de texto">
+                <option value="left">Izquierda</option>
+                <option value="center">Centro</option>
+                <option value="right">Derecha</option>
+              </select>
+            </div>
+            <div class="panel-icon-grid text-align-grid" role="group" aria-label="Alineación rápida de texto">
+              <button id="btn-text-align-left" class="panel-icon-btn active" title="Alinear a la izquierda" aria-label="Alinear a la izquierda">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="12" x2="15" y2="12"></line>
+                  <line x1="3" y1="18" x2="18" y2="18"></line>
+                </svg>
+              </button>
+              <button id="btn-text-align-center" class="panel-icon-btn" title="Centrar texto" aria-label="Centrar texto">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="6" y1="12" x2="18" y2="12"></line>
+                  <line x1="4" y1="18" x2="20" y2="18"></line>
+                </svg>
+              </button>
+              <button id="btn-text-align-right" class="panel-icon-btn" title="Alinear a la derecha" aria-label="Alinear a la derecha">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="9" y1="12" x2="21" y2="12"></line>
+                  <line x1="6" y1="18" x2="21" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="control-group">
+              <label for="input-text-color-hex">Color</label>
+              <div class="color-composite-group">
+                <div class="color-swatch-wrapper" id="swatch-text-color-wrapper" title="Elegir color de texto">
+                  <div class="color-swatch-preview" id="swatch-text-color-preview"></div>
+                  <input type="color" id="input-text-color" title="Elegir color de texto" aria-label="Elegir color de texto">
+                </div>
+                <input type="text" id="input-text-color-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de texto">
+                <button type="button" id="btn-text-color-none" class="btn-color-none" aria-pressed="false" title="Sin color" aria-label="Sin color">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
+                    <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <!-- Sección: Alinear (visible solo con 2 o más figuras seleccionadas) -->
         <details class="collapsible-section" id="section-align" open style="display: none;">
           <summary class="section-header" tabindex="0">

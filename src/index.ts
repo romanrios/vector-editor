@@ -37,6 +37,8 @@ export * from './commands/ReorderCommand.ts';
 export * from './commands/BatchCommand.ts';
 export * from './commands/GroupCommand.ts';
 export * from './commands/UngroupCommand.ts';
+export * from './commands/UpdateTextCommand.ts';
+export * from './commands/UpdateTextTypographyCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

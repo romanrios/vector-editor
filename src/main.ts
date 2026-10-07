@@ -6,13 +6,26 @@ import { CommandManager } from './commands/CommandManager.ts';
 import { TranslateCommand } from './commands/TranslateCommand.ts';
 import { StyleCommand } from './commands/StyleCommand.ts';
 import { StyleShapesCommand, type ShapeStyleChangeEntry } from './commands/StyleShapesCommand.ts';
+import { UpdateTextTypographyCommand } from './commands/UpdateTextTypographyCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
 import { ResizeArtboardCommand } from './commands/ResizeArtboardCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
-import { isGroup, isSelectable, isShape, type Path, type SelectableNode, type Shape } from './types/scene-graph.ts';
+import {
+  isGroup,
+  isSelectable,
+  isShape,
+  isText,
+  type Path,
+  type SelectableNode,
+  type Shape,
+  type Text,
+  type FontStyle,
+  type FontWeight,
+  type TextAlign,
+} from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 import { getPresetById, findPresetForSize } from './utils/artboardPresets.ts';
 
@@ -115,6 +128,7 @@ export function setupUIBindings(
   const panelTitle = document.querySelector<HTMLElement>('#panel-title, .panel-title');
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
   const selectionState = document.querySelector<HTMLElement>('#selection-state');
+  const sectionAppearance = document.querySelector<HTMLDetailsElement>('#section-appearance');
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
   const inputFillHex = document.querySelector<HTMLInputElement>('#input-fill-hex');
   const btnFillNone = document.querySelector<HTMLButtonElement>('#btn-fill-none');
@@ -126,6 +140,22 @@ export function setupUIBindings(
   const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
 
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+
+  // Sección Tipografía (para nodo Text individual)
+  const sectionTypography = document.querySelector<HTMLDetailsElement>('#section-typography');
+  const inputTextContent = document.querySelector<HTMLInputElement>('#input-text-content');
+  const selectFontFamily = document.querySelector<HTMLSelectElement>('#select-font-family');
+  const inputFontSize = document.querySelector<HTMLInputElement>('#input-font-size');
+  const selectFontWeight = document.querySelector<HTMLSelectElement>('#select-font-weight');
+  const selectFontStyle = document.querySelector<HTMLSelectElement>('#select-font-style');
+  const selectTextAlign = document.querySelector<HTMLSelectElement>('#select-text-align');
+  const btnTextAlignLeft = document.querySelector<HTMLButtonElement>('#btn-text-align-left');
+  const btnTextAlignCenter = document.querySelector<HTMLButtonElement>('#btn-text-align-center');
+  const btnTextAlignRight = document.querySelector<HTMLButtonElement>('#btn-text-align-right');
+  const inputTextNative = document.querySelector<HTMLInputElement>('#input-text-color');
+  const inputTextHex = document.querySelector<HTMLInputElement>('#input-text-color-hex');
+  const swatchTextColorPreview = document.querySelector<HTMLElement>('#swatch-text-color-preview');
+  const btnTextColorNone = document.querySelector<HTMLButtonElement>('#btn-text-color-none');
   const selectArtboardPreset = document.querySelector<HTMLSelectElement>('#select-artboard-preset');
   const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
   const inputArtboardHeight = document.querySelector<HTMLInputElement>('#input-artboard-height');
@@ -293,6 +323,7 @@ export function setupUIBindings(
             rectangle: 'Rectángulo',
             ellipse: 'Elipse',
             path: 'Trazado',
+            text: 'Texto',
           };
           const typeName = typeLabels[node.type] || node.type;
           statusSelectionInfo.textContent = `${node.name} (${typeName})`;
@@ -592,6 +623,36 @@ export function setupUIBindings(
   let lastRememberedFill = '#38bdf8';
   let lastRememberedStroke = '#0284c7';
 
+  interface TextTypographySnapshot {
+    readonly text?: string;
+    readonly fontFamily?: string;
+    readonly fontSize?: number;
+    readonly fontWeight?: FontWeight;
+    readonly fontStyle?: FontStyle;
+    readonly textAlign?: TextAlign;
+    readonly fill?: string;
+  }
+  let initialTextTypographySnapshot: TextTypographySnapshot | null = null;
+  let lastRememberedTextColor = '#000000';
+
+  const captureInitialTextTypography = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      initialTextTypographySnapshot = {
+        text: textNode.text,
+        fontFamily: textNode.fontFamily ?? 'Inter',
+        fontSize: textNode.fontSize ?? 32,
+        fontWeight: textNode.fontWeight ?? 400,
+        fontStyle: textNode.fontStyle ?? 'normal',
+        textAlign: textNode.textAlign ?? 'left',
+        fill: textNode.fill ?? '#000000',
+      };
+    } else {
+      initialTextTypographySnapshot = null;
+    }
+  };
+
   const captureInitialStyle = () => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
@@ -622,6 +683,15 @@ export function setupUIBindings(
   const syncPropertiesPanel = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()) => {
     const leafShapes = getLeafShapes(selectedNodes);
     const hasSelection = selectedNodes.length > 0;
+    const isSingleTextSelected = selectedNodes.length === 1 && isText(selectedNodes[0]);
+    const singleTextNode = isSingleTextSelected ? (selectedNodes[0] as Text) : null;
+
+    if (sectionTypography) {
+      sectionTypography.style.display = isSingleTextSelected ? 'block' : 'none';
+    }
+    if (sectionAppearance) {
+      sectionAppearance.style.display = isSingleTextSelected ? 'none' : 'block';
+    }
 
     if (hasSelection) {
       if (selectionState) {
@@ -652,10 +722,86 @@ export function setupUIBindings(
       if (sectionAlign) {
         sectionAlign.style.display = 'none';
       }
+      if (sectionTypography) {
+        sectionTypography.style.display = 'none';
+      }
+      if (sectionAppearance) {
+        sectionAppearance.style.display = 'block';
+      }
       if (panelTitle) {
         panelTitle.textContent = 'ESTILO DE DIBUJO';
       }
       initialStyleSnapshots = null;
+      initialTextTypographySnapshot = null;
+    }
+
+    if (isSingleTextSelected && singleTextNode) {
+      const isTypoEditing = initialTextTypographySnapshot !== null;
+
+      if (inputTextContent && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputTextContent))) {
+        inputTextContent.value = singleTextNode.text ?? '';
+      }
+
+      if (selectFontFamily && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== selectFontFamily))) {
+        selectFontFamily.value = singleTextNode.fontFamily ?? 'Inter';
+      }
+
+      if (inputFontSize && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputFontSize))) {
+        inputFontSize.value = String(singleTextNode.fontSize ?? 32);
+      }
+
+      if (selectFontWeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== selectFontWeight))) {
+        const fw = singleTextNode.fontWeight ?? 400;
+        const fwStr = fw === 'normal' ? '400' : fw === 'bold' ? '700' : String(fw);
+        selectFontWeight.value = fwStr;
+      }
+
+      if (selectFontStyle && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== selectFontStyle))) {
+        selectFontStyle.value = singleTextNode.fontStyle ?? 'normal';
+      }
+
+      const align = singleTextNode.textAlign ?? 'left';
+      if (selectTextAlign && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== selectTextAlign))) {
+        selectTextAlign.value = align;
+      }
+      if (btnTextAlignLeft) btnTextAlignLeft.classList.toggle('active', align === 'left');
+      if (btnTextAlignCenter) btnTextAlignCenter.classList.toggle('active', align === 'center');
+      if (btnTextAlignRight) btnTextAlignRight.classList.toggle('active', align === 'right');
+
+      const textColor = singleTextNode.fill ?? '#000000';
+      const isNone = isNonePaint(textColor);
+      const validHex = toValidHexColor(textColor, '#000000');
+      if (!isNone) {
+        lastRememberedTextColor = validHex;
+      }
+
+      if (inputTextNative && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputTextNative))) {
+        inputTextNative.value = validHex;
+      }
+
+      if (inputTextHex && (typeof document === 'undefined' || document.activeElement !== inputTextHex)) {
+        if (isNone) {
+          inputTextHex.value = '';
+          inputTextHex.placeholder = 'ninguno';
+        } else {
+          inputTextHex.value = validHex;
+          inputTextHex.placeholder = validHex;
+        }
+      }
+
+      if (swatchTextColorPreview) {
+        if (isNone) {
+          swatchTextColorPreview.className = 'color-swatch-preview state-none';
+          swatchTextColorPreview.style.backgroundColor = 'transparent';
+        } else {
+          swatchTextColorPreview.className = 'color-swatch-preview';
+          swatchTextColorPreview.style.backgroundColor = validHex;
+        }
+      }
+
+      if (btnTextColorNone) {
+        btnTextColorNone.setAttribute('aria-pressed', String(isNone));
+      }
     }
 
     const firstShape = leafShapes[0];
@@ -1235,6 +1381,334 @@ export function setupUIBindings(
   inputFill?.addEventListener('change', onFillChange);
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
+
+  // 5.1 Manejadores de Tipografía para nodo Text
+  const commitTextColor = (color: string) => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const beforeColor = initialTextTypographySnapshot?.fill ?? textNode.fill ?? '#000000';
+      stateManager.setDrawingStyle({ fill: color });
+      stateManager.updateShape<Text>(textNode.id, { fill: color });
+      const cmd = new UpdateTextTypographyCommand(
+        stateManager,
+        textNode.id,
+        { fill: beforeColor },
+        { fill: color }
+      );
+      if (!cmd.isAlreadyAtTarget) {
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+      syncPropertiesPanel();
+    }
+  };
+
+  const previewTextColor = (color: string) => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      if (!initialTextTypographySnapshot) {
+        captureInitialTextTypography();
+      }
+      stateManager.setDrawingStyle({ fill: color });
+      stateManager.updateShape<Text>(textNode.id, { fill: color });
+      if (swatchTextColorPreview) {
+        swatchTextColorPreview.className = 'color-swatch-preview';
+        swatchTextColorPreview.style.backgroundColor = color;
+      }
+      if (inputTextHex && (typeof document === 'undefined' || document.activeElement !== inputTextHex)) {
+        inputTextHex.value = color;
+        inputTextHex.placeholder = color;
+      }
+      btnTextColorNone?.setAttribute('aria-pressed', 'false');
+    }
+  };
+
+  const onTextContentFocus = () => {
+    captureInitialTextTypography();
+  };
+
+  const onTextContentInput = () => {
+    if (!inputTextContent) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      if (!initialTextTypographySnapshot) {
+        captureInitialTextTypography();
+      }
+      stateManager.updateShape<Text>(textNode.id, { text: inputTextContent.value });
+    }
+  };
+
+  const onTextContentChange = () => {
+    if (!inputTextContent) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const before = initialTextTypographySnapshot?.text ?? textNode.text ?? 'Texto';
+      const after = inputTextContent.value;
+      stateManager.updateShape<Text>(textNode.id, { text: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { text: before }, { text: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const onFontFamilyChange = () => {
+    if (!selectFontFamily) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const before = initialTextTypographySnapshot?.fontFamily ?? textNode.fontFamily ?? 'Inter';
+      const after = selectFontFamily.value;
+      stateManager.updateShape<Text>(textNode.id, { fontFamily: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { fontFamily: before }, { fontFamily: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const onFontSizeFocus = () => {
+    captureInitialTextTypography();
+  };
+
+  const onFontSizeInput = () => {
+    if (!inputFontSize) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      if (!initialTextTypographySnapshot) {
+        captureInitialTextTypography();
+      }
+      const parsed = parseFloat(inputFontSize.value);
+      if (!isNaN(parsed) && parsed > 0) {
+        stateManager.updateShape<Text>(textNode.id, { fontSize: parsed });
+      }
+    }
+  };
+
+  const onFontSizeChange = () => {
+    if (!inputFontSize) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const parsed = parseFloat(inputFontSize.value);
+      const after = isNaN(parsed) || parsed <= 0 ? 32 : parsed;
+      inputFontSize.value = String(after);
+      const before = initialTextTypographySnapshot?.fontSize ?? textNode.fontSize ?? 32;
+      stateManager.updateShape<Text>(textNode.id, { fontSize: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { fontSize: before }, { fontSize: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const onFontWeightChange = () => {
+    if (!selectFontWeight) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const before = initialTextTypographySnapshot?.fontWeight ?? textNode.fontWeight ?? 400;
+      const parsed = parseInt(selectFontWeight.value, 10);
+      const after: FontWeight = isNaN(parsed) ? selectFontWeight.value : parsed;
+      stateManager.updateShape<Text>(textNode.id, { fontWeight: after });
+      if (String(before) !== String(after)) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { fontWeight: before }, { fontWeight: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const onFontStyleChange = () => {
+    if (!selectFontStyle) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const before = initialTextTypographySnapshot?.fontStyle ?? textNode.fontStyle ?? 'normal';
+      const after = selectFontStyle.value as FontStyle;
+      stateManager.updateShape<Text>(textNode.id, { fontStyle: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { fontStyle: before }, { fontStyle: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const applyTextAlign = (align: TextAlign) => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const before = initialTextTypographySnapshot?.textAlign ?? textNode.textAlign ?? 'left';
+      stateManager.updateShape<Text>(textNode.id, { textAlign: align });
+      if (before !== align) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { textAlign: before }, { textAlign: align });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+      if (selectTextAlign) selectTextAlign.value = align;
+      btnTextAlignLeft?.classList.toggle('active', align === 'left');
+      btnTextAlignCenter?.classList.toggle('active', align === 'center');
+      btnTextAlignRight?.classList.toggle('active', align === 'right');
+    }
+  };
+
+  const onTextAlignChange = () => {
+    if (!selectTextAlign) return;
+    applyTextAlign(selectTextAlign.value as TextAlign);
+  };
+
+  const onTextAlignLeftClick = () => applyTextAlign('left');
+  const onTextAlignCenterClick = () => applyTextAlign('center');
+  const onTextAlignRightClick = () => applyTextAlign('right');
+
+  const onTextColorInput = () => {
+    if (!inputTextNative) return;
+    previewTextColor(inputTextNative.value.toLowerCase());
+  };
+
+  const onTextColorChange = () => {
+    if (!inputTextNative) return;
+    commitTextColor(inputTextNative.value.toLowerCase());
+  };
+
+  let textColorInvalidTimer: ReturnType<typeof setTimeout> | null = null;
+  let isTextColorHexSubmitting = false;
+
+  const handleTextColorHexCommit = () => {
+    if (!inputTextHex) return;
+    const text = inputTextHex.value;
+    const parsed = parseHexColor(text);
+    if (parsed !== null) {
+      inputTextHex.removeAttribute('aria-invalid');
+      commitTextColor(parsed);
+      inputTextHex.value = parsed;
+      syncPropertiesPanel();
+    } else {
+      if (textColorInvalidTimer) clearTimeout(textColorInvalidTimer);
+      inputTextHex.setAttribute('aria-invalid', 'true');
+      textColorInvalidTimer = setTimeout(() => {
+        inputTextHex?.removeAttribute('aria-invalid');
+        textColorInvalidTimer = null;
+      }, 1000);
+
+      const selectedNodes = stateManager.getSelectedNodes();
+      if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+        const textNode = selectedNodes[0];
+        const val = textNode.fill ?? '#000000';
+        if (isNonePaint(val)) {
+          inputTextHex.value = '';
+          inputTextHex.placeholder = 'ninguno';
+        } else {
+          inputTextHex.value = val;
+          inputTextHex.placeholder = val;
+        }
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const handleTextColorHexRevert = () => {
+    if (!inputTextHex) return;
+    inputTextHex.removeAttribute('aria-invalid');
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const val = textNode.fill ?? '#000000';
+      if (isNonePaint(val)) {
+        inputTextHex.value = '';
+        inputTextHex.placeholder = 'ninguno';
+      } else {
+        inputTextHex.value = val;
+        inputTextHex.placeholder = val;
+      }
+    }
+    initialTextTypographySnapshot = null;
+  };
+
+  const onTextColorHexFocus = () => {
+    captureInitialTextTypography();
+  };
+
+  const onTextColorHexKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (inputTextHex) {
+        isTextColorHexSubmitting = true;
+        handleTextColorHexCommit();
+        inputTextHex.blur();
+        isTextColorHexSubmitting = false;
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (inputTextHex) {
+        isTextColorHexSubmitting = true;
+        handleTextColorHexRevert();
+        inputTextHex.blur();
+        isTextColorHexSubmitting = false;
+      }
+    }
+  };
+
+  const onTextColorHexBlur = () => {
+    if (isTextColorHexSubmitting) return;
+    handleTextColorHexCommit();
+  };
+
+  const onTextColorNoneClick = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const currentFill = textNode.fill ?? '#000000';
+      captureInitialTextTypography();
+      if (!isNonePaint(currentFill)) {
+        lastRememberedTextColor = toValidHexColor(currentFill, lastRememberedTextColor);
+        commitTextColor('none');
+      } else {
+        commitTextColor(lastRememberedTextColor);
+      }
+    }
+  };
+
+  inputTextContent?.addEventListener('focus', onTextContentFocus);
+  inputTextContent?.addEventListener('input', onTextContentInput);
+  inputTextContent?.addEventListener('change', onTextContentChange);
+  inputTextContent?.addEventListener('blur', onTextContentChange);
+
+  selectFontFamily?.addEventListener('change', onFontFamilyChange);
+
+  inputFontSize?.addEventListener('focus', onFontSizeFocus);
+  inputFontSize?.addEventListener('input', onFontSizeInput);
+  inputFontSize?.addEventListener('change', onFontSizeChange);
+  inputFontSize?.addEventListener('blur', onFontSizeChange);
+
+  selectFontWeight?.addEventListener('change', onFontWeightChange);
+  selectFontStyle?.addEventListener('change', onFontStyleChange);
+
+  selectTextAlign?.addEventListener('change', onTextAlignChange);
+  btnTextAlignLeft?.addEventListener('click', onTextAlignLeftClick);
+  btnTextAlignCenter?.addEventListener('click', onTextAlignCenterClick);
+  btnTextAlignRight?.addEventListener('click', onTextAlignRightClick);
+
+  inputTextNative?.addEventListener('mousedown', onInputStart);
+  inputTextNative?.addEventListener('click', onInputStart);
+  inputTextNative?.addEventListener('focus', onInputStart);
+  inputTextNative?.addEventListener('input', onTextColorInput);
+  inputTextNative?.addEventListener('change', onTextColorChange);
+
+  inputTextHex?.addEventListener('focus', onTextColorHexFocus);
+  inputTextHex?.addEventListener('keydown', onTextColorHexKeyDown);
+  inputTextHex?.addEventListener('blur', onTextColorHexBlur);
+
+  btnTextColorNone?.addEventListener('click', onTextColorNoneClick);
 
   // 6. Controles de Mesa de Trabajo (Ancho, Alto y Proporción)
   let initialArtboardWidth = stateManager.getState().width;
@@ -2428,6 +2902,43 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
 
+      inputTextContent?.removeEventListener('focus', onTextContentFocus);
+      inputTextContent?.removeEventListener('input', onTextContentInput);
+      inputTextContent?.removeEventListener('change', onTextContentChange);
+      inputTextContent?.removeEventListener('blur', onTextContentChange);
+
+      selectFontFamily?.removeEventListener('change', onFontFamilyChange);
+
+      inputFontSize?.removeEventListener('focus', onFontSizeFocus);
+      inputFontSize?.removeEventListener('input', onFontSizeInput);
+      inputFontSize?.removeEventListener('change', onFontSizeChange);
+      inputFontSize?.removeEventListener('blur', onFontSizeChange);
+
+      selectFontWeight?.removeEventListener('change', onFontWeightChange);
+      selectFontStyle?.removeEventListener('change', onFontStyleChange);
+
+      selectTextAlign?.removeEventListener('change', onTextAlignChange);
+      btnTextAlignLeft?.removeEventListener('click', onTextAlignLeftClick);
+      btnTextAlignCenter?.removeEventListener('click', onTextAlignCenterClick);
+      btnTextAlignRight?.removeEventListener('click', onTextAlignRightClick);
+
+      inputTextNative?.removeEventListener('mousedown', onInputStart);
+      inputTextNative?.removeEventListener('click', onInputStart);
+      inputTextNative?.removeEventListener('focus', onInputStart);
+      inputTextNative?.removeEventListener('input', onTextColorInput);
+      inputTextNative?.removeEventListener('change', onTextColorChange);
+
+      inputTextHex?.removeEventListener('focus', onTextColorHexFocus);
+      inputTextHex?.removeEventListener('keydown', onTextColorHexKeyDown);
+      inputTextHex?.removeEventListener('blur', onTextColorHexBlur);
+
+      btnTextColorNone?.removeEventListener('click', onTextColorNoneClick);
+
+      if (textColorInvalidTimer) {
+        clearTimeout(textColorInvalidTimer);
+        textColorInvalidTimer = null;
+      }
+
       selectArtboardPreset?.removeEventListener('change', onArtboardPresetChange);
       checkArtboardRatio?.removeEventListener('change', onArtboardRatioChange);
 
@@ -2579,6 +3090,7 @@ const globals = {
   uiBindings,
   TranslateCommand,
   StyleCommand,
+  UpdateTextTypographyCommand,
   ReorderCommand,
   ResizeArtboardCommand,
   toValidHexColor,
