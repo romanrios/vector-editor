@@ -5,6 +5,7 @@ import {
   type Ellipse,
   type Path,
   type PathPoint,
+  type Text,
   type Group,
   type SelectableNode,
   type LayerChildNode,
@@ -119,6 +120,17 @@ export function cloneNode<T extends SelectableNode>(
       points,
     };
     return deepFreeze(path) as unknown as T;
+  }
+
+  if (node.type === 'text') {
+    const text: Text = {
+      ...node,
+      id,
+      name,
+      x: node.x + dx,
+      y: node.y + dy,
+    };
+    return deepFreeze(text) as unknown as T;
   }
 
   throw new Error(`[cloneNode] Tipo de nodo no soportado: ${(node as SelectableNode).type}`);

@@ -1,7 +1,7 @@
 /**
  * Tipos de nodos admitidos en el Scene Graph
  */
-export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path';
+export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path' | 'text';
 
 /**
  * Punto o vector bidimensional
@@ -95,9 +95,42 @@ export interface Ellipse extends BaseNode {
 }
 
 /**
+ * Alineación horizontal para nodos de texto
+ */
+export type TextAlign = 'left' | 'center' | 'right';
+
+/**
+ * Estilo tipográfico para nodos de texto
+ */
+export type FontStyle = 'normal' | 'italic';
+
+/**
+ * Peso o grosor tipográfico para nodos de texto
+ */
+export type FontWeight = 'normal' | 'bold' | string | number;
+
+/**
+ * Propiedades geométricas, tipográficas y visuales para nodos de tipo Text (texto de punto)
+ */
+export interface Text extends BaseNode {
+  readonly type: 'text';
+  readonly x: number;
+  readonly y: number;
+  readonly text: string;
+  readonly fontFamily?: string;
+  readonly fontSize?: number;
+  readonly fontWeight?: FontWeight;
+  readonly fontStyle?: FontStyle;
+  readonly textAlign?: TextAlign;
+  readonly fill?: string;
+  readonly rotation?: number;
+  readonly opacity?: number;
+}
+
+/**
  * Tipo discriminado para cualquier figura (Shape)
  */
-export type Shape = Rectangle | Ellipse | Path;
+export type Shape = Rectangle | Ellipse | Path | Text;
 
 /**
  * Nodo contenedor Group (grupo), que alberga una colección de figuras y/o subgrupos
@@ -161,6 +194,7 @@ export type ShapeNode = Shape;
 export type RectangleNode = Rectangle;
 export type EllipseNode = Ellipse;
 export type PathNode = Path;
+export type TextNode = Text;
 
 /**
  * Funciones de guardia de tipos (Type Guards)
@@ -178,7 +212,12 @@ export function isGroup(node: SceneNode): node is Group {
 }
 
 export function isShape(node: SceneNode): node is Shape {
-  return node.type === 'rectangle' || node.type === 'ellipse' || node.type === 'path';
+  return (
+    node.type === 'rectangle' ||
+    node.type === 'ellipse' ||
+    node.type === 'path' ||
+    node.type === 'text'
+  );
 }
 
 export function isSelectable(node: SceneNode): node is SelectableNode {
@@ -195,4 +234,8 @@ export function isEllipse(node: SceneNode): node is Ellipse {
 
 export function isPath(node: SceneNode): node is Path {
   return node.type === 'path';
+}
+
+export function isText(node: SceneNode): node is Text {
+  return node.type === 'text';
 }

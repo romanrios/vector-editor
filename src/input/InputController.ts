@@ -861,6 +861,8 @@ export class InputController {
         if (isPointInPath(x, y, node, ctx, 8 / zoom)) {
           return node;
         }
+      } else if (node.type === 'text') {
+        return null;
       } else {
         const tolerance = 4 / zoom;
         if (isPointInShape(x, y, node, tolerance)) {
@@ -2433,7 +2435,7 @@ export class InputController {
    * Aplica estilos a la selección expandiendo grupos a sus figuras hoja.
    * Delega en SelectionOperations.
    */
-  public applyStyle(style: Partial<Pick<Shape, 'fill' | 'stroke' | 'strokeWidth'>>): boolean {
+  public applyStyle(style: Partial<{ fill: string; stroke: string; strokeWidth: number }>): boolean {
     return this._selectionOperations.applyStyle(style);
   }
 

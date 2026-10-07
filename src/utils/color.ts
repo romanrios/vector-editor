@@ -94,7 +94,7 @@ export function getPaintState(shapes: readonly Shape[], property: 'fill' | 'stro
   const normalizedPaints: string[] = [];
 
   for (const shape of shapes) {
-    const raw = property === 'fill' ? shape.fill : shape.stroke;
+    const raw = property === 'fill' ? shape.fill : ('stroke' in shape ? shape.stroke : undefined);
     if (isNonePaint(raw)) {
       normalizedPaints.push(NONE_PAINT);
     } else {

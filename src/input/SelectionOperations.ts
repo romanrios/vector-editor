@@ -70,9 +70,9 @@ export function asShapeArray(shapes: readonly SelectableNode[]): Shape[] & Shape
       type: { get: () => arr[0]?.type, configurable: true },
       x: { get: () => (isShape(first) ? first.x : undefined), configurable: true },
       y: { get: () => (isShape(first) ? first.y : undefined), configurable: true },
-      stroke: { get: () => (isShape(first) ? first.stroke : undefined), configurable: true },
+      stroke: { get: () => (isShape(first) && 'stroke' in first ? (first as { stroke?: string }).stroke : undefined), configurable: true },
       fill: { get: () => (isShape(first) ? first.fill : undefined), configurable: true },
-      strokeWidth: { get: () => (isShape(first) ? first.strokeWidth : undefined), configurable: true },
+      strokeWidth: { get: () => (isShape(first) && 'strokeWidth' in first ? (first as { strokeWidth?: number }).strokeWidth : undefined), configurable: true },
       visible: { get: () => arr[0]?.visible, configurable: true },
       locked: { get: () => arr[0]?.locked, configurable: true },
       rotation: { get: () => (isShape(first) ? first.rotation : undefined), configurable: true },
@@ -758,13 +758,15 @@ export class SelectionOperations {
         newStyle.fill = style.fill;
         changed = true;
       }
-      if (style.stroke !== undefined && shape.stroke !== style.stroke) {
-        oldStyle.stroke = shape.stroke;
+      const shapeStroke = 'stroke' in shape ? (shape as { stroke?: string }).stroke : undefined;
+      if (style.stroke !== undefined && 'stroke' in shape && shapeStroke !== style.stroke) {
+        oldStyle.stroke = shapeStroke;
         newStyle.stroke = style.stroke;
         changed = true;
       }
-      if (style.strokeWidth !== undefined && shape.strokeWidth !== style.strokeWidth) {
-        oldStyle.strokeWidth = shape.strokeWidth;
+      const shapeStrokeWidth = 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined;
+      if (style.strokeWidth !== undefined && 'strokeWidth' in shape && shapeStrokeWidth !== style.strokeWidth) {
+        oldStyle.strokeWidth = shapeStrokeWidth;
         newStyle.strokeWidth = style.strokeWidth;
         changed = true;
       }

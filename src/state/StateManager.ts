@@ -1368,9 +1368,11 @@ export class StateManager {
           }
 
           const hasFillChange = targetStyle.fill !== undefined && targetStyle.fill !== child.fill;
-          const hasStrokeChange = targetStyle.stroke !== undefined && targetStyle.stroke !== child.stroke;
+          const childStroke = 'stroke' in child ? (child as { stroke?: string }).stroke : undefined;
+          const childStrokeWidth = 'strokeWidth' in child ? (child as { strokeWidth?: number }).strokeWidth : undefined;
+          const hasStrokeChange = targetStyle.stroke !== undefined && targetStyle.stroke !== childStroke;
           const hasStrokeWidthChange =
-            targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== child.strokeWidth;
+            targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== childStrokeWidth;
 
           if (!hasFillChange && !hasStrokeChange && !hasStrokeWidthChange) {
             nextChildren[i] = child;
@@ -1382,8 +1384,8 @@ export class StateManager {
           nextChildren[i] = {
             ...child,
             ...(targetStyle.fill !== undefined ? { fill: targetStyle.fill } : {}),
-            ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
-            ...(targetStyle.strokeWidth !== undefined ? { strokeWidth: targetStyle.strokeWidth } : {}),
+            ...(targetStyle.stroke !== undefined && 'stroke' in child ? { stroke: targetStyle.stroke } : {}),
+            ...(targetStyle.strokeWidth !== undefined && 'strokeWidth' in child ? { strokeWidth: targetStyle.strokeWidth } : {}),
           };
         } else {
           nextChildren[i] = child;

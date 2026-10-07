@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, Shape, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, Shape, Text, Vector2D } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
 
@@ -318,6 +318,20 @@ export function getPathAABB(path: Path): AABB {
 }
 
 /**
+ * Obtiene el AABB (Axis-Aligned Bounding Box) inicial para un nodo de texto de punto.
+ */
+export function getTextAABB(text: Text): AABB {
+  return {
+    minX: text.x,
+    minY: text.y,
+    maxX: text.x,
+    maxY: text.y,
+    width: 0,
+    height: 0,
+  };
+}
+
+/**
  * Obtiene el AABB (Axis-Aligned Bounding Box) de cualquier figura (Shape).
  */
 export function getShapeAABB(shape: Shape): AABB {
@@ -326,6 +340,9 @@ export function getShapeAABB(shape: Shape): AABB {
   }
   if (shape.type === 'ellipse') {
     return getEllipseAABB(shape);
+  }
+  if (shape.type === 'text') {
+    return getTextAABB(shape);
   }
   return getPathAABB(shape);
 }

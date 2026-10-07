@@ -589,8 +589,8 @@ export function setupUIBindings(
       for (const shape of leafShapes) {
         initialStyleSnapshots.set(shape.id, {
           fill: shape.fill,
-          stroke: shape.stroke,
-          strokeWidth: shape.strokeWidth,
+          stroke: 'stroke' in shape ? (shape as { stroke?: string }).stroke : undefined,
+          strokeWidth: 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined,
         });
       }
     }
@@ -717,7 +717,7 @@ export function setupUIBindings(
       inputStroke.value =
         strokeState.kind === 'color'
           ? strokeState.hex
-          : toValidHexColor(firstShape?.stroke ?? defaultStyle?.stroke ?? lastRememberedStroke, '#000000');
+          : toValidHexColor(('stroke' in firstShape ? (firstShape as { stroke?: string }).stroke : undefined) ?? defaultStyle?.stroke ?? lastRememberedStroke, '#000000');
     }
 
     if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {
@@ -738,7 +738,7 @@ export function setupUIBindings(
     }
 
     if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
-      inputStrokeWidth.value = String(firstShape ? (firstShape.strokeWidth ?? 1) : (defaultStyle?.strokeWidth ?? 2));
+      inputStrokeWidth.value = String(firstShape ? (('strokeWidth' in firstShape ? (firstShape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1) : (defaultStyle?.strokeWidth ?? 2));
     }
 
     const currentDoc = stateManager.getState();
@@ -837,8 +837,9 @@ export function setupUIBindings(
       if (property === 'fill') {
         return { id: shape.id, style: { fill: color } };
       } else {
+        const shapeStrokeWidth = 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined;
         const needsStrokeWidth =
-          !isNonePaint(color) && (shape.strokeWidth === undefined || shape.strokeWidth <= 0);
+          !isNonePaint(color) && (shapeStrokeWidth === undefined || shapeStrokeWidth <= 0);
         return {
           id: shape.id,
           style: {
@@ -889,8 +890,8 @@ export function setupUIBindings(
           after: { fill: color },
         };
       } else {
-        const beforeStroke = snapshot?.stroke ?? shape.stroke;
-        const beforeStrokeWidth = snapshot?.strokeWidth ?? shape.strokeWidth;
+        const beforeStroke = snapshot?.stroke ?? ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined);
+        const beforeStrokeWidth = snapshot?.strokeWidth ?? ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined);
         const needsStrokeWidth =
           !isNonePaint(color) && (beforeStrokeWidth === undefined || beforeStrokeWidth <= 0);
         return {
@@ -1195,7 +1196,8 @@ export function setupUIBindings(
     const commands: StyleCommand[] = [];
 
     for (const shape of leafShapes) {
-      const initialVal = initialStyleSnapshots?.get(shape.id)?.strokeWidth ?? shape.strokeWidth;
+      const shapeStrokeWidth = 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined;
+      const initialVal = initialStyleSnapshots?.get(shape.id)?.strokeWidth ?? shapeStrokeWidth;
       stateManager.updateShape(shape.id, { strokeWidth: finalVal });
 
       if (initialVal !== finalVal) {

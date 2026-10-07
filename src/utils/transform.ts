@@ -22,6 +22,12 @@ export function getShapeCenter(shape: Shape): Vector2D {
       y: shape.y,
     };
   }
+  if (shape.type === 'text') {
+    return {
+      x: shape.x,
+      y: shape.y,
+    };
+  }
   const baseAABB = getPathBaseAABB(shape);
   return {
     x: (baseAABB.minX + baseAABB.maxX) / 2,
@@ -48,6 +54,13 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       y: shape.y,
       radiusX: shape.radiusX,
       radiusY: shape.radiusY,
+      rotation: shape.rotation ?? 0,
+    };
+  }
+  if (shape.type === 'text') {
+    return {
+      x: shape.x,
+      y: shape.y,
       rotation: shape.rotation ?? 0,
     };
   }
@@ -188,6 +201,25 @@ export function rotateShapesAboutPivot(
             x: newPathX,
             y: newPathY,
             points: newPoints,
+            rotation: newRot,
+          },
+        });
+      }
+    } else if (shape.type === 'text') {
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10 ||
+        Math.abs(newRot - oldRot) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
             rotation: newRot,
           },
         });
@@ -343,6 +375,24 @@ export function scaleShapesAboutAnchor(
             x: newPathX,
             y: newPathY,
             points: newPoints,
+            rotation: rotDeg,
+          },
+        });
+      }
+    } else if (shape.type === 'text') {
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
             rotation: rotDeg,
           },
         });
