@@ -380,6 +380,83 @@ export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | nu
 }
 
 /**
+ * Mide el ancho de un prefijo de longitud `length` de un nodo Text.
+ */
+export function getTextSubstrWidth(text: Text, length: number, ctx?: CanvasRenderingContext2D | null): number {
+  const content = text.text ?? '';
+  if (length <= 0 || !content) {
+    return 0;
+  }
+  if (length >= content.length) {
+    return measureTextWidth(text, ctx);
+  }
+  const subNode: Text = { ...text, text: content.slice(0, length) };
+  return measureTextWidth(subNode, ctx);
+}
+
+/**
+ * Calcula el índice de carácter más cercano a una posición (worldX, worldY) en coordenadas del mundo,
+ * utilizando CanvasRenderingContext2D.measureText para métricas tipográficas reales.
+ * Toma en consideración la rotación, alineación horizontal y tamaño de fuente del nodo Text.
+ */
+export function getTextIndexAtPosition(
+  text: Text,
+  worldX: number,
+  worldY: number,
+  ctx?: CanvasRenderingContext2D | null
+): number {
+  const content = text.text ?? '';
+  if (!content) {
+    return 0;
+  }
+
+  // 1. Des-rotar el punto con respecto al anclaje (text.x, text.y) si hay rotación
+  const rotation = text.rotation ?? 0;
+  let unrotX = worldX;
+  if (rotation !== 0) {
+    const rad = (-rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = worldX - text.x;
+    const dy = worldY - text.y;
+    unrotX = text.x + (dx * cos - dy * sin);
+  }
+
+  // 2. Determinar la posición horizontal de inicio (startX) según textAlign
+  const totalWidth = measureTextWidth(text, ctx);
+  let startX = text.x;
+  if (text.textAlign === 'center') {
+    startX = text.x - totalWidth / 2;
+  } else if (text.textAlign === 'right') {
+    startX = text.x - totalWidth;
+  }
+
+  // 3. Desplazamiento horizontal relativo al inicio del texto
+  const offsetX = unrotX - startX;
+  if (offsetX <= 0) {
+    return 0;
+  }
+  if (offsetX >= totalWidth) {
+    return content.length;
+  }
+
+  // 4. Buscar el índice que minimice la distancia a los límites de caracteres con métricas reales
+  let closestIndex = 0;
+  let minDiff = Infinity;
+
+  for (let i = 0; i <= content.length; i++) {
+    const w = getTextSubstrWidth(text, i, ctx);
+    const diff = Math.abs(w - offsetX);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIndex = i;
+    }
+  }
+
+  return closestIndex;
+}
+
+/**
  * Obtiene el Bounding Box base (sin rotación) de un nodo Text en coordenadas del mundo.
  * Toma en consideración textAlign ('left', 'center', 'right') y fija textBaseline en 'top'
  * (de modo que minY = text.y y maxY = text.y + fontSize).

@@ -27,6 +27,15 @@ import type { ShapePreview } from '../input/InputController.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 import { isNonePaint } from '../utils/color.ts';
 
+export interface TextEditRenderState {
+  textId: string;
+  text: string;
+  cursorIndex?: number;
+  selectionStart?: number;
+  selectionEnd?: number;
+  cursorVisible?: boolean;
+}
+
 export interface RenderEngineOptions {
   /**
    * Habilita el escalado automático para pantallas de alta densidad (Retina/HiDPI)
@@ -49,7 +58,7 @@ export interface RenderEngineOptions {
   /**
    * Proveedor funcional opcional del estado de edición de texto en curso.
    */
-  textEditProvider?: () => { textId: string; text: string } | null;
+  textEditProvider?: () => TextEditRenderState | null;
   /**
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
@@ -540,7 +549,7 @@ export class RenderEngine {
       } else if (isShape(node)) {
         const textEdit = this.options.textEditProvider?.() ?? null;
         if (textEdit && textEdit.textId === node.id && isText(node)) {
-          this.renderTextEditOverlay(node, textEdit.text, zoom);
+          this.renderTextEditOverlay(node, textEdit, zoom);
         } else if (!pathEdit || pathEdit.pathId !== node.id) {
           this.renderSingleShapeSelection(node, zoom);
         }
@@ -963,16 +972,58 @@ export class RenderEngine {
     const isEditingThis = textEdit !== null && textEdit.textId === text.id;
     const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
 
+    // 6. Si está en edición y existe selección de caracteres, renderizar el resaltado DETRÁS del texto
+    if (
+      isEditingThis &&
+      textEdit.selectionStart !== undefined &&
+      textEdit.selectionEnd !== undefined &&
+      textEdit.selectionStart !== textEdit.selectionEnd
+    ) {
+      this.renderTextSelectionHighlight(text, displayText, textEdit.selectionStart, textEdit.selectionEnd, fontSize);
+    }
+
     this.ctx.fillText(displayText, text.x, text.y);
 
     this.ctx.restore();
   }
 
   /**
-   * Dibuja la indicación visual de un nodo Text en modo de edición interactiva.
-   * Incluye recuadro punteado de acento y cursor/caret al final del texto actual.
+   * Renderiza el recuadro de selección de caracteres detrás del texto dibujado.
    */
-  private renderTextEditOverlay(text: Text, currentText: string, zoom: number): void {
+  private renderTextSelectionHighlight(
+    text: Text,
+    displayText: string,
+    selectionStart: number,
+    selectionEnd: number,
+    fontSize: number
+  ): void {
+    const minIdx = Math.max(0, Math.min(displayText.length, Math.min(selectionStart, selectionEnd)));
+    const maxIdx = Math.max(0, Math.min(displayText.length, Math.max(selectionStart, selectionEnd)));
+    if (minIdx === maxIdx) return;
+
+    const totalWidth = this.ctx.measureText(displayText).width;
+    let startX = text.x;
+    if (text.textAlign === 'center') {
+      startX = text.x - totalWidth / 2;
+    } else if (text.textAlign === 'right') {
+      startX = text.x - totalWidth;
+    }
+
+    const wBefore = this.ctx.measureText(displayText.slice(0, minIdx)).width;
+    const wSelected = this.ctx.measureText(displayText.slice(minIdx, maxIdx)).width;
+
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(59, 130, 246, 0.35)';
+    this.ctx.fillRect(startX + wBefore, text.y, wSelected, fontSize);
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja la indicación visual de un nodo Text en modo de edición interactiva.
+   * Incluye recuadro punteado de acento y cursor/caret en la posición exacta según métricas reales.
+   */
+  private renderTextEditOverlay(text: Text, textEdit: TextEditRenderState, zoom: number): void {
+    const currentText = textEdit.text;
     const tempNode: Text = { ...text, text: currentText };
     const baseAABB = getTextBaseAABB(tempNode, this.ctx);
 
@@ -1000,15 +1051,35 @@ export class RenderEngine {
     this.ctx.setLineDash([4 / zoom, 2 / zoom]);
     this.ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-    // 3. Cursor / Caret visible al final del texto actual
-    const caretX = baseAABB.minX + baseAABB.width;
-    this.ctx.setLineDash([]);
-    this.ctx.beginPath();
-    this.ctx.moveTo(caretX + 1 / zoom, baseAABB.minY);
-    this.ctx.lineTo(caretX + 1 / zoom, baseAABB.maxY);
-    this.ctx.strokeStyle = '#2563eb';
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.stroke();
+    // 3. Cursor / Caret visible en la posición calculada según métrica tipográfica real
+    if (textEdit.cursorVisible !== false) {
+      const cursorIndex = Math.max(0, Math.min(currentText.length, textEdit.cursorIndex ?? currentText.length));
+
+      // Configurar fuente para medir prefijo
+      const fontParts: string[] = [];
+      if (text.fontStyle && text.fontStyle !== 'normal') {
+        fontParts.push(text.fontStyle);
+      }
+      if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
+        fontParts.push(String(text.fontWeight));
+      }
+      const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+      const fontFamily = text.fontFamily ?? 'sans-serif';
+      fontParts.push(`${fontSize}px`);
+      fontParts.push(fontFamily);
+      this.ctx.font = fontParts.join(' ');
+
+      const cursorOffset = this.ctx.measureText(currentText.slice(0, cursorIndex)).width;
+      const caretX = baseAABB.minX + cursorOffset;
+
+      this.ctx.setLineDash([]);
+      this.ctx.beginPath();
+      this.ctx.moveTo(caretX, baseAABB.minY);
+      this.ctx.lineTo(caretX, baseAABB.maxY);
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.stroke();
+    }
 
     this.ctx.restore();
   }

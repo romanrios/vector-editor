@@ -184,9 +184,16 @@ describe('Edición interactiva de texto (Text Editing)', () => {
       assert.equal(controller.textEditingState?.currentText, 'A');
     });
 
-    it('Delete elimina el último carácter en edición sin borrar la figura del documento', () => {
+    it('Delete elimina el carácter siguiente en edición sin borrar la figura del documento', () => {
       const { controller, stateManager, textNode } = setupTest('XYZ');
       controller.startEditingText(textNode.id);
+
+      // Situar el cursor al inicio para eliminar el carácter siguiente ('X')
+      controller.handleKeyDown({
+        key: 'Home',
+        code: 'Home',
+        preventDefault: () => {},
+      } as unknown as KeyboardEvent);
 
       controller.handleKeyDown({
         key: 'Delete',
@@ -194,7 +201,7 @@ describe('Edición interactiva de texto (Text Editing)', () => {
         preventDefault: () => {},
       } as unknown as KeyboardEvent);
 
-      assert.equal(controller.textEditingState?.currentText, 'XY');
+      assert.equal(controller.textEditingState?.currentText, 'YZ');
       // La figura no fue eliminada del documento
       assert.ok(stateManager.findNode(textNode.id));
     });

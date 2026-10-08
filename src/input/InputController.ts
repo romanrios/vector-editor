@@ -28,6 +28,7 @@ import {
   getShapeAABB,
   getShapesIntersectingRect,
   getTextBaseAABB,
+  getTextIndexAtPosition,
   getVisiblePathHandles,
   isPointInAABB,
   isPointInPath,
@@ -176,6 +177,10 @@ export interface TextEditingState {
   readonly textId: string;
   readonly originalText: string;
   currentText: string;
+  cursorIndex: number;
+  selectionStart: number;
+  selectionEnd: number;
+  readonly hasSelection: boolean;
 }
 
 export interface InputControllerOptions {
@@ -233,6 +238,10 @@ export class InputController {
   private ellipseCounter: number = 0;
   private textCounter: number = 0;
   private _textEditingState: TextEditingState | null = null;
+  private _cursorVisible: boolean = true;
+  private _cursorBlinkTimer: any = null;
+  private _isMouseSelectingText: boolean = false;
+  private _textDragAnchorIndex: number = 0;
 
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
@@ -475,11 +484,38 @@ export class InputController {
     return this._textEditingState;
   }
 
-  public get textEditState(): { textId: string; text: string } | null {
+  public get hasTextSelection(): boolean {
+    if (!this._textEditingState) return false;
+    return this._textEditingState.selectionStart !== this._textEditingState.selectionEnd;
+  }
+
+  public get textCursorPosition(): number {
+    return this._textEditingState?.cursorIndex ?? 0;
+  }
+
+  public get textSelectionRange(): { start: number; end: number } | null {
+    if (!this._textEditingState) return null;
+    const start = Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    const end = Math.max(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    return { start, end };
+  }
+
+  public get textEditState(): {
+    textId: string;
+    text: string;
+    cursorIndex: number;
+    selectionStart: number;
+    selectionEnd: number;
+    cursorVisible: boolean;
+  } | null {
     if (!this._textEditingState) return null;
     return {
       textId: this._textEditingState.textId,
       text: this._textEditingState.currentText,
+      cursorIndex: this._textEditingState.cursorIndex,
+      selectionStart: this._textEditingState.selectionStart,
+      selectionEnd: this._textEditingState.selectionEnd,
+      cursorVisible: this._cursorVisible,
     };
   }
 
@@ -710,6 +746,8 @@ export class InputController {
     this.resetRotate();
     this.resetMultiTransform();
     this.resetDirectSelect();
+    this.stopCursorBlink();
+    this._isMouseSelectingText = false;
     this._textEditingState = null;
     this.eventListeners.clear();
   }
@@ -1098,6 +1136,21 @@ export class InputController {
     if (this._textEditingState) {
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.id === this._textEditingState.textId) {
+        // Clic dentro del texto en edición: reubicar cursor e iniciar selección por arrastre
+        const textNode = this.stateManager.findNode(this._textEditingState.textId) as Text;
+        const effectiveText = {
+          ...textNode,
+          text: this._textEditingState.currentText,
+        };
+        const ctx = this.getMeasureContext();
+        const charIndex = getTextIndexAtPosition(effectiveText, x, y, ctx);
+        this._textEditingState.cursorIndex = charIndex;
+        this._textEditingState.selectionStart = charIndex;
+        this._textEditingState.selectionEnd = charIndex;
+        this._isMouseSelectingText = true;
+        this._textDragAnchorIndex = charIndex;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
         return;
       }
       this.commitTextEdit();
@@ -1125,6 +1178,18 @@ export class InputController {
     }
 
     if (this._currentTool === 'text') {
+      const hitShape = this.hitTest(x, y);
+      if (hitShape && isText(hitShape) && !hitShape.locked) {
+        // Clic sobre un Text existente con la herramienta Texto
+        const ctx = this.getMeasureContext();
+        const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
+        this.startEditingText(hitShape.id, charIndex);
+        this._isMouseSelectingText = true;
+        this._textDragAnchorIndex = charIndex;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
       this.handleTextMouseDown(x, y);
       return;
     }
@@ -1449,13 +1514,89 @@ export class InputController {
     this.commandManager.executeCommand(command);
 
     this.stateManager.selectNode(newText.id);
+
+    // Entra automáticamente en edición situando el cursor al final del contenido inicial ('Texto'.length)
+    this.startEditingText(newText.id, newText.text.length);
+  }
+
+  /**
+   * Obtiene el contexto 2D del canvas para mediciones de texto si está disponible.
+   */
+  private getMeasureContext(): CanvasRenderingContext2D | null {
+    try {
+      return this.canvas.getContext('2d') as CanvasRenderingContext2D | null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Inicia el temporizador de parpadeo del cursor (~500ms) provocando repintado sólo en dirty-loop.
+   */
+  private startCursorBlink(): void {
+    this.stopCursorBlink();
+    this._cursorVisible = true;
+    if (typeof setInterval !== 'undefined') {
+      this._cursorBlinkTimer = setInterval(() => {
+        if (!this._textEditingState) {
+          this.stopCursorBlink();
+          return;
+        }
+        this._cursorVisible = !this._cursorVisible;
+        this.stateManager.markDirty();
+      }, 500);
+      if (this._cursorBlinkTimer && typeof (this._cursorBlinkTimer as any).unref === 'function') {
+        (this._cursorBlinkTimer as any).unref();
+      }
+    }
+  }
+
+  /**
+   * Restablece la visibilidad activa del cursor y reinicia el intervalo de 500ms (al teclear o mover).
+   */
+  private resetCursorBlink(): void {
+    this._cursorVisible = true;
+    if (this._cursorBlinkTimer !== null && typeof setInterval !== 'undefined') {
+      clearInterval(this._cursorBlinkTimer);
+      this._cursorBlinkTimer = setInterval(() => {
+        if (!this._textEditingState) {
+          this.stopCursorBlink();
+          return;
+        }
+        this._cursorVisible = !this._cursorVisible;
+        this.stateManager.markDirty();
+      }, 500);
+      if (this._cursorBlinkTimer && typeof (this._cursorBlinkTimer as any).unref === 'function') {
+        (this._cursorBlinkTimer as any).unref();
+      }
+    }
+  }
+
+  /**
+   * Detiene el intervalo de parpadeo del cursor cuando la edición cesa.
+   */
+  private stopCursorBlink(): void {
+    if (this._cursorBlinkTimer !== null) {
+      clearInterval(this._cursorBlinkTimer);
+      this._cursorBlinkTimer = null;
+    }
+    this._cursorVisible = true;
   }
 
   /**
    * Inicia la edición de contenido en un nodo Text existente.
    */
-  public startEditingText(textId: string): boolean {
+  public startEditingText(textId: string, initialCursorIndex?: number): boolean {
     if (this._textEditingState?.textId === textId) {
+      if (initialCursorIndex !== undefined) {
+        const len = this._textEditingState.currentText.length;
+        const pos = Math.max(0, Math.min(len, initialCursorIndex));
+        this._textEditingState.cursorIndex = pos;
+        this._textEditingState.selectionStart = pos;
+        this._textEditingState.selectionEnd = pos;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+      }
       return true;
     }
     if (this._textEditingState) {
@@ -1478,12 +1619,23 @@ export class InputController {
       this.stateManager.selectNode(textId);
     }
 
+    const initialStr = node.text ?? '';
+    const len = initialStr.length;
+    const pos = initialCursorIndex !== undefined ? Math.max(0, Math.min(len, initialCursorIndex)) : len;
+
     this._textEditingState = {
       textId: node.id,
-      originalText: node.text,
-      currentText: node.text,
+      originalText: initialStr,
+      currentText: initialStr,
+      cursorIndex: pos,
+      selectionStart: pos,
+      selectionEnd: pos,
+      get hasSelection(): boolean {
+        return this.selectionStart !== this.selectionEnd;
+      },
     };
 
+    this.startCursorBlink();
     this.stateManager.markDirty();
     return true;
   }
@@ -1497,6 +1649,8 @@ export class InputController {
       return false;
     }
 
+    this.stopCursorBlink();
+    this._isMouseSelectingText = false;
     const { textId, originalText, currentText } = this._textEditingState;
     this._textEditingState = null;
 
@@ -1525,6 +1679,8 @@ export class InputController {
       return;
     }
 
+    this.stopCursorBlink();
+    this._isMouseSelectingText = false;
     this._textEditingState = null;
     this.stateManager.markDirty();
   }
@@ -1549,6 +1705,24 @@ export class InputController {
     }
 
     const { x, y } = this.getLocalCoordinates(event);
+
+    if (this._isMouseSelectingText && this._textEditingState) {
+      const node = this.stateManager.findNode(this._textEditingState.textId);
+      if (node && isText(node)) {
+        const effectiveText = {
+          ...node,
+          text: this._textEditingState.currentText,
+        };
+        const ctx = this.getMeasureContext();
+        const charIndex = getTextIndexAtPosition(effectiveText, x, y, ctx);
+        this._textEditingState.cursorIndex = charIndex;
+        this._textEditingState.selectionStart = this._textDragAnchorIndex;
+        this._textEditingState.selectionEnd = charIndex;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+    }
 
     if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
       if (this._isCreatingShape) {
@@ -1835,6 +2009,12 @@ export class InputController {
       } else {
         this.restoreToolCursor();
       }
+      return;
+    }
+
+    if (this._isMouseSelectingText) {
+      this._isMouseSelectingText = false;
+      this.stateManager.markDirty();
       return;
     }
 
@@ -2219,6 +2399,13 @@ export class InputController {
     if (this._textEditingState) {
       const key = event.key;
       const keyLower = key ? key.toLowerCase() : '';
+      const text = this._textEditingState.currentText;
+      const cursor = this._textEditingState.cursorIndex;
+      const selAnchor = this._textEditingState.selectionStart;
+      const selFocus = this._textEditingState.selectionEnd;
+      const hasSelection = selAnchor !== selFocus;
+      const selMin = Math.min(selAnchor, selFocus);
+      const selMax = Math.max(selAnchor, selFocus);
 
       if (keyLower === 'escape') {
         event.preventDefault?.();
@@ -2232,18 +2419,145 @@ export class InputController {
         return;
       }
 
-      if (keyLower === 'backspace' || keyLower === 'delete') {
+      // Ctrl/Cmd + A: Seleccionar todo el contenido
+      if ((event.ctrlKey || event.metaKey) && keyLower === 'a') {
         event.preventDefault?.();
-        if (this._textEditingState.currentText.length > 0) {
-          this._textEditingState.currentText = this._textEditingState.currentText.slice(0, -1);
+        this._textEditingState.selectionStart = 0;
+        this._textEditingState.selectionEnd = text.length;
+        this._textEditingState.cursorIndex = text.length;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // Flecha izquierda: mover cursor o extender selección con Shift
+      if (key === 'ArrowLeft') {
+        event.preventDefault?.();
+        if (event.shiftKey) {
+          const newCursor = Math.max(0, cursor - 1);
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        } else {
+          const newCursor = hasSelection ? selMin : Math.max(0, cursor - 1);
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // Flecha derecha: mover cursor o extender selección con Shift
+      if (key === 'ArrowRight') {
+        event.preventDefault?.();
+        if (event.shiftKey) {
+          const newCursor = Math.min(text.length, cursor + 1);
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        } else {
+          const newCursor = hasSelection ? selMax : Math.min(text.length, cursor + 1);
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // Home: inicio de texto
+      if (key === 'Home') {
+        event.preventDefault?.();
+        if (event.shiftKey) {
+          this._textEditingState.cursorIndex = 0;
+          this._textEditingState.selectionEnd = 0;
+        } else {
+          this._textEditingState.cursorIndex = 0;
+          this._textEditingState.selectionStart = 0;
+          this._textEditingState.selectionEnd = 0;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // End: fin de texto
+      if (key === 'End') {
+        event.preventDefault?.();
+        if (event.shiftKey) {
+          this._textEditingState.cursorIndex = text.length;
+          this._textEditingState.selectionEnd = text.length;
+        } else {
+          this._textEditingState.cursorIndex = text.length;
+          this._textEditingState.selectionStart = text.length;
+          this._textEditingState.selectionEnd = text.length;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // Backspace: elimina carácter anterior o reemplaza selección
+      if (keyLower === 'backspace') {
+        event.preventDefault?.();
+        if (hasSelection) {
+          this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
+          this._textEditingState.cursorIndex = selMin;
+          this._textEditingState.selectionStart = selMin;
+          this._textEditingState.selectionEnd = selMin;
+          this.resetCursorBlink();
+          this.stateManager.markDirty();
+        } else if (cursor > 0) {
+          this._textEditingState.currentText = text.slice(0, cursor - 1) + text.slice(cursor);
+          const newCursor = cursor - 1;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+          this.resetCursorBlink();
           this.stateManager.markDirty();
         }
         return;
       }
 
+      // Delete: elimina carácter siguiente o reemplaza selección
+      if (keyLower === 'delete') {
+        event.preventDefault?.();
+        if (hasSelection) {
+          this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
+          this._textEditingState.cursorIndex = selMin;
+          this._textEditingState.selectionStart = selMin;
+          this._textEditingState.selectionEnd = selMin;
+          this.resetCursorBlink();
+          this.stateManager.markDirty();
+        } else if (cursor < text.length) {
+          this._textEditingState.currentText = text.slice(0, cursor) + text.slice(cursor + 1);
+          this._textEditingState.cursorIndex = cursor;
+          this._textEditingState.selectionStart = cursor;
+          this._textEditingState.selectionEnd = cursor;
+          this.resetCursorBlink();
+          this.stateManager.markDirty();
+        }
+        return;
+      }
+
+      // Escribir carácter imprimible (reemplaza selección o inserta en cursor)
       if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault?.();
-        this._textEditingState.currentText += event.key;
+        if (hasSelection) {
+          this._textEditingState.currentText = text.slice(0, selMin) + event.key + text.slice(selMax);
+          const newCursor = selMin + 1;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        } else {
+          this._textEditingState.currentText = text.slice(0, cursor) + event.key + text.slice(cursor);
+          const newCursor = cursor + 1;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        }
+        this.resetCursorBlink();
         this.stateManager.markDirty();
         return;
       }
