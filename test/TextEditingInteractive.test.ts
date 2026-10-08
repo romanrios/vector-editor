@@ -321,21 +321,27 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
   });
 
   it('12. Enter', () => {
-    const { controller, stateManager, commandManager, textNode } = setupTestEnvironment('Borrador');
+    const { canvas, controller, stateManager, commandManager, textNode } = setupTestEnvironment('Borrador');
     controller.startEditingText(textNode!.id);
 
     controller.handleKeyDown({ key: '!', preventDefault: () => {} } as unknown as KeyboardEvent);
 
     assert.equal(controller.textEditingState?.currentText, 'Borrador!');
 
-    // Enter confirma la edición
+    // Enter inserta '\n' sin confirmar la edición
     controller.handleKeyDown({ key: 'Enter', preventDefault: () => {} } as unknown as KeyboardEvent);
+
+    assert.equal(controller.isEditingText, true);
+    assert.equal(controller.textEditingState?.currentText, 'Borrador!\n');
+
+    // Clic fuera confirma la edición
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 800, clientY: 800, button: 0 });
 
     assert.equal(controller.isEditingText, false);
     assert.equal(controller.textEditingState, null);
 
     const nodeInState = stateManager.findNode(textNode!.id) as Text;
-    assert.equal(nodeInState.text, 'Borrador!');
+    assert.equal(nodeInState.text, 'Borrador!\n');
     assert.equal(commandManager.canUndo(), true);
   });
 

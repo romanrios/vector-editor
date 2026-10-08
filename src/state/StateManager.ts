@@ -1261,12 +1261,14 @@ export class StateManager {
             const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
             const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
             const nextFontSize = dimensions.fontSize !== undefined ? dimensions.fontSize : child.fontSize;
+            const nextLineHeight = dimensions.lineHeight !== undefined ? dimensions.lineHeight : child.lineHeight;
 
             if (
               nextX !== child.x ||
               nextY !== child.y ||
               nextRot !== child.rotation ||
-              (dimensions.fontSize !== undefined && nextFontSize !== child.fontSize)
+              (dimensions.fontSize !== undefined && nextFontSize !== child.fontSize) ||
+              (dimensions.lineHeight !== undefined && nextLineHeight !== child.lineHeight)
             ) {
               shapeChanged = true;
               newShape = {
@@ -1275,6 +1277,7 @@ export class StateManager {
                 y: nextY,
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
                 ...(nextFontSize !== undefined ? { fontSize: nextFontSize } : {}),
+                ...(nextLineHeight !== undefined ? { lineHeight: nextLineHeight } : {}),
               };
             }
           }

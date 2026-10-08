@@ -63,6 +63,7 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       y: shape.y,
       rotation: shape.rotation ?? 0,
       fontSize: shape.fontSize ?? 16,
+      ...(shape.lineHeight !== undefined ? { lineHeight: shape.lineHeight } : {}),
     };
   }
   return {
@@ -384,13 +385,16 @@ export function scaleShapesAboutAnchor(
       const oldFontSize = shape.fontSize ?? 16;
       const scaleFactor = Math.hypot(sx * cosTheta, sy * sinTheta);
       const newFontSize = Math.max(1, Math.round(oldFontSize * scaleFactor));
+      const oldLineHeight = shape.lineHeight;
+      const newLineHeight = oldLineHeight !== undefined ? Math.max(1, Math.round(oldLineHeight * scaleFactor)) : undefined;
       const newX = newCx;
       const newY = newCy;
 
       const changed =
         Math.abs(newX - shape.x) > 1e-10 ||
         Math.abs(newY - shape.y) > 1e-10 ||
-        newFontSize !== oldFontSize;
+        newFontSize !== oldFontSize ||
+        (oldLineHeight !== undefined && newLineHeight !== oldLineHeight);
 
       if (changed) {
         results.push({
@@ -399,6 +403,7 @@ export function scaleShapesAboutAnchor(
             x: newX,
             y: newY,
             fontSize: newFontSize,
+            ...(newLineHeight !== undefined ? { lineHeight: newLineHeight } : {}),
             rotation: rotDeg,
           },
         });

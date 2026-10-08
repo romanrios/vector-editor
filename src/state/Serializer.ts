@@ -256,6 +256,9 @@ function parseLayerChild(
     ) {
       throw new DocumentParseError(`${childPath}.textAlign debe ser 'left', 'center' o 'right'`);
     }
+    if (child.lineHeight !== undefined && (!isFiniteNumber(child.lineHeight) || child.lineHeight <= 0)) {
+      throw new DocumentParseError(`${childPath}.lineHeight debe ser un número finito positivo`);
+    }
 
     const { selected: _sel, isDirty: _dirty, ...rest } = child;
     return rest as unknown as Text;

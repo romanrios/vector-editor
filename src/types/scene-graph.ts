@@ -122,6 +122,7 @@ export interface Text extends BaseNode {
   readonly fontWeight?: FontWeight;
   readonly fontStyle?: FontStyle;
   readonly textAlign?: TextAlign;
+  readonly lineHeight?: number;
   readonly fill?: string;
   readonly rotation?: number;
   readonly opacity?: number;

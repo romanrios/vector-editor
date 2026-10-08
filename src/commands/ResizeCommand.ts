@@ -15,6 +15,7 @@ export interface ShapeDimensions {
   readonly points?: readonly PathPoint[];
   readonly rotation?: number;
   readonly fontSize?: number;
+  readonly lineHeight?: number;
 }
 
 /**

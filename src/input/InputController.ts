@@ -29,6 +29,7 @@ import {
   getShapesIntersectingRect,
   getTextBaseAABB,
   getTextIndexAtPosition,
+  measureSingleLineTextWidth,
   getVisiblePathHandles,
   isPointInAABB,
   isPointInPath,
@@ -1708,6 +1709,69 @@ export class InputController {
   }
 
   /**
+   * Calcula el nuevo índice de cursor al desplazarse verticalmente (arriba o abajo)
+   * entre líneas, intentando preservar la posición horizontal en píxeles.
+   */
+  private computeVerticalNavIndex(text: string, cursor: number, dir: -1 | 1): number {
+    const lines = text.split('\n');
+    const lineStarts: number[] = [];
+    let currStart = 0;
+    for (let i = 0; i < lines.length; i++) {
+      lineStarts.push(currStart);
+      currStart += lines[i].length + 1;
+    }
+
+    let lineIdx = lines.length - 1;
+    for (let i = 0; i < lines.length; i++) {
+      const start = lineStarts[i];
+      const end = start + lines[i].length;
+      if (cursor <= end) {
+        lineIdx = i;
+        break;
+      }
+    }
+
+    const targetLineIdx = lineIdx + dir;
+    if (targetLineIdx < 0) {
+      return 0;
+    }
+    if (targetLineIdx >= lines.length) {
+      return text.length;
+    }
+
+    const currentLine = lines[lineIdx];
+    const targetLine = lines[targetLineIdx];
+    const currentCol = Math.max(0, Math.min(currentLine.length, cursor - lineStarts[lineIdx]));
+
+    const textNode = this._textEditingState
+      ? (this.stateManager.findNode(this._textEditingState.textId) as Text | null)
+      : null;
+    const nodeForMetrics: Text = textNode ?? {
+      id: 'metric-dummy',
+      type: 'text',
+      name: 'metric-dummy',
+      x: 0,
+      y: 0,
+      text: '',
+    };
+    const ctx = this.getMeasureContext();
+    const currentXOffset = measureSingleLineTextWidth(nodeForMetrics, currentLine.slice(0, currentCol), ctx);
+
+    let targetCol = 0;
+    let minDiff = Infinity;
+    for (let i = 0; i <= targetLine.length; i++) {
+      const w = measureSingleLineTextWidth(nodeForMetrics, targetLine.slice(0, i), ctx);
+      const diff = Math.abs(w - currentXOffset);
+      if (diff < minDiff) {
+        minDiff = diff;
+        targetCol = i;
+      }
+    }
+
+    return lineStarts[targetLineIdx] + targetCol;
+  }
+
+  /**
    * Maneja el evento mousemove según la herramienta activa.
    */
   public handleMouseMove(event: MouseEvent): void {
@@ -2437,7 +2501,21 @@ export class InputController {
 
       if (keyLower === 'enter') {
         event.preventDefault?.();
-        this.commitTextEdit();
+        if (hasSelection) {
+          this._textEditingState.currentText = text.slice(0, selMin) + '\n' + text.slice(selMax);
+          const newCursor = selMin + 1;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        } else {
+          this._textEditingState.currentText = text.slice(0, cursor) + '\n' + text.slice(cursor);
+          const newCursor = cursor + 1;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
         return;
       }
 
@@ -2488,32 +2566,76 @@ export class InputController {
         return;
       }
 
-      // Home: inicio de texto
-      if (key === 'Home') {
+      // Flecha arriba: mover a línea anterior conservando posición horizontal relativa
+      if (key === 'ArrowUp' || key === 'Up') {
         event.preventDefault?.();
+        const newCursor = this.computeVerticalNavIndex(text, cursor, -1);
+        this._textEditingState.cursorIndex = newCursor;
         if (event.shiftKey) {
-          this._textEditingState.cursorIndex = 0;
-          this._textEditingState.selectionEnd = 0;
+          this._textEditingState.selectionEnd = newCursor;
         } else {
-          this._textEditingState.cursorIndex = 0;
-          this._textEditingState.selectionStart = 0;
-          this._textEditingState.selectionEnd = 0;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
         }
         this.resetCursorBlink();
         this.stateManager.markDirty();
         return;
       }
 
-      // End: fin de texto
+      // Flecha abajo: mover a línea siguiente conservando posición horizontal relativa
+      if (key === 'ArrowDown' || key === 'Down') {
+        event.preventDefault?.();
+        const newCursor = this.computeVerticalNavIndex(text, cursor, 1);
+        this._textEditingState.cursorIndex = newCursor;
+        if (event.shiftKey) {
+          this._textEditingState.selectionEnd = newCursor;
+        } else {
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // Home: inicio de línea (o inicio de todo el texto con Ctrl/Cmd)
+      if (key === 'Home') {
+        event.preventDefault?.();
+        let newPos = 0;
+        if (event.ctrlKey || event.metaKey) {
+          newPos = 0;
+        } else {
+          const lastNewline = text.lastIndexOf('\n', cursor - 1);
+          newPos = lastNewline === -1 ? 0 : lastNewline + 1;
+        }
+        this._textEditingState.cursorIndex = newPos;
+        if (event.shiftKey) {
+          this._textEditingState.selectionEnd = newPos;
+        } else {
+          this._textEditingState.selectionStart = newPos;
+          this._textEditingState.selectionEnd = newPos;
+        }
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+        return;
+      }
+
+      // End: fin de línea (o fin de todo el texto con Ctrl/Cmd)
       if (key === 'End') {
         event.preventDefault?.();
-        if (event.shiftKey) {
-          this._textEditingState.cursorIndex = text.length;
-          this._textEditingState.selectionEnd = text.length;
+        let newPos = text.length;
+        if (event.ctrlKey || event.metaKey) {
+          newPos = text.length;
         } else {
-          this._textEditingState.cursorIndex = text.length;
-          this._textEditingState.selectionStart = text.length;
-          this._textEditingState.selectionEnd = text.length;
+          const nextNewline = text.indexOf('\n', cursor);
+          newPos = nextNewline === -1 ? text.length : nextNewline;
+        }
+        this._textEditingState.cursorIndex = newPos;
+        if (event.shiftKey) {
+          this._textEditingState.selectionEnd = newPos;
+        } else {
+          this._textEditingState.selectionStart = newPos;
+          this._textEditingState.selectionEnd = newPos;
         }
         this.resetCursorBlink();
         this.stateManager.markDirty();

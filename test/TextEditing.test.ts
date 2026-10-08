@@ -241,8 +241,8 @@ describe('Edición interactiva de texto (Text Editing)', () => {
   });
 
   describe('3. Confirmar', () => {
-    it('Enter confirma la edición y actualiza el nodo en StateManager', () => {
-      const { controller, stateManager, commandManager, textNode } = setupTest('Original');
+    it('Enter inserta salto de línea y clic fuera confirma la edición y actualiza el nodo en StateManager', () => {
+      const { controller, stateManager, commandManager, textNode, canvas } = setupTest('Original');
       controller.startEditingText(textNode.id);
 
       // Escribir "!"
@@ -254,18 +254,28 @@ describe('Edición interactiva de texto (Text Editing)', () => {
 
       assert.equal(controller.textEditingState?.currentText, 'Original!');
 
-      // Presionar Enter para confirmar
+      // Presionar Enter para insertar salto de línea sin confirmar
       controller.handleKeyDown({
         key: 'Enter',
         code: 'Enter',
         preventDefault: () => {},
       } as unknown as KeyboardEvent);
 
+      assert.equal(controller.isEditingText, true);
+      assert.equal(controller.textEditingState?.currentText, 'Original!\n');
+
+      // Clic fuera para confirmar
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: 800,
+        clientY: 800,
+        button: 0,
+      });
+
       assert.equal(controller.isEditingText, false);
       assert.equal(controller.textEditingState, null);
 
       const updatedNode = stateManager.findNode(textNode.id) as Text;
-      assert.equal(updatedNode.text, 'Original!');
+      assert.equal(updatedNode.text, 'Original!\n');
       assert.equal(commandManager.canUndo(), true);
     });
 
@@ -348,12 +358,8 @@ describe('Edición interactiva de texto (Text Editing)', () => {
       const { controller, commandManager, textNode } = setupTest('Sin Cambios');
       controller.startEditingText(textNode.id);
 
-      // Confirmar con Enter inmediatamente
-      controller.handleKeyDown({
-        key: 'Enter',
-        code: 'Enter',
-        preventDefault: () => {},
-      } as unknown as KeyboardEvent);
+      // Confirmar inmediatamente sin cambios
+      controller.commitTextEdit();
 
       assert.equal(controller.isEditingText, false);
       assert.equal(commandManager.canUndo(), false);

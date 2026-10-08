@@ -344,12 +344,26 @@ export function setSharedMeasureContext(ctx: CanvasRenderingContext2D | null): v
 }
 
 /**
- * Mide el ancho de un nodo Text usando CanvasRenderingContext2D.measureText cuando está disponible,
- * o un fallback determinista basado en fontSize y longitud de texto para entornos sin canvas.
+ * Obtiene el lineHeight efectivo de un nodo Text.
+ * Si no está definido o no es válido, retorna por defecto fontSize * 1.2.
  */
-export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | null): number {
-  const content = text.text ?? '';
-  if (!content) {
+export function getTextLineHeight(text: Text): number {
+  const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+  if (typeof text.lineHeight === 'number' && text.lineHeight > 0) {
+    return text.lineHeight;
+  }
+  return fontSize * 1.2;
+}
+
+/**
+ * Mide el ancho de una única línea de texto usando CanvasRenderingContext2D.measureText cuando está disponible.
+ */
+export function measureSingleLineTextWidth(
+  text: Text,
+  line: string,
+  ctx?: CanvasRenderingContext2D | null
+): number {
+  if (!line) {
     return 0;
   }
 
@@ -369,14 +383,39 @@ export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | nu
     fontParts.push(fontFamily);
     activeCtx.font = fontParts.join(' ');
 
-    const metrics = activeCtx.measureText(content);
+    const metrics = activeCtx.measureText(line);
     if (metrics && typeof metrics.width === 'number' && metrics.width > 0) {
       return metrics.width;
     }
   }
 
-  // Fallback heurístico determinista para entornos sin motor tipográfico nativo (ej. Node.js sin canvas mockeado)
-  return content.length * (fontSize * 0.6);
+  // Fallback heurístico determinista para entornos sin motor tipográfico nativo
+  return line.length * (fontSize * 0.6);
+}
+
+/**
+ * Mide el ancho de un nodo Text.
+ * Para texto multilínea, corresponde al ancho de la línea más ancha.
+ */
+export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | null): number {
+  const content = text.text ?? '';
+  if (!content) {
+    return 0;
+  }
+
+  const lines = content.split('\n');
+  if (lines.length === 1) {
+    return measureSingleLineTextWidth(text, lines[0], ctx);
+  }
+
+  let maxWidth = 0;
+  for (const line of lines) {
+    const w = measureSingleLineTextWidth(text, line, ctx);
+    if (w > maxWidth) {
+      maxWidth = w;
+    }
+  }
+  return maxWidth;
 }
 
 /**
@@ -397,7 +436,7 @@ export function getTextSubstrWidth(text: Text, length: number, ctx?: CanvasRende
 /**
  * Calcula el índice de carácter más cercano a una posición (worldX, worldY) en coordenadas del mundo,
  * utilizando CanvasRenderingContext2D.measureText para métricas tipográficas reales.
- * Toma en consideración la rotación, alineación horizontal y tamaño de fuente del nodo Text.
+ * Identifica la línea más cercana verticalmente y el carácter más cercano dentro de ella.
  */
 export function getTextIndexAtPosition(
   text: Text,
@@ -413,6 +452,7 @@ export function getTextIndexAtPosition(
   // 1. Des-rotar el punto con respecto al anclaje (text.x, text.y) si hay rotación
   const rotation = text.rotation ?? 0;
   let unrotX = worldX;
+  let unrotY = worldY;
   if (rotation !== 0) {
     const rad = (-rotation * Math.PI) / 180;
     const cos = Math.cos(rad);
@@ -420,51 +460,71 @@ export function getTextIndexAtPosition(
     const dx = worldX - text.x;
     const dy = worldY - text.y;
     unrotX = text.x + (dx * cos - dy * sin);
+    unrotY = text.y + (dx * sin + dy * cos);
   }
 
-  // 2. Determinar la posición horizontal de inicio (startX) según textAlign
-  const totalWidth = measureTextWidth(text, ctx);
+  // 2. Dividir en líneas y calcular posiciones iniciales
+  const lines = content.split('\n');
+  const lineStarts: number[] = [];
+  let currStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    lineStarts.push(currStart);
+    currStart += lines[i].length + 1; // +1 por el '\n'
+  }
+
+  // 3. Identificar la línea más cercana según coordenada Y y lineHeight
+  const lineHeight = getTextLineHeight(text);
+  const offsetY = unrotY - text.y;
+  let lineIndex = Math.floor(offsetY / lineHeight);
+  if (lineIndex < 0) lineIndex = 0;
+  if (lineIndex >= lines.length) lineIndex = lines.length - 1;
+
+  // 4. Determinar la posición horizontal de inicio de la línea seleccionada según textAlign
+  const currentLine = lines[lineIndex];
+  const lineWidth = measureSingleLineTextWidth(text, currentLine, ctx);
   let startX = text.x;
   if (text.textAlign === 'center') {
-    startX = text.x - totalWidth / 2;
+    startX = text.x - lineWidth / 2;
   } else if (text.textAlign === 'right') {
-    startX = text.x - totalWidth;
+    startX = text.x - lineWidth;
   }
 
-  // 3. Desplazamiento horizontal relativo al inicio del texto
+  // 5. Desplazamiento horizontal relativo al inicio de la línea
   const offsetX = unrotX - startX;
   if (offsetX <= 0) {
-    return 0;
+    return lineStarts[lineIndex];
   }
-  if (offsetX >= totalWidth) {
-    return content.length;
+  if (offsetX >= lineWidth) {
+    return lineStarts[lineIndex] + currentLine.length;
   }
 
-  // 4. Buscar el índice que minimice la distancia a los límites de caracteres con métricas reales
-  let closestIndex = 0;
+  // 6. Buscar el carácter más cercano dentro de esa línea
+  let closestCol = 0;
   let minDiff = Infinity;
-
-  for (let i = 0; i <= content.length; i++) {
-    const w = getTextSubstrWidth(text, i, ctx);
+  for (let i = 0; i <= currentLine.length; i++) {
+    const w = measureSingleLineTextWidth(text, currentLine.slice(0, i), ctx);
     const diff = Math.abs(w - offsetX);
     if (diff < minDiff) {
       minDiff = diff;
-      closestIndex = i;
+      closestCol = i;
     }
   }
 
-  return closestIndex;
+  return lineStarts[lineIndex] + closestCol;
 }
 
 /**
  * Obtiene el Bounding Box base (sin rotación) de un nodo Text en coordenadas del mundo.
- * Toma en consideración textAlign ('left', 'center', 'right') y fija textBaseline en 'top'
- * (de modo que minY = text.y y maxY = text.y + fontSize).
+ * Para texto multilínea, el ancho es la línea más ancha y la altura corresponde a lines.length * lineHeight.
+ * Para compatibilidad, si es de una sola línea sin lineHeight explícito, la altura es fontSize.
  */
 export function getTextBaseAABB(text: Text, ctx?: CanvasRenderingContext2D | null): AABB {
+  const content = text.text ?? '';
+  const lines = content.split('\n');
   const width = measureTextWidth(text, ctx);
   const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
-  const height = fontSize;
+  const lineHeight = getTextLineHeight(text);
+  const height = lines.length <= 1 && text.lineHeight === undefined ? fontSize : lines.length * lineHeight;
 
   let minX = text.x;
   if (text.textAlign === 'center') {
