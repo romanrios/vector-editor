@@ -1075,8 +1075,14 @@ export class InputController {
       return;
     }
 
-    if (isText(hitShape) && this.stateManager.isSelected(hitShape.id)) {
-      this.startEditingText(hitShape.id);
+    if (isText(hitShape)) {
+      this._currentTool = 'text';
+      this.emit('toolChange', 'text');
+      this.canvas.style.cursor = 'text';
+      const ctx = this.getMeasureContext();
+      const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
+      this.startEditingText(hitShape.id, charIndex);
+      this.canvas.style.cursor = 'text';
       return;
     }
 
@@ -1607,6 +1613,7 @@ export class InputController {
         this.resetCursorBlink();
         this.stateManager.markDirty();
       }
+      this.canvas.style.cursor = 'text';
       return true;
     }
     if (this._textEditingState) {
@@ -1657,6 +1664,8 @@ export class InputController {
         return this.selectionStart !== this.selectionEnd;
       },
     };
+
+    this.canvas.style.cursor = 'text';
 
     this.startCursorBlink();
     this.stateManager.markDirty();

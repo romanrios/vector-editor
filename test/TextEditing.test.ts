@@ -83,6 +83,11 @@ describe('Edición interactiva de texto (Text Editing)', () => {
 
       assert.equal(controller.isEditingText, false);
 
+      let toolChangedTo: string | null = null;
+      controller.on('toolChange', (tool) => {
+        toolChangedTo = tool;
+      });
+
       // Doble clic sobre las coordenadas del texto (x=100, y=100)
       canvas.dispatchSimulatedEvent('dblclick', {
         clientX: 120,
@@ -95,6 +100,35 @@ describe('Edición interactiva de texto (Text Editing)', () => {
       assert.equal(controller.textEditingState?.textId, textNode.id);
       assert.equal(controller.textEditingState?.originalText, 'Mi Titulo');
       assert.equal(controller.textEditingState?.currentText, 'Mi Titulo');
+      assert.equal(controller.currentTool, 'text');
+      assert.equal(canvas.style.cursor, 'text');
+      assert.equal(toolChangedTo, 'text');
+    });
+
+    it('entra en modo edición mediante doble clic sobre un Text no seleccionado, cambiando herramienta a text y cursor a palito (text)', () => {
+      const { controller, stateManager, textNode, canvas } = setupTest('Otro Titulo');
+      // Deseleccionar el nodo
+      stateManager.setSelection([]);
+      assert.equal(controller.isEditingText, false);
+      assert.equal(controller.currentTool, 'select');
+
+      let toolChangedTo: string | null = null;
+      controller.on('toolChange', (tool) => {
+        toolChangedTo = tool;
+      });
+
+      // Doble clic sobre el texto
+      canvas.dispatchSimulatedEvent('dblclick', {
+        clientX: 120,
+        clientY: 110,
+        button: 0,
+      });
+
+      assert.equal(controller.isEditingText, true);
+      assert.equal(controller.textEditingState?.textId, textNode.id);
+      assert.equal(controller.currentTool, 'text');
+      assert.equal(canvas.style.cursor, 'text');
+      assert.equal(toolChangedTo, 'text');
     });
 
     it('entra en modo edición presionando Enter cuando un Text está seleccionado', () => {
