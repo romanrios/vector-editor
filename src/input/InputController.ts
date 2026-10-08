@@ -2685,6 +2685,53 @@ export class InputController {
         return;
       }
 
+      // Ctrl/Cmd + C: copiar texto seleccionado al portapapeles del sistema
+      if ((event.ctrlKey || event.metaKey) && keyLower === 'c') {
+        event.preventDefault?.();
+        if (hasSelection) {
+          const selectedText = text.slice(selMin, selMax);
+          navigator.clipboard.writeText(selectedText).catch(() => {
+            // Silenciar errores de permisos de portapapeles
+          });
+        }
+        return;
+      }
+
+      // Ctrl/Cmd + V: pegar texto del portapapeles del sistema
+      if ((event.ctrlKey || event.metaKey) && keyLower === 'v') {
+        event.preventDefault?.();
+        navigator.clipboard.readText().then((pasted) => {
+          if (!this._textEditingState || !pasted) return;
+          const curText = this._textEditingState.currentText;
+          const curCursor = this._textEditingState.cursorIndex;
+          const curSelStart = this._textEditingState.selectionStart;
+          const curSelEnd = this._textEditingState.selectionEnd;
+          const hasTextSelection = curSelStart !== curSelEnd;
+          const curSelMin = Math.min(curSelStart, curSelEnd);
+          const curSelMax = Math.max(curSelStart, curSelEnd);
+          // Normalizar saltos de línea del portapapeles
+          const normalized = pasted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          let newText: string;
+          let newCursor: number;
+          if (hasTextSelection) {
+            newText = curText.slice(0, curSelMin) + normalized + curText.slice(curSelMax);
+            newCursor = curSelMin + normalized.length;
+          } else {
+            newText = curText.slice(0, curCursor) + normalized + curText.slice(curCursor);
+            newCursor = curCursor + normalized.length;
+          }
+          this._textEditingState.currentText = newText;
+          this._textEditingState.cursorIndex = newCursor;
+          this._textEditingState.selectionStart = newCursor;
+          this._textEditingState.selectionEnd = newCursor;
+          this.resetCursorBlink();
+          this.stateManager.markDirty();
+        }).catch(() => {
+          // Silenciar errores de permisos de portapapeles
+        });
+        return;
+      }
+
       // Escribir carácter imprimible (reemplaza selección o inserta en cursor)
       if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault?.();
