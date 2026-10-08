@@ -1515,8 +1515,8 @@ export class InputController {
 
     this.stateManager.selectNode(newText.id);
 
-    // Entra automáticamente en edición situando el cursor al final del contenido inicial ('Texto'.length)
-    this.startEditingText(newText.id, newText.text.length);
+    // Entra automáticamente en edición seleccionando todo el contenido inicial para que el primer carácter lo reemplace
+    this.startEditingText(newText.id, newText.text.length, true);
   }
 
   /**
@@ -1585,11 +1585,20 @@ export class InputController {
 
   /**
    * Inicia la edición de contenido en un nodo Text existente.
+   * @param textId ID del nodo Text
+   * @param initialCursorIndex Posición inicial del cursor
+   * @param selectAll Si es true, selecciona inicialmente todo el contenido del texto
    */
-  public startEditingText(textId: string, initialCursorIndex?: number): boolean {
+  public startEditingText(textId: string, initialCursorIndex?: number, selectAll: boolean = false): boolean {
     if (this._textEditingState?.textId === textId) {
-      if (initialCursorIndex !== undefined) {
-        const len = this._textEditingState.currentText.length;
+      const len = this._textEditingState.currentText.length;
+      if (selectAll) {
+        this._textEditingState.selectionStart = 0;
+        this._textEditingState.selectionEnd = len;
+        this._textEditingState.cursorIndex = len;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+      } else if (initialCursorIndex !== undefined) {
         const pos = Math.max(0, Math.min(len, initialCursorIndex));
         this._textEditingState.cursorIndex = pos;
         this._textEditingState.selectionStart = pos;
@@ -1621,15 +1630,28 @@ export class InputController {
 
     const initialStr = node.text ?? '';
     const len = initialStr.length;
-    const pos = initialCursorIndex !== undefined ? Math.max(0, Math.min(len, initialCursorIndex)) : len;
+    let start = len;
+    let end = len;
+    let cursor = len;
+
+    if (selectAll) {
+      start = 0;
+      end = len;
+      cursor = len;
+    } else if (initialCursorIndex !== undefined) {
+      const pos = Math.max(0, Math.min(len, initialCursorIndex));
+      start = pos;
+      end = pos;
+      cursor = pos;
+    }
 
     this._textEditingState = {
       textId: node.id,
       originalText: initialStr,
       currentText: initialStr,
-      cursorIndex: pos,
-      selectionStart: pos,
-      selectionEnd: pos,
+      cursorIndex: cursor,
+      selectionStart: start,
+      selectionEnd: end,
       get hasSelection(): boolean {
         return this.selectionStart !== this.selectionEnd;
       },

@@ -107,7 +107,7 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(controller.textEditingState?.textId, created.id);
   });
 
-  it('2. cursor inicial', () => {
+  it('2. cursor inicial y selección total en Text recién creado', () => {
     const { canvas, controller } = setupTestEnvironment();
 
     controller.setTool('text');
@@ -116,27 +116,33 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(controller.isEditingText, true);
     const editState = controller.textEditingState!;
     assert.equal(editState.currentText, 'Texto');
-    // El cursor debe colocarse al final del contenido inicial ('Texto'.length = 5)
+    // Para un Text recién creado, todo el contenido debe estar inicialmente seleccionado
     assert.equal(editState.cursorIndex, 5);
-    assert.equal(editState.selectionStart, 5);
+    assert.equal(editState.selectionStart, 0);
     assert.equal(editState.selectionEnd, 5);
-    assert.equal(editState.hasSelection, false);
-    assert.equal(controller.hasTextSelection, false);
-    assert.equal(controller.textCursorPosition, 5);
+    assert.equal(editState.hasSelection, true);
+    assert.equal(controller.hasTextSelection, true);
+    assert.deepEqual(controller.textSelectionRange, { start: 0, end: 5 });
   });
 
-  it('3. escribir caracteres', () => {
+  it('3. escribir caracteres en Text recién creado reemplaza el contenido por defecto', () => {
     const { canvas, controller } = setupTestEnvironment();
 
     controller.setTool('text');
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, button: 0 });
 
-    // Escribir '!' y '?'
-    controller.handleKeyDown({ key: '!', preventDefault: () => {} } as unknown as KeyboardEvent);
-    controller.handleKeyDown({ key: '?', preventDefault: () => {} } as unknown as KeyboardEvent);
+    // El primer carácter reemplaza "Texto"
+    controller.handleKeyDown({ key: 'H', preventDefault: () => {} } as unknown as KeyboardEvent);
+    assert.equal(controller.textEditingState?.currentText, 'H');
+    assert.equal(controller.textEditingState?.cursorIndex, 1);
+    assert.equal(controller.hasTextSelection, false);
 
-    assert.equal(controller.textEditingState?.currentText, 'Texto!?');
-    assert.equal(controller.textEditingState?.cursorIndex, 7);
+    // Los siguientes caracteres se añaden correlativamente
+    controller.handleKeyDown({ key: 'o', preventDefault: () => {} } as unknown as KeyboardEvent);
+    controller.handleKeyDown({ key: 'l', preventDefault: () => {} } as unknown as KeyboardEvent);
+    controller.handleKeyDown({ key: 'a', preventDefault: () => {} } as unknown as KeyboardEvent);
+    assert.equal(controller.textEditingState?.currentText, 'Hola');
+    assert.equal(controller.textEditingState?.cursorIndex, 4);
   });
 
   it('4. mover cursor con flechas', () => {
@@ -333,7 +339,7 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(commandManager.canUndo(), true);
   });
 
-  it('13. click para posicionar cursor', () => {
+  it('13. click en Text existente posiciona el cursor en el carácter más cercano sin seleccionar todo el contenido', () => {
     // textNode en (100, 100), texto '0123456789' (10px por carácter en mockCtx)
     const { canvas, controller, textNode } = setupTestEnvironment('0123456789');
 
@@ -345,6 +351,9 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(controller.textEditingState?.textId, textNode!.id);
     const pos = controller.textCursorPosition;
     assert.ok(pos === 3 || pos === 4, `El cursor debe posicionarse cerca de la posición del clic (actual: ${pos})`);
+    assert.equal(controller.hasTextSelection, false, 'No debe seleccionar todo el contenido');
+    assert.equal(controller.textEditingState?.selectionStart, pos);
+    assert.equal(controller.textEditingState?.selectionEnd, pos);
   });
 
   it('14. selección mediante arrastre', () => {
