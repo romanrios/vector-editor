@@ -132,7 +132,9 @@ export function setupUIBindings(
   const panelTitle = document.querySelector<HTMLElement>('#panel-title, .panel-title');
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
   const selectionState = document.querySelector<HTMLElement>('#selection-state');
+  const sectionTransform = document.querySelector<HTMLDetailsElement>('#section-transform');
   const sectionAppearance = document.querySelector<HTMLDetailsElement>('#section-appearance');
+  const sectionArtboard = document.querySelector<HTMLDetailsElement>('#section-artboard');
   const inputObjectX = document.querySelector<HTMLInputElement>('#input-object-x');
   const inputObjectY = document.querySelector<HTMLInputElement>('#input-object-y');
   const inputObjectWidth = document.querySelector<HTMLInputElement>('#input-object-width');
@@ -704,6 +706,12 @@ export function setupUIBindings(
     }
     if (sectionAppearance) {
       sectionAppearance.style.display = isSingleTextSelected ? 'none' : 'block';
+    }
+    if (sectionTransform) {
+      sectionTransform.style.display = hasSelection ? 'block' : 'none';
+    }
+    if (sectionArtboard) {
+      sectionArtboard.style.display = hasSelection ? 'none' : 'block';
     }
 
     if (hasSelection) {

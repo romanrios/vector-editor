@@ -628,6 +628,9 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
         '#status-selection-separator': new MockElement('status-selection-separator', 'span'),
         '#no-selection-state': new MockElement('no-selection-state', 'div'),
         '#selection-state': new MockElement('selection-state', 'div'),
+        '#section-transform': new MockElement('section-transform', 'details'),
+        '#section-appearance': new MockElement('section-appearance', 'details'),
+        '#section-artboard': new MockElement('section-artboard', 'details'),
         '#input-object-x': new MockElement('input-object-x', 'input'),
         '#input-object-y': new MockElement('input-object-y', 'input'),
         '#input-object-width': new MockElement('input-object-width', 'input'),
@@ -695,6 +698,9 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
       assert.equal(elements['#panel-title'].textContent, 'ESTILO DE DIBUJO');
       assert.equal(elements['#no-selection-state'].style.display, 'block');
       assert.equal(elements['#selection-state'].style.display, 'none');
+      assert.equal(elements['#section-transform'].style.display, 'none');
+      assert.equal(elements['#section-appearance'].style.display, 'block');
+      assert.equal(elements['#section-artboard'].style.display, 'block');
       assert.equal(elements['#status-selection-info'].textContent, '');
       assert.equal(elements['#menu-item-copy'].disabled, true);
       assert.equal(elements['#menu-btn-object'].disabled, true);
@@ -704,6 +710,9 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
       assert.equal(elements['#panel-title'].textContent, 'PROPIEDADES');
       assert.equal(elements['#no-selection-state'].style.display, 'none');
       assert.equal(elements['#selection-state'].style.display, 'block');
+      assert.equal(elements['#section-transform'].style.display, 'block');
+      assert.equal(elements['#section-appearance'].style.display, 'block');
+      assert.equal(elements['#section-artboard'].style.display, 'none');
       assert.equal(elements['#status-selection-info'].textContent, 'Rectángulo 1 (Rectángulo)');
       assert.equal(elements['#input-fill'].value, '#ff0000');
       assert.equal(elements['#input-stroke'].value, '#000000');
