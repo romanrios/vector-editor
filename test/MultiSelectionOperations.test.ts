@@ -628,6 +628,11 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
         '#status-selection-separator': new MockElement('status-selection-separator', 'span'),
         '#no-selection-state': new MockElement('no-selection-state', 'div'),
         '#selection-state': new MockElement('selection-state', 'div'),
+        '#input-object-x': new MockElement('input-object-x', 'input'),
+        '#input-object-y': new MockElement('input-object-y', 'input'),
+        '#input-object-width': new MockElement('input-object-width', 'input'),
+        '#input-object-height': new MockElement('input-object-height', 'input'),
+        '#input-object-rotation': new MockElement('input-object-rotation', 'input'),
         '#input-fill': new MockElement('input-fill', 'input'),
         '#input-stroke': new MockElement('input-stroke', 'input'),
         '#input-stroke-width': new MockElement('input-stroke-width', 'input'),
@@ -725,6 +730,91 @@ describe('Operaciones sobre Múltiples Figuras y BatchCommand', () => {
       assert.equal(elements['#menu-item-bring-to-front'].disabled, false);
       assert.equal(elements['#menu-item-send-to-back'].disabled, false);
       assert.equal(elements['#menu-btn-object'].disabled, false);
+    });
+
+    it('edita posición y dimensiones con historial, agrupando la transformación de varias figuras', () => {
+      const r1 = createRect('r1', 'R1', 10, 20);
+      const r2 = createRect('r2', 'R2', 100, 20);
+      stateManager.addShape('layer-default', r1);
+      stateManager.addShape('layer-default', r2);
+      stateManager.setSelection(['r1']);
+
+      assert.equal(elements['#input-object-x'].value, '10');
+      assert.equal(elements['#input-object-y'].value, '20');
+      assert.equal(elements['#input-object-width'].value, '50');
+      assert.equal(elements['#input-object-height'].value, '50');
+
+      elements['#input-object-x'].value = '-5';
+      elements['#input-object-x'].dispatchEvent({ type: 'change', target: elements['#input-object-x'] });
+      assert.equal((stateManager.findNode('r1') as Rectangle).x, -5);
+      commandManager.undo();
+      assert.equal((stateManager.findNode('r1') as Rectangle).x, 10);
+
+      elements['#input-object-x'].value = '10.123456';
+      elements['#input-object-x'].dispatchEvent({ type: 'change', target: elements['#input-object-x'] });
+      assert.equal((stateManager.findNode('r1') as Rectangle).x, 10.1235);
+      assert.equal(elements['#input-object-x'].value, '10.1235');
+      commandManager.undo();
+
+      elements['#input-object-width'].value = '100';
+      elements['#input-object-width'].dispatchEvent({ type: 'change', target: elements['#input-object-width'] });
+      assert.equal((stateManager.findNode('r1') as Rectangle).width, 100);
+      commandManager.undo();
+      assert.equal((stateManager.findNode('r1') as Rectangle).width, 50);
+
+      elements['#input-object-width'].value = '60.123456';
+      elements['#input-object-width'].dispatchEvent({ type: 'change', target: elements['#input-object-width'] });
+      assert.equal((stateManager.findNode('r1') as Rectangle).width, 60.1235);
+      assert.equal(elements['#input-object-width'].value, '60.1235');
+      commandManager.undo();
+
+      stateManager.setSelection(['r1', 'r2']);
+      elements['#input-object-width'].value = '280';
+      elements['#input-object-width'].dispatchEvent({ type: 'change', target: elements['#input-object-width'] });
+      assert.equal((stateManager.findNode('r1') as Rectangle).width, 100);
+      assert.equal((stateManager.findNode('r2') as Rectangle).x, 190);
+      assert.equal(commandManager.undoCount, 1);
+
+      commandManager.undo();
+      assert.equal((stateManager.findNode('r1') as Rectangle).width, 50);
+      assert.equal((stateManager.findNode('r2') as Rectangle).x, 100);
+    });
+
+    it('muestra y cambia la rotación en grados con una sola acción deshacible', () => {
+      const r1 = createRect('r1', 'R1', 10, 20);
+      const r2 = createRect('r2', 'R2', 100, 20);
+      stateManager.addShape('layer-default', r1);
+      stateManager.addShape('layer-default', r2);
+
+      stateManager.setSelection(['r1']);
+      assert.equal(elements['#input-object-rotation'].value, '0');
+      elements['#input-object-rotation'].value = '45';
+      elements['#input-object-rotation'].dispatchEvent({
+        type: 'change',
+        target: elements['#input-object-rotation'],
+      });
+      assert.equal((stateManager.findNode('r1') as Rectangle).rotation, 45);
+      assert.equal(elements['#input-object-rotation'].value, '45');
+      commandManager.undo();
+      assert.equal((stateManager.findNode('r1') as Rectangle).rotation, 0);
+
+      stateManager.setSelection(['r1', 'r2']);
+      elements['#input-object-rotation'].value = '180';
+      elements['#input-object-rotation'].dispatchEvent({
+        type: 'change',
+        target: elements['#input-object-rotation'],
+      });
+      assert.equal((stateManager.findNode('r1') as Rectangle).x, 100);
+      assert.equal((stateManager.findNode('r2') as Rectangle).x, 10);
+      assert.equal((stateManager.findNode('r1') as Rectangle).rotation, 180);
+      assert.equal((stateManager.findNode('r2') as Rectangle).rotation, 180);
+      assert.equal(commandManager.undoCount, 1);
+
+      commandManager.undo();
+      assert.equal((stateManager.findNode('r1') as Rectangle).x, 10);
+      assert.equal((stateManager.findNode('r2') as Rectangle).x, 100);
+      assert.equal((stateManager.findNode('r1') as Rectangle).rotation, 0);
+      assert.equal((stateManager.findNode('r2') as Rectangle).rotation, 0);
     });
 
     it('aplica cambios de estilo a múltiples figuras con un único BatchCommand en el historial', () => {

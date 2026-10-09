@@ -9,6 +9,7 @@ import { StyleShapesCommand, type ShapeStyleChangeEntry } from './commands/Style
 import { UpdateTextTypographyCommand } from './commands/UpdateTextTypographyCommand.ts';
 import { ReorderCommand } from './commands/ReorderCommand.ts';
 import { BatchCommand } from './commands/BatchCommand.ts';
+import { TransformShapesCommand } from './commands/TransformShapesCommand.ts';
 import { ResizeArtboardCommand } from './commands/ResizeArtboardCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { ViewportManager } from './utils/viewport.ts';
@@ -27,7 +28,10 @@ import {
   type TextAlign,
 } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
+import { getSelectionBounds, normalizeAngle } from './utils/geometry.ts';
+import { getShapeDimensions, rotateShapesAboutPivot } from './utils/transform.ts';
 import { getPresetById, findPresetForSize } from './utils/artboardPresets.ts';
+import type { ShapeDimensions } from './commands/ResizeCommand.ts';
 
 function debug(...args: unknown[]): void {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -129,6 +133,11 @@ export function setupUIBindings(
   const noSelectionState = document.querySelector<HTMLElement>('#no-selection-state');
   const selectionState = document.querySelector<HTMLElement>('#selection-state');
   const sectionAppearance = document.querySelector<HTMLDetailsElement>('#section-appearance');
+  const inputObjectX = document.querySelector<HTMLInputElement>('#input-object-x');
+  const inputObjectY = document.querySelector<HTMLInputElement>('#input-object-y');
+  const inputObjectWidth = document.querySelector<HTMLInputElement>('#input-object-width');
+  const inputObjectHeight = document.querySelector<HTMLInputElement>('#input-object-height');
+  const inputObjectRotation = document.querySelector<HTMLInputElement>('#input-object-rotation');
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
   const inputFillHex = document.querySelector<HTMLInputElement>('#input-fill-hex');
   const btnFillNone = document.querySelector<HTMLButtonElement>('#btn-fill-none');
@@ -680,9 +689,13 @@ export function setupUIBindings(
     return hex ? { kind: 'color', hex } : { kind: 'none' };
   };
 
+  const roundToFourDecimals = (value: number): number => Number(value.toFixed(4));
+
   const syncPropertiesPanel = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()) => {
     const leafShapes = getLeafShapes(selectedNodes);
     const hasSelection = selectedNodes.length > 0;
+    const selectionBounds = hasSelection ? getSelectionBounds(selectedNodes) : null;
+    const firstLeafRotation = leafShapes.length > 0 ? leafShapes[0].rotation ?? 0 : null;
     const isSingleTextSelected = selectedNodes.length === 1 && isText(selectedNodes[0]);
     const singleTextNode = isSingleTextSelected ? (selectedNodes[0] as Text) : null;
 
@@ -710,6 +723,25 @@ export function setupUIBindings(
           panelTitle.textContent = hasGroup
             ? `${selectedNodes.length} elementos seleccionados`
             : `${selectedNodes.length} figuras seleccionadas`;
+        }
+      }
+
+      if (selectionBounds) {
+        if (inputObjectX && (typeof document === 'undefined' || document.activeElement !== inputObjectX)) {
+          inputObjectX.value = String(roundToFourDecimals(selectionBounds.minX));
+        }
+        if (inputObjectY && (typeof document === 'undefined' || document.activeElement !== inputObjectY)) {
+          inputObjectY.value = String(roundToFourDecimals(selectionBounds.minY));
+        }
+        if (inputObjectWidth && (typeof document === 'undefined' || document.activeElement !== inputObjectWidth)) {
+          inputObjectWidth.value = String(roundToFourDecimals(selectionBounds.width));
+        }
+        if (inputObjectHeight && (typeof document === 'undefined' || document.activeElement !== inputObjectHeight)) {
+          inputObjectHeight.value = String(roundToFourDecimals(selectionBounds.height));
+        }
+        if (inputObjectRotation && firstLeafRotation !== null &&
+            (typeof document === 'undefined' || document.activeElement !== inputObjectRotation)) {
+          inputObjectRotation.value = String(roundToFourDecimals(firstLeafRotation));
         }
       }
     } else {
@@ -951,6 +983,159 @@ export function setupUIBindings(
     syncMenuItems(selectedNodes);
     syncStatusBar(selectedNodes);
   };
+
+  const applyObjectGeometry = (property: 'x' | 'y' | 'width' | 'height', input: HTMLInputElement) => {
+    const parsedValue = Number(input.value);
+    const value = Number.isFinite(parsedValue) ? roundToFourDecimals(parsedValue) : parsedValue;
+    if (!Number.isFinite(value) || ((property === 'width' || property === 'height') && value <= 0)) {
+      syncPropertiesPanel();
+      return;
+    }
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const bounds = getSelectionBounds(selectedNodes);
+    if (leafShapes.length === 0 || !bounds) return;
+
+    let targetMinX = bounds.minX;
+    let targetMinY = bounds.minY;
+    let targetWidth = bounds.width;
+    let targetHeight = bounds.height;
+    if (property === 'x') targetMinX = value;
+    if (property === 'y') targetMinY = value;
+    if (property === 'width') targetWidth = value;
+    if (property === 'height') targetHeight = value;
+
+    const scaleX = targetWidth / Math.max(bounds.width, 0.1);
+    const scaleY = targetHeight / Math.max(bounds.height, 0.1);
+    const mapX = (x: number) => roundToFourDecimals(targetMinX + (x - bounds.minX) * scaleX);
+    const mapY = (y: number) => roundToFourDecimals(targetMinY + (y - bounds.minY) * scaleY);
+    const textScale = scaleX === 1
+      ? scaleY
+      : scaleY === 1
+      ? scaleX
+      : Math.sqrt(scaleX * scaleY);
+
+    const entries = leafShapes.map((shape) => {
+      const positionBefore: ShapeDimensions = {
+        x: shape.x,
+        y: shape.y,
+        ...(shape.rotation !== undefined ? { rotation: shape.rotation } : {}),
+      };
+      const positionAfter: ShapeDimensions = {
+        x: mapX(shape.x),
+        y: mapY(shape.y),
+        ...(shape.rotation !== undefined ? { rotation: shape.rotation } : {}),
+      };
+      let before: ShapeDimensions;
+      let after: ShapeDimensions;
+
+      if (shape.type === 'rectangle') {
+        before = { ...positionBefore, width: shape.width, height: shape.height };
+        after = {
+          ...positionAfter,
+          width: roundToFourDecimals(shape.width * scaleX),
+          height: roundToFourDecimals(shape.height * scaleY),
+        };
+      } else if (shape.type === 'ellipse') {
+        before = { ...positionBefore, radiusX: shape.radiusX, radiusY: shape.radiusY };
+        after = {
+          ...positionAfter,
+          radiusX: roundToFourDecimals(shape.radiusX * scaleX),
+          radiusY: roundToFourDecimals(shape.radiusY * scaleY),
+        };
+      } else if (shape.type === 'path') {
+        before = { ...positionBefore, points: shape.points };
+        after = {
+          ...positionAfter,
+          points: shape.points.map((point) => ({
+            x: mapX(point.x),
+            y: mapY(point.y),
+            ...(point.handleIn ? { handleIn: { x: mapX(point.handleIn.x), y: mapY(point.handleIn.y) } } : {}),
+            ...(point.handleOut ? { handleOut: { x: mapX(point.handleOut.x), y: mapY(point.handleOut.y) } } : {}),
+          })),
+        };
+      } else {
+        const fontSize = shape.fontSize ?? 16;
+        before = {
+          ...positionBefore,
+          fontSize,
+          ...(shape.lineHeight !== undefined ? { lineHeight: shape.lineHeight } : {}),
+        };
+        after = {
+          ...positionAfter,
+          fontSize: Math.max(1, roundToFourDecimals(fontSize * textScale)),
+          ...(shape.lineHeight !== undefined ? { lineHeight: roundToFourDecimals(shape.lineHeight * scaleY) } : {}),
+        };
+      }
+
+      return { id: shape.id, before, after };
+    });
+
+    const transformCommand = new TransformShapesCommand(stateManager, entries);
+    const command = leafShapes.length > 1
+      ? new BatchCommand([transformCommand], 'Transform Selection')
+      : transformCommand;
+    command.execute();
+    commandManager.recordCommand(command);
+  };
+
+  const onObjectXChange = () => inputObjectX && applyObjectGeometry('x', inputObjectX);
+  const onObjectYChange = () => inputObjectY && applyObjectGeometry('y', inputObjectY);
+  const onObjectWidthChange = () => inputObjectWidth && applyObjectGeometry('width', inputObjectWidth);
+  const onObjectHeightChange = () => inputObjectHeight && applyObjectGeometry('height', inputObjectHeight);
+  const onObjectGeometryBlur = () => syncPropertiesPanel();
+
+  const onObjectRotationChange = () => {
+    if (!inputObjectRotation) return;
+    const parsedRotation = Number(inputObjectRotation.value);
+    const targetRotation = Number.isFinite(parsedRotation) ? roundToFourDecimals(parsedRotation) : parsedRotation;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const bounds = getSelectionBounds(selectedNodes);
+    if (!Number.isFinite(targetRotation) || leafShapes.length === 0 || !bounds) {
+      syncPropertiesPanel();
+      return;
+    }
+
+    const delta = normalizeAngle(targetRotation - (leafShapes[0].rotation ?? 0));
+    const pivot = {
+      x: bounds.minX + bounds.width / 2,
+      y: bounds.minY + bounds.height / 2,
+    };
+    const rotatedEntries = rotateShapesAboutPivot(leafShapes, pivot, delta);
+    if (rotatedEntries.length === 0) return;
+
+    const shapesById = new Map(leafShapes.map((shape) => [shape.id, shape]));
+    const entries = rotatedEntries.map((entry) => {
+      const shape = shapesById.get(entry.id);
+      if (!shape) {
+        throw new Error(`No se encontró la figura ${entry.id} para registrar la rotación.`);
+      }
+      return {
+        id: entry.id,
+        before: getShapeDimensions(shape),
+        after: entry.dimensions,
+      };
+    });
+    const transformCommand = new TransformShapesCommand(stateManager, entries);
+    const command = leafShapes.length > 1
+      ? new BatchCommand([transformCommand], 'Rotate Selection')
+      : transformCommand;
+    command.execute();
+    commandManager.recordCommand(command);
+  };
+
+  inputObjectX?.addEventListener('change', onObjectXChange);
+  inputObjectY?.addEventListener('change', onObjectYChange);
+  inputObjectWidth?.addEventListener('change', onObjectWidthChange);
+  inputObjectHeight?.addEventListener('change', onObjectHeightChange);
+  inputObjectRotation?.addEventListener('change', onObjectRotationChange);
+  inputObjectX?.addEventListener('blur', onObjectGeometryBlur);
+  inputObjectY?.addEventListener('blur', onObjectGeometryBlur);
+  inputObjectWidth?.addEventListener('blur', onObjectGeometryBlur);
+  inputObjectHeight?.addEventListener('blur', onObjectGeometryBlur);
+  inputObjectRotation?.addEventListener('blur', onObjectGeometryBlur);
 
   // Suscripción al StateManager para sincronizar selección y estilos
   const unsubscribeState = stateManager.subscribe(() => {
@@ -2901,6 +3086,17 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('focus', onInputStart);
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
+
+      inputObjectX?.removeEventListener('change', onObjectXChange);
+      inputObjectY?.removeEventListener('change', onObjectYChange);
+      inputObjectWidth?.removeEventListener('change', onObjectWidthChange);
+      inputObjectHeight?.removeEventListener('change', onObjectHeightChange);
+      inputObjectRotation?.removeEventListener('change', onObjectRotationChange);
+      inputObjectX?.removeEventListener('blur', onObjectGeometryBlur);
+      inputObjectY?.removeEventListener('blur', onObjectGeometryBlur);
+      inputObjectWidth?.removeEventListener('blur', onObjectGeometryBlur);
+      inputObjectHeight?.removeEventListener('blur', onObjectGeometryBlur);
+      inputObjectRotation?.removeEventListener('blur', onObjectGeometryBlur);
 
       inputTextContent?.removeEventListener('focus', onTextContentFocus);
       inputTextContent?.removeEventListener('input', onTextContentInput);

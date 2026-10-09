@@ -839,9 +839,10 @@
       }
 
       .control-group input[type="number"] {
-        width: 58px;
+        width: 96px;
         height: 24px;
-        padding: 0 16px 0 6px;
+        padding: 0 24px 0 6px;
+        appearance: textfield;
         background: var(--bg-control);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-xs);
@@ -853,6 +854,12 @@
         transition: border-color var(--transition);
       }
 
+      .control-group input[type="number"]::-webkit-inner-spin-button,
+      .control-group input[type="number"]::-webkit-outer-spin-button {
+        margin: 0;
+        appearance: none;
+      }
+
       .control-group input[type="number"]:focus-visible {
         border-color: var(--border-focus);
         outline: 1px solid var(--border-focus);
@@ -860,7 +867,7 @@
 
       .input-unit {
         position: absolute;
-        right: 5px;
+        right: 6px;
         font-size: 10px;
         color: var(--text-muted);
         pointer-events: none;
@@ -868,8 +875,7 @@
 
       #input-artboard-width,
       #input-artboard-height {
-        width: 72px;
-        padding-right: 20px;
+        width: 104px;
       }
 
       .control-select {
@@ -1640,6 +1646,52 @@
       <div id="no-selection-state" class="no-selection-state">Sin selección</div>
 
       <div id="selection-state" style="display: none;">
+        <details class="collapsible-section" id="section-transform" open>
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Transformación</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="input-object-x">X</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-object-x" step="0.0001" aria-label="Posición X del objeto en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-object-y">Y</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-object-y" step="0.0001" aria-label="Posición Y del objeto en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-object-width">Ancho</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-object-width" min="0.1" step="0.0001" aria-label="Ancho del objeto en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-object-height">Alto</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-object-height" min="0.1" step="0.0001" aria-label="Alto del objeto en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-object-rotation">Rotar</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-object-rotation" step="0.0001" aria-label="Rotación del objeto en grados">
+                <span class="input-unit" aria-hidden="true">°</span>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <!-- Sección: Tipografía (visible solo cuando hay un único Text seleccionado) -->
         <details class="collapsible-section" id="section-typography" open style="display: none;">
           <summary class="section-header" tabindex="0">
