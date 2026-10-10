@@ -2182,12 +2182,15 @@ export class InputController {
         newShape = ellipseShape;
       }
 
-      const command = new AddShapeCommand(this.stateManager, targetLayer.id, newShape);
-      this.commandManager.executeCommand(command);
+      try {
+        const command = new AddShapeCommand(this.stateManager, targetLayer.id, newShape);
+        this.commandManager.executeCommand(command);
 
-      this.stateManager.selectNode(newShape.id);
-      this.cancelCreation();
-      this.setTool('select');
+        this.stateManager.selectNode(newShape.id);
+      } finally {
+        this.cancelCreation();
+        this.setTool('select');
+      }
       return;
     }
 

@@ -876,7 +876,7 @@ export function setupUIBindings(
       inputFill.value =
         fillState.kind === 'color'
           ? fillState.hex
-          : toValidHexColor(firstShape?.fill ?? defaultStyle?.fill ?? lastRememberedFill, '#000000');
+          : toValidHexColor(firstShape?.fill ?? defaultStyle?.fill, lastRememberedFill);
     }
 
     if (inputFillHex && (typeof document === 'undefined' || document.activeElement !== inputFillHex)) {
@@ -910,11 +910,14 @@ export function setupUIBindings(
       }
     }
 
+    const firstShapeStroke =
+      firstShape && 'stroke' in firstShape ? (firstShape as { stroke?: string }).stroke : undefined;
+
     if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
       inputStroke.value =
         strokeState.kind === 'color'
           ? strokeState.hex
-          : toValidHexColor(('stroke' in firstShape ? (firstShape as { stroke?: string }).stroke : undefined) ?? defaultStyle?.stroke ?? lastRememberedStroke, '#000000');
+          : toValidHexColor(firstShapeStroke ?? defaultStyle?.stroke, lastRememberedStroke);
     }
 
     if (inputStrokeHex && (typeof document === 'undefined' || document.activeElement !== inputStrokeHex)) {

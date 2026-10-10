@@ -519,5 +519,64 @@ describe('Control de color en Panel de Apariencia', () => {
 
     cleanup();
   });
+
+  it('sin selección, pulsar botón sin contorno no lanza error, aplica "none", y al dibujar un rectángulo pasa automáticamente a modo selección', () => {
+    const { elements, stateManager, inputController, cleanup } = setupMockEnvironment();
+
+    stateManager.setSelection([]);
+    const btnStrokeNone = elements['#btn-stroke-none'];
+    const swatchStrokePreview = elements['#swatch-stroke-preview'];
+    const inputStrokeHex = elements['#input-stroke-hex'];
+
+    // 1. Clic en sin contorno sin nada seleccionado: no debe lanzar TypeError ('stroke' in undefined)
+    assert.doesNotThrow(() => {
+      btnStrokeNone.click();
+    });
+
+    assert.equal(stateManager.getDrawingStyle().stroke, 'none');
+    assert.equal(btnStrokeNone.getAttribute('aria-pressed'), 'true');
+    assert.equal(swatchStrokePreview.className, 'color-swatch-preview state-none');
+    assert.equal(inputStrokeHex.placeholder, 'ninguno');
+
+    // 2. Dibujar un rectángulo: al soltar el mouse, debe crearse la figura y volver automáticamente a herramienta 'select'
+    inputController.setTool('rectangle');
+    assert.equal(inputController.currentTool, 'rectangle');
+
+    inputController.handleMouseDown({ button: 0, clientX: 10, clientY: 10 } as MouseEvent);
+    inputController.handleMouseMove({ clientX: 100, clientY: 100 } as MouseEvent);
+    assert.doesNotThrow(() => {
+      inputController.handleMouseUp({ button: 0, clientX: 100, clientY: 100 } as MouseEvent);
+    });
+
+    const selection = stateManager.getSelection();
+    assert.equal(selection.length, 1);
+    const createdShape = stateManager.findNode(selection[0]) as Rectangle;
+    assert.ok(createdShape);
+    assert.equal(createdShape.stroke, 'none');
+    assert.equal(inputController.currentTool, 'select', 'Debe volver al modo select sin necesidad de un clic adicional');
+
+    cleanup();
+  });
+
+  it('sin selección, pulsar dos veces botón sin contorno conmuta entre "none" y el color previo', () => {
+    const { elements, stateManager, cleanup } = setupMockEnvironment();
+
+    stateManager.setSelection([]);
+    const btnStrokeNone = elements['#btn-stroke-none'];
+    const initialStroke = stateManager.getDrawingStyle().stroke;
+
+    // Clic 1: pone 'none'
+    btnStrokeNone.click();
+    assert.equal(stateManager.getDrawingStyle().stroke, 'none');
+    assert.equal(btnStrokeNone.getAttribute('aria-pressed'), 'true');
+
+    // Clic 2: restaura el color previo
+    btnStrokeNone.click();
+    assert.equal(stateManager.getDrawingStyle().stroke, initialStroke);
+    assert.equal(btnStrokeNone.getAttribute('aria-pressed'), 'false');
+
+    cleanup();
+  });
 });
+
 
