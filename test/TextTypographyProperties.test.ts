@@ -412,11 +412,11 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     stateManager.setSelection(['text-font-family']);
 
     const select = elements['#select-font-family'];
-    select.value = 'Georgia';
+    select.value = 'Montserrat';
     select.dispatchEvent({ type: 'change' });
 
     let current = stateManager.findNode('text-font-family') as Text;
-    assert.equal(current.fontFamily, 'Georgia');
+    assert.equal(current.fontFamily, 'Montserrat');
     assert.equal(stateManager.isDirty, true);
     assert.equal(commandManager.canUndo(), true);
 
@@ -427,8 +427,8 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
 
     commandManager.redo();
     current = stateManager.findNode('text-font-family') as Text;
-    assert.equal(current.fontFamily, 'Georgia');
-    assert.equal(elements['#select-font-family'].value, 'Georgia');
+    assert.equal(current.fontFamily, 'Montserrat');
+    assert.equal(elements['#select-font-family'].value, 'Montserrat');
 
     cleanup();
   });
