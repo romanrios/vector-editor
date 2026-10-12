@@ -2963,6 +2963,7 @@ export function setupUIBindings(
     inputController.setSmartGuidesEnabled(!inputController.smartGuidesEnabled);
     syncSmartGuidesMenuItem();
   };
+  const unsubscribeSmartGuides = inputController.onSmartGuidesChange(syncSmartGuidesMenuItem);
   syncSmartGuidesMenuItem();
   menuItemSmartGuides?.addEventListener('click', onMenuSmartGuidesClick);
 
@@ -3321,6 +3322,7 @@ export function setupUIBindings(
       menuItemZoomFit?.removeEventListener('click', onMenuZoomFitClick);
       menuItemZoom100?.removeEventListener('click', onMenuZoom100Click);
       menuItemSmartGuides?.removeEventListener('click', onMenuSmartGuidesClick);
+      unsubscribeSmartGuides();
       menuItemShortcuts?.removeEventListener('click', onMenuShortcutsClick);
       btnCloseShortcuts?.removeEventListener('click', closeShortcutsDialog);
       menuItemAbout?.removeEventListener('click', onMenuAboutClick);

@@ -704,6 +704,24 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     assert.equal(inputController.smartGuidesEnabled, true);
     assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'true');
 
+    let prevented = false;
+    inputController.handleKeyDown({
+      ctrlKey: true,
+      key: 'u',
+      preventDefault: () => { prevented = true; },
+    } as unknown as KeyboardEvent);
+    assert.equal(prevented, true);
+    assert.equal(inputController.smartGuidesEnabled, false);
+    assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'false');
+
+    inputController.handleKeyDown({
+      ctrlKey: true,
+      key: 'U',
+      preventDefault: () => {},
+    } as unknown as KeyboardEvent);
+    assert.equal(inputController.smartGuidesEnabled, true);
+    assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'true');
+
     cleanup();
     assert.equal(smartGuidesItem.getListenerCount('click'), 0);
   });

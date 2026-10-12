@@ -76,6 +76,7 @@ import {
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'hand' | 'text';
 export type InputControllerEvent = 'toolChange';
 export type ToolChangeCallback = (tool: ToolMode) => void;
+export type SmartGuidesChangeCallback = (enabled: boolean) => void;
 
 /**
  * Definición estructurada de un atajo de teclado soportado en el editor
@@ -115,6 +116,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
   { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
   { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
+  { key: 'Ctrl+U', description: 'Activar / desactivar guías inteligentes', category: 'Vista' },
   { key: 'Flechas', description: 'Mover figuras seleccionadas (1 px)', category: 'Transformación' },
   { key: 'Shift + Flechas', description: 'Mover figuras seleccionadas (10 px)', category: 'Transformación' },
   { key: 'Shift (al redimensionar)', description: 'Escalar proporcionalmente sin deformar', category: 'Transformación' },
@@ -317,6 +319,7 @@ export class InputController {
 
   // Event Emitter para observabilidad externa desacoplada del DOM
   private eventListeners: Map<string, Set<(data: any) => void>> = new Map();
+  private smartGuidesListeners = new Set<SmartGuidesChangeCallback>();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -483,6 +486,16 @@ export class InputController {
       this.activeGuides = [];
     }
     this.stateManager.markDirty();
+    for (const listener of this.smartGuidesListeners) {
+      listener(enabled);
+    }
+  }
+
+  public onSmartGuidesChange(listener: SmartGuidesChangeCallback): () => void {
+    this.smartGuidesListeners.add(listener);
+    return () => {
+      this.smartGuidesListeners.delete(listener);
+    };
   }
 
   public get isCopyDragging(): boolean {
@@ -775,6 +788,7 @@ export class InputController {
     this._isMouseSelectingText = false;
     this._textEditingState = null;
     this.eventListeners.clear();
+    this.smartGuidesListeners.clear();
   }
 
   /**
@@ -2738,6 +2752,12 @@ export class InputController {
    */
   public handleKeyDown(event: KeyboardEvent): void {
     if (this.isInputFocused(event)) {
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'u') {
+      event.preventDefault?.();
+      this.setSmartGuidesEnabled(!this.smartGuidesEnabled);
       return;
     }
 
