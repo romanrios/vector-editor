@@ -64,6 +64,7 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       rotation: shape.rotation ?? 0,
       fontSize: shape.fontSize ?? 16,
       ...(shape.lineHeight !== undefined ? { lineHeight: shape.lineHeight } : {}),
+      ...(shape.boxWidth !== undefined ? { boxWidth: shape.boxWidth } : {}),
     };
   }
   return {

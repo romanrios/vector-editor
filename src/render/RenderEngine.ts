@@ -843,6 +843,29 @@ export class RenderEngine {
       );
     }
 
+    // 3.1. Manejador de redimensionamiento central derecho para nodos Text
+    if (shape.type === 'text') {
+      const rcX = baseX + baseWidth;
+      const rcY = baseY + baseHeight / 2;
+
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(
+        rcX - halfHandle,
+        rcY - halfHandle,
+        handleSize,
+        handleSize
+      );
+
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.strokeRect(
+        rcX - halfHandle,
+        rcY - halfHandle,
+        handleSize,
+        handleSize
+      );
+    }
+
     // 4. Manejador de rotación flotante (círculo verde)
     this.ctx.beginPath();
     if (typeof this.ctx.arc === 'function') {
@@ -968,12 +991,48 @@ export class RenderEngine {
       this.ctx.translate(-text.x, -text.y);
     }
 
-    // 5. Dibujo del texto (soporta multilínea)
+    // 5. Dibujo del texto (soporta multilínea y word-wrapping con boxWidth)
     const textEdit = this.options.textEditProvider?.() ?? null;
     const isEditingThis = textEdit !== null && textEdit.textId === text.id;
     const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
-    const lines = displayText.split('\n');
     const lineHeight = getTextLineHeight(text);
+
+    let lines: string[];
+    if (text.boxWidth !== undefined) {
+      lines = [];
+      const paragraphs = displayText.split('\n');
+      for (const paragraph of paragraphs) {
+        if (!paragraph) {
+          lines.push('');
+          continue;
+        }
+        const words = paragraph.split(' ');
+        let currentLine = '';
+        for (let j = 0; j < words.length; j++) {
+          const word = words[j];
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const metrics = typeof this.ctx.measureText === 'function' ? this.ctx.measureText(testLine) : null;
+          const testWidth = metrics && typeof metrics.width === 'number' && metrics.width > 0
+            ? metrics.width
+            : testLine.length * (fontSize * 0.6);
+
+          if (testWidth <= text.boxWidth || !currentLine) {
+            currentLine = testLine;
+          } else {
+            lines.push(currentLine);
+            currentLine = word;
+          }
+        }
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+      }
+      if (lines.length === 0) {
+        lines = [''];
+      }
+    } else {
+      lines = displayText.split('\n');
+    }
 
     // 6. Si está en edición y existe selección de caracteres, renderizar el resaltado DETRÁS del texto
     if (

@@ -1319,6 +1319,7 @@ export class InputController {
               height: aabb.height,
               fontSize: selectedNode.fontSize ?? 16,
               rotation: selectedNode.rotation ?? 0,
+              boxWidth: selectedNode.boxWidth,
             };
           } else {
             this.initialDimensions = null;
@@ -3774,6 +3775,7 @@ export class InputController {
       'top-right': 315,
       'bottom-right': 45,
       'bottom-left': 135,
+      'right-center': 0,
     };
     const baseAngle = handleAngles[handle];
     if (baseAngle === undefined) return 'default';
@@ -3813,6 +3815,17 @@ export class InputController {
     // Proyectar el desplazamiento del cursor (delta de pantalla) en el sistema de coordenadas local rotado
     const localDx = dx * cos + dy * sin;
     const localDy = -dx * sin + dy * cos;
+
+    if (handle === 'right-center') {
+      const initBoxW = initial.boxWidth !== undefined ? initial.boxWidth : (initial.width ?? 0);
+      const newBoxWidth = Math.max(5, initBoxW + localDx);
+      return {
+        x: initial.x,
+        y: initial.y,
+        rotation,
+        boxWidth: newBoxWidth,
+      };
+    }
 
     let dxSign = 1;
     let dySign = 1;
@@ -4014,7 +4027,8 @@ export class InputController {
       a.radiusX !== b.radiusX ||
       a.radiusY !== b.radiusY ||
       a.fontSize !== b.fontSize ||
-      a.rotation !== b.rotation
+      a.rotation !== b.rotation ||
+      a.boxWidth !== b.boxWidth
     );
   }
 }

@@ -7,6 +7,7 @@ import type {
   SceneNode,
   SelectableNode,
   Shape,
+  Text,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -1262,16 +1263,19 @@ export class StateManager {
             const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
             const nextFontSize = dimensions.fontSize !== undefined ? dimensions.fontSize : child.fontSize;
             const nextLineHeight = dimensions.lineHeight !== undefined ? dimensions.lineHeight : child.lineHeight;
+            const hasBoxWidth = 'boxWidth' in dimensions;
+            const nextBoxWidth = hasBoxWidth ? dimensions.boxWidth : child.boxWidth;
 
             if (
               nextX !== child.x ||
               nextY !== child.y ||
               nextRot !== child.rotation ||
               (dimensions.fontSize !== undefined && nextFontSize !== child.fontSize) ||
-              (dimensions.lineHeight !== undefined && nextLineHeight !== child.lineHeight)
+              (dimensions.lineHeight !== undefined && nextLineHeight !== child.lineHeight) ||
+              (hasBoxWidth && nextBoxWidth !== child.boxWidth)
             ) {
               shapeChanged = true;
-              newShape = {
+              const textBase = {
                 ...child,
                 x: nextX,
                 y: nextY,
@@ -1279,6 +1283,16 @@ export class StateManager {
                 ...(nextFontSize !== undefined ? { fontSize: nextFontSize } : {}),
                 ...(nextLineHeight !== undefined ? { lineHeight: nextLineHeight } : {}),
               };
+              if (hasBoxWidth) {
+                if (nextBoxWidth !== undefined) {
+                  newShape = { ...textBase, boxWidth: nextBoxWidth };
+                } else {
+                  const { boxWidth: _, ...withoutBoxWidth } = textBase;
+                  newShape = withoutBoxWidth as Text;
+                }
+              } else {
+                newShape = textBase;
+              }
             }
           }
 

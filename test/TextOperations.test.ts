@@ -475,7 +475,7 @@ describe('Operaciones e Integración de Text', () => {
       assert.equal(changes[0].dimensions.fontSize, 40);
     });
 
-    it('getSelectionHandles genera los 5 tiradores de caja y rotación para un nodo Text', () => {
+    it('getSelectionHandles genera los 6 tiradores de caja, rotación y right-center para un nodo Text', () => {
       const { mockCtx } = createMockCanvas({ charWidth: 10 });
       setSharedMeasureContext(mockCtx);
 
@@ -490,13 +490,14 @@ describe('Operaciones e Integración de Text', () => {
       };
 
       const handles = getSelectionHandles(text, 8, 30);
-      assert.equal(handles.length, 5);
+      assert.equal(handles.length, 6);
       const types = handles.map((h) => h.type);
       assert.ok(types.includes('top-left'));
       assert.ok(types.includes('top-right'));
       assert.ok(types.includes('bottom-right'));
       assert.ok(types.includes('bottom-left'));
       assert.ok(types.includes('rotation-handle'));
+      assert.ok(types.includes('right-center'));
 
       setSharedMeasureContext(null);
     });

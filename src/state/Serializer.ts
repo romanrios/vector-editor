@@ -259,6 +259,9 @@ function parseLayerChild(
     if (child.lineHeight !== undefined && (!isFiniteNumber(child.lineHeight) || child.lineHeight <= 0)) {
       throw new DocumentParseError(`${childPath}.lineHeight debe ser un número finito positivo`);
     }
+    if (child.boxWidth !== undefined && (!isFiniteNumber(child.boxWidth) || child.boxWidth <= 0)) {
+      throw new DocumentParseError(`${childPath}.boxWidth debe ser un número finito positivo`);
+    }
 
     const { selected: _sel, isDirty: _dirty, ...rest } = child;
     return rest as unknown as Text;

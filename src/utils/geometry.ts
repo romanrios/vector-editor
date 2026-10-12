@@ -394,10 +394,59 @@ export function measureSingleLineTextWidth(
 }
 
 /**
+ * Divide el contenido de un nodo Text en líneas respetando saltos de línea explícitos
+ * y aplicando ajuste de línea automático (word-wrapping) si `boxWidth` está definido.
+ */
+export function getWrappedTextLines(text: Text, ctx?: CanvasRenderingContext2D | null): string[] {
+  const content = text.text ?? '';
+  if (text.boxWidth === undefined) {
+    return content.split('\n');
+  }
+
+  const boxWidth = text.boxWidth;
+  const paragraphs = content.split('\n');
+  const result: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph) {
+      result.push('');
+      continue;
+    }
+
+    const words = paragraph.split(' ');
+    let currentLine = '';
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const width = measureSingleLineTextWidth(text, testLine, ctx);
+
+      if (width <= boxWidth || !currentLine) {
+        currentLine = testLine;
+      } else {
+        result.push(currentLine);
+        currentLine = word;
+      }
+    }
+
+    if (currentLine) {
+      result.push(currentLine);
+    }
+  }
+
+  return result.length > 0 ? result : [''];
+}
+
+/**
  * Mide el ancho de un nodo Text.
- * Para texto multilínea, corresponde al ancho de la línea más ancha.
+ * Si boxWidth está definido, retorna boxWidth como ancho.
+ * Para texto multilínea sin boxWidth, corresponde al ancho de la línea más ancha.
  */
 export function measureTextWidth(text: Text, ctx?: CanvasRenderingContext2D | null): number {
+  if (text.boxWidth !== undefined) {
+    return text.boxWidth;
+  }
+
   const content = text.text ?? '';
   if (!content) {
     return 0;
@@ -464,12 +513,19 @@ export function getTextIndexAtPosition(
   }
 
   // 2. Dividir en líneas y calcular posiciones iniciales
-  const lines = content.split('\n');
+  const lines = text.boxWidth !== undefined ? getWrappedTextLines(text, ctx) : content.split('\n');
   const lineStarts: number[] = [];
   let currStart = 0;
   for (let i = 0; i < lines.length; i++) {
-    lineStarts.push(currStart);
-    currStart += lines[i].length + 1; // +1 por el '\n'
+    const line = lines[i];
+    const pos = content.indexOf(line, currStart);
+    if (pos !== -1) {
+      lineStarts.push(pos);
+      currStart = pos + line.length;
+    } else {
+      lineStarts.push(currStart);
+      currStart += line.length + 1;
+    }
   }
 
   // 3. Identificar la línea más cercana según coordenada Y y lineHeight
@@ -515,13 +571,14 @@ export function getTextIndexAtPosition(
 
 /**
  * Obtiene el Bounding Box base (sin rotación) de un nodo Text en coordenadas del mundo.
- * Para texto multilínea, el ancho es la línea más ancha y la altura corresponde a lines.length * lineHeight.
+ * Para texto con boxWidth, el ancho es boxWidth y la altura se calcula simulando el salto de línea.
+ * Para texto multilínea sin boxWidth, el ancho es la línea más ancha y la altura corresponde a lines.length * lineHeight.
  * Para compatibilidad, si es de una sola línea sin lineHeight explícito, la altura es fontSize.
  */
 export function getTextBaseAABB(text: Text, ctx?: CanvasRenderingContext2D | null): AABB {
-  const content = text.text ?? '';
-  const lines = content.split('\n');
-  const width = measureTextWidth(text, ctx);
+  const isWrapped = text.boxWidth !== undefined;
+  const lines = isWrapped ? getWrappedTextLines(text, ctx) : (text.text ?? '').split('\n');
+  const width = isWrapped ? text.boxWidth! : measureTextWidth(text, ctx);
   const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
   const lineHeight = getTextLineHeight(text);
   const height = lines.length <= 1 && text.lineHeight === undefined ? fontSize : lines.length * lineHeight;
@@ -860,7 +917,7 @@ export function isPointInShape(
 /**
  * Tipos de manejadores de esquina y rotación
  */
-export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | 'rotation-handle';
+export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | 'rotation-handle' | 'right-center';
 
 /**
  * Representación de un manejador de selección como AABB pequeño
@@ -870,12 +927,13 @@ export interface SelectionHandle extends AABB {
 }
 
 /**
- * Calcula el AABB de un Shape y devuelve un array con 5 objetos geométricos
- * (AABBs pequeños de 8x8px) correspondientes a las 4 esquinas y al manejador de rotación flotante.
+ * Calcula el AABB de un Shape y devuelve un array con objetos geométricos
+ * (AABBs pequeños de 8x8px) correspondientes a las esquinas, al manejador de rotación flotante,
+ * y exclusivamente para nodos Text, un manejador de tipo 'right-center'.
  *
  * @param shape Figura seleccionada
  * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
- * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
+ * @returns Array con los manejadores de la figura
  */
 export function getSelectionHandles(
   shape: Shape,
@@ -890,7 +948,7 @@ export function getSelectionHandles(
     const midX = (aabb.minX + aabb.maxX) / 2;
     const rotY = aabb.minY - rotationDistance;
 
-    return [
+    const handles: SelectionHandle[] = [
       {
         type: 'top-left',
         minX: aabb.minX - half,
@@ -937,6 +995,21 @@ export function getSelectionHandles(
         height: handleSize,
       },
     ];
+
+    if (shape.type === 'text') {
+      const midY = (aabb.minY + aabb.maxY) / 2;
+      handles.push({
+        type: 'right-center',
+        minX: aabb.maxX - half,
+        minY: midY - half,
+        maxX: aabb.maxX + half,
+        maxY: midY + half,
+        width: handleSize,
+        height: handleSize,
+      });
+    }
+
+    return handles;
   }
 
   // Figura con rotación: calcular esquinas y manejador de rotación en espacio rotado (OBB)
@@ -992,12 +1065,16 @@ export function getSelectionHandles(
       height: handleSize,
     });
 
+    const midY = (baseAABB.minY + baseAABB.maxY) / 2;
+    const rc = rotatePoint(baseAABB.maxX - cx, midY - cy);
+
     return [
       createHandle(tl, 'top-left'),
       createHandle(tr, 'top-right'),
       createHandle(br, 'bottom-right'),
       createHandle(bl, 'bottom-left'),
       createHandle(rot, 'rotation-handle'),
+      createHandle(rc, 'right-center'),
     ];
   }
 

@@ -126,6 +126,7 @@ export interface Text extends BaseNode {
   readonly fill?: string;
   readonly rotation?: number;
   readonly opacity?: number;
+  readonly boxWidth?: number;
 }
 
 /**
