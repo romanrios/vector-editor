@@ -59,6 +59,7 @@ import { ResizeCommand, type ShapeDimensions } from '../commands/ResizeCommand.t
 import { RotateCommand } from '../commands/RotateCommand.ts';
 import { PointCommand } from '../commands/PointCommand.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
+import { CreateTextCommand } from '../commands/CreateTextCommand.ts';
 import { UpdateTextCommand } from '../commands/UpdateTextCommand.ts';
 import { ViewportManager } from '../utils/viewport.ts';
 import {
@@ -239,6 +240,7 @@ export class InputController {
   private ellipseCounter: number = 0;
   private textCounter: number = 0;
   private _textEditingState: TextEditingState | null = null;
+  private _textCreation: { command: CreateTextCommand; startX: number } | null = null;
   private _cursorVisible: boolean = true;
   private _cursorBlinkTimer: any = null;
   private _isMouseSelectingText: boolean = false;
@@ -380,6 +382,9 @@ export class InputController {
       tool !== 'ellipse'
     ) {
       this.cancelCreation();
+    }
+    if (this._currentTool === 'text' && tool !== 'text') {
+      this._textCreation = null;
     }
     if (this._isRotating) {
       if (this.rotatingShapeId && this.initialRotation !== null) {
@@ -1518,10 +1523,11 @@ export class InputController {
       locked: false,
     };
 
-    const command = new AddShapeCommand(this.stateManager, targetLayer.id, newText);
+    const command = new CreateTextCommand(this.stateManager, targetLayer.id, newText);
     this.commandManager.executeCommand(command);
 
     this.stateManager.selectNode(newText.id);
+    this._textCreation = { command, startX: x };
 
     // Entra automáticamente en edición seleccionando todo el contenido inicial para que el primer carácter lo reemplace
     this.startEditingText(newText.id, newText.text.length, true);
@@ -1801,6 +1807,18 @@ export class InputController {
     }
 
     const { x, y } = this.getLocalCoordinates(event);
+
+    if (this._textCreation && this._currentTool === 'text') {
+      const deltaX = x - this._textCreation.startX;
+      const threshold = 3 / this.viewportManager.zoom;
+      const hasDragged = Math.abs(deltaX) >= threshold;
+      this._textCreation.command.updateGeometry(
+        hasDragged ? Math.min(this._textCreation.startX, x) : this._textCreation.startX,
+        hasDragged ? Math.abs(deltaX) : undefined
+      );
+      this.stateManager.markDirty();
+      return;
+    }
 
     if (this._isMouseSelectingText && this._textEditingState) {
       const node = this.stateManager.findNode(this._textEditingState.textId);
@@ -2105,6 +2123,12 @@ export class InputController {
       } else {
         this.restoreToolCursor();
       }
+      return;
+    }
+
+    if (this._textCreation) {
+      this._textCreation = null;
+      this.stateManager.markDirty();
       return;
     }
 
@@ -3249,11 +3273,12 @@ export class InputController {
    * Cancela la creación en curso de una figura por arrastre, limpiando la vista previa.
    */
   public cancelCreation(): void {
-    const wasCreating = this._isCreatingShape || this._shapePreview !== null;
+    const wasCreating = this._isCreatingShape || this._shapePreview !== null || this._textCreation !== null;
     this._isCreatingShape = false;
     this._creationStart = null;
     this._creationCurrent = null;
     this._shapePreview = null;
+    this._textCreation = null;
     if (wasCreating) {
       this.stateManager.markDirty();
     }
@@ -4032,4 +4057,3 @@ export class InputController {
     );
   }
 }
-

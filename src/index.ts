@@ -31,6 +31,7 @@ export * from './commands/StyleCommand.ts';
 export * from './commands/StyleShapesCommand.ts';
 export * from './commands/DeleteCommand.ts';
 export * from './commands/AddShapeCommand.ts';
+export * from './commands/CreateTextCommand.ts';
 export * from './commands/RotateCommand.ts';
 export * from './commands/PointCommand.ts';
 export * from './commands/ReorderCommand.ts';

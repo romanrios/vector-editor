@@ -163,6 +163,7 @@ describe('Herramienta Texto (Text Tool)', () => {
 
     // Clic en pantalla en (150, 220)
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 220, button: 0 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 150, clientY: 220, button: 0 });
 
     const layer = stateManager.findNode(layerId) as any;
     assert.equal(layer.children.length, 1, 'Debe insertar exactamente un nodo en la capa');
@@ -172,6 +173,7 @@ describe('Herramienta Texto (Text Tool)', () => {
 
     const textNode = createdNode as Text;
     assert.equal(textNode.text, 'Texto', 'El contenido inicial debe ser "Texto"');
+    assert.equal(textNode.boxWidth, undefined, 'Un clic sencillo no debe definir un ancho de caja');
     assert.equal(textNode.x, 150, 'Coordenada x debe corresponder a la posición del clic');
     assert.equal(textNode.y, 220, 'Coordenada y debe corresponder a la posición del clic');
     assert.equal(textNode.fontFamily, 'Inter', 'fontFamily por defecto debe ser Inter');
@@ -201,6 +203,7 @@ describe('Herramienta Texto (Text Tool)', () => {
     // x = (250 - 50) / 2 = 100
     // y = (300 - 100) / 2 = 100
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 250, clientY: 300, button: 0 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 300, button: 0 });
 
     const layer = stateManager.findNode(layerId) as any;
     const textNode = layer.children[0] as Text;
@@ -220,6 +223,7 @@ describe('Herramienta Texto (Text Tool)', () => {
 
     // Clic para crear texto
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 150, button: 0 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 200, clientY: 150, button: 0 });
 
     const layerAfterCreate = stateManager.findNode(layerId) as any;
     assert.equal(layerAfterCreate.children.length, 1);
@@ -241,6 +245,30 @@ describe('Herramienta Texto (Text Tool)', () => {
     const layerAfterRedo = stateManager.findNode(layerId) as any;
     assert.equal(layerAfterRedo.children.length, 1, 'Redo debe reinsertar el nodo Text en la capa');
     assert.equal(layerAfterRedo.children[0].id, textId);
+  });
+
+  it('arrastrar al crear un texto define el ancho de caja y permanece en una sola acción undo/redo', () => {
+    const canvas = createMockCanvas();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+    controller.setTool('text');
+
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 150, button: 0 });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 320, clientY: 170 });
+
+    const layer = stateManager.findNode(layerId) as any;
+    const createdText = layer.children[0] as Text;
+    assert.equal(createdText.x, 200);
+    assert.equal(createdText.y, 150);
+    assert.equal(createdText.boxWidth, 120);
+
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 320, clientY: 170, button: 0 });
+    assert.equal(commandManager.undo(), true);
+    assert.equal((stateManager.findNode(layerId) as any).children.length, 0);
+    assert.equal(commandManager.redo(), true);
+    assert.equal((stateManager.findNode(layerId) as any).children[0].boxWidth, 120);
   });
 
   it('6. setupUIBindings sincroniza el botón #tool-text y la etiqueta "Modo: Texto"', () => {
