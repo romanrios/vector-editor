@@ -466,6 +466,92 @@ export function calculateSnapping(
   return { dx, dy, guides };
 }
 
+export function calculateAnchoredSnapping(
+  movingAABB: AABB,
+  targetAABBs: readonly AABB[],
+  fixedXFeature: 0 | 2 | 'all',
+  fixedYFeature: 0 | 2 | 'all',
+  tolerance: number = 5
+): { dx: number; dy: number; guides: SnapGuide[] } {
+  const findAxisSnap = (
+    axis: 'x' | 'y',
+    fixedFeature: 0 | 2 | 'all'
+  ): { pointerDelta: number; featureDelta: number; movingFeature: number; position: number; target: AABB } | null => {
+    if (fixedFeature === 'all') return null;
+
+    const movingMin = axis === 'x' ? movingAABB.minX : movingAABB.minY;
+    const movingMax = axis === 'x' ? movingAABB.maxX : movingAABB.maxY;
+    const movingFeatures = [movingMin, (movingMin + movingMax) / 2, movingMax];
+    let best: ReturnType<typeof findAxisSnap> = null;
+    let bestDistance = tolerance + Number.EPSILON;
+
+    for (const target of targetAABBs) {
+      const targetMin = axis === 'x' ? target.minX : target.minY;
+      const targetMax = axis === 'x' ? target.maxX : target.maxY;
+      const targetFeatures = [targetMin, (targetMin + targetMax) / 2, targetMax];
+
+      for (let movingIndex = 0; movingIndex < movingFeatures.length; movingIndex++) {
+        if (movingIndex === fixedFeature) continue;
+        for (const targetPosition of targetFeatures) {
+          const featureDelta = targetPosition - movingFeatures[movingIndex];
+          const distance = Math.abs(featureDelta);
+          if (distance <= tolerance && distance < bestDistance) {
+            bestDistance = distance;
+            best = {
+              pointerDelta: movingIndex === 1 ? featureDelta * 2 : featureDelta,
+              featureDelta,
+              movingFeature: movingIndex,
+              position: targetPosition,
+              target,
+            };
+          }
+        }
+      }
+    }
+
+    return best;
+  };
+
+  const xSnap = findAxisSnap('x', fixedXFeature);
+  const ySnap = findAxisSnap('y', fixedYFeature);
+  const correctedMinX = xSnap
+    ? fixedXFeature === 0 ? movingAABB.minX : movingAABB.minX + xSnap.pointerDelta
+    : movingAABB.minX;
+  const correctedMaxX = xSnap
+    ? fixedXFeature === 2 ? movingAABB.maxX : movingAABB.maxX + xSnap.pointerDelta
+    : movingAABB.maxX;
+  const correctedMinY = ySnap
+    ? fixedYFeature === 0 ? movingAABB.minY : movingAABB.minY + ySnap.pointerDelta
+    : movingAABB.minY;
+  const correctedMaxY = ySnap
+    ? fixedYFeature === 2 ? movingAABB.maxY : movingAABB.maxY + ySnap.pointerDelta
+    : movingAABB.maxY;
+
+  const guides: SnapGuide[] = [];
+  if (xSnap) {
+    guides.push({
+      axis: 'x',
+      position: xSnap.position,
+      start: Math.min(correctedMinY, xSnap.target.minY),
+      end: Math.max(correctedMaxY, xSnap.target.maxY),
+    });
+  }
+  if (ySnap) {
+    guides.push({
+      axis: 'y',
+      position: ySnap.position,
+      start: Math.min(correctedMinX, ySnap.target.minX),
+      end: Math.max(correctedMaxX, ySnap.target.maxX),
+    });
+  }
+
+  return {
+    dx: xSnap?.pointerDelta ?? 0,
+    dy: ySnap?.pointerDelta ?? 0,
+    guides,
+  };
+}
+
 export function getTextLineRanges(
   text: Text,
   ctx?: CanvasRenderingContext2D | null

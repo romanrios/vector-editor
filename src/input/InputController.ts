@@ -22,6 +22,7 @@ import {
 import {
   computeBoxScale,
   computeRotationDelta,
+  calculateAnchoredSnapping,
   getPathBaseAABB,
   getSelectionBounds,
   getSelectionBoxHandles,
@@ -1862,7 +1863,9 @@ export class InputController {
 
   private calculateAABBSnap(
     movingAABB: AABB,
-    excludedShapeIds: ReadonlySet<string> = new Set()
+    excludedShapeIds: ReadonlySet<string> = new Set(),
+    fixedXFeature?: 0 | 2 | 'all',
+    fixedYFeature?: 0 | 2 | 'all'
   ): { dx: number; dy: number; guides: SnapGuide[] } {
     if (!this._smartGuidesEnabled) {
       return { dx: 0, dy: 0, guides: [] };
@@ -1897,53 +1900,17 @@ export class InputController {
       }
     }
 
-    return calculateSnapping(movingAABB, targetAABBs, 5 / this.viewportManager.zoom);
-  }
-
-  private adjustAnchoredSnap(
-    movingAABB: AABB,
-    snap: { dx: number; dy: number; guides: SnapGuide[] },
-    fixedXFeature: 0 | 2 | 'all',
-    fixedYFeature: 0 | 2 | 'all'
-  ): { dx: number; dy: number; guides: SnapGuide[] } {
-    const adjustAxis = (
-      axis: 'x' | 'y',
-      correction: number,
-      fixedFeature: 0 | 2 | 'all'
-    ): { correction: number; usable: boolean } => {
-      const guide = snap.guides.find((candidate) => candidate.axis === axis);
-      if (!guide) return { correction: 0, usable: false };
-
-      const min = axis === 'x' ? movingAABB.minX : movingAABB.minY;
-      const max = axis === 'x' ? movingAABB.maxX : movingAABB.maxY;
-      const center = (min + max) / 2;
-      const features = [min, center, max];
-      let matchedFeature = 0;
-      let closestDistance = Infinity;
-      for (let index = 0; index < features.length; index++) {
-        const distance = Math.abs(features[index] + correction - guide.position);
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          matchedFeature = index;
-        }
-      }
-
-      if (correction !== 0 && (fixedFeature === 'all' || matchedFeature === fixedFeature)) {
-        return { correction: 0, usable: false };
-      }
-      return {
-        correction: matchedFeature === 1 ? correction * 2 : correction,
-        usable: true,
-      };
-    };
-
-    const x = adjustAxis('x', snap.dx, fixedXFeature);
-    const y = adjustAxis('y', snap.dy, fixedYFeature);
-    return {
-      dx: x.correction,
-      dy: y.correction,
-      guides: snap.guides.filter((guide) => guide.axis === 'x' ? x.usable : y.usable),
-    };
+    const tolerance = 5 / this.viewportManager.zoom;
+    if (fixedXFeature !== undefined && fixedYFeature !== undefined) {
+      return calculateAnchoredSnapping(
+        movingAABB,
+        targetAABBs,
+        fixedXFeature,
+        fixedYFeature,
+        tolerance
+      );
+    }
+    return calculateSnapping(movingAABB, targetAABBs, tolerance);
   }
 
   private snapCreationPoint(
@@ -1961,10 +1928,9 @@ export class InputController {
       width: candidateBounds.width,
       height: candidateBounds.height,
     };
-    const rawSnap = this.calculateAABBSnap(movingAABB);
-    const snap = this.adjustAnchoredSnap(
+    const snap = this.calculateAABBSnap(
       movingAABB,
-      rawSnap,
+      new Set(),
       point.x >= start.x ? 0 : 2,
       point.y >= start.y ? 0 : 2
     );
@@ -2003,10 +1969,6 @@ export class InputController {
       return candidateDimensions;
     }
 
-    const rawSnap = this.calculateAABBSnap(
-      getShapeAABB(candidateShape),
-      new Set([this.resizingShapeId])
-    );
     const handle = this.activeResizeHandle;
     const fixedXFeature: 0 | 2 | 'all' = handle.includes('right')
       ? 0
@@ -2014,7 +1976,12 @@ export class InputController {
     const fixedYFeature: 0 | 2 | 'all' = handle.includes('bottom')
       ? 0
       : handle.includes('top') ? 2 : 'all';
-    const snap = this.adjustAnchoredSnap(getShapeAABB(candidateShape), rawSnap, fixedXFeature, fixedYFeature);
+    const snap = this.calculateAABBSnap(
+      getShapeAABB(candidateShape),
+      new Set([this.resizingShapeId]),
+      fixedXFeature,
+      fixedYFeature
+    );
     this.activeGuides = snap.guides;
     const finalDimensions = this.calculateResizedDimensions(
       this.initialDimensions,
@@ -3741,17 +3708,18 @@ export class InputController {
           width: maxX - minX,
           height: maxY - minY,
         };
-        const rawSnap = this.calculateAABBSnap(
-          scaledBounds,
-          new Set(transformState.leafShapes.map((shape) => shape.id))
-        );
         const fixedXFeature: 0 | 2 | 'all' = handle.includes('right')
           ? 0
           : handle.includes('left') ? 2 : 'all';
         const fixedYFeature: 0 | 2 | 'all' = handle.includes('bottom')
           ? 0
           : handle.includes('top') ? 2 : 'all';
-        const snap = this.adjustAnchoredSnap(scaledBounds, rawSnap, fixedXFeature, fixedYFeature);
+        const snap = this.calculateAABBSnap(
+          scaledBounds,
+          new Set(transformState.leafShapes.map((shape) => shape.id)),
+          fixedXFeature,
+          fixedYFeature
+        );
         this.activeGuides = snap.guides;
         if (snap.dx !== 0 || snap.dy !== 0) {
           applyScale(x + snap.dx, y + snap.dy);

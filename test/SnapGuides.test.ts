@@ -4,6 +4,7 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { StateManager } from '../src/state/StateManager.ts';
 import {
+  calculateAnchoredSnapping,
   calculateSnapping,
   getSelectionBounds,
   getSelectionBoxHandles,
@@ -55,6 +56,26 @@ describe('Guías dinámicas de ajuste (snapping)', () => {
         { axis: 'x', position: 33, start: 7, end: 27 },
         { axis: 'y', position: 7, start: 13, end: 53 },
       ],
+    });
+
+    it('al escalar considera otros puntos alineables si el punto fijo ya coincide y ajusta ambos ejes', () => {
+      const moving: AABB = {
+        minX: 10, minY: 20, maxX: 110, maxY: 120, width: 100, height: 100,
+      };
+      const target: AABB = {
+        minX: 10, minY: 20, maxX: 113, maxY: 124, width: 103, height: 104,
+      };
+
+      const result = calculateAnchoredSnapping(moving, [target], 0, 0, 5);
+      assert.equal(result.dx, 3);
+      assert.equal(result.dy, 4);
+      assert.deepEqual(result.guides.map((guide) => guide.axis), ['x', 'y']);
+      assert.deepEqual(result.guides[0], {
+        axis: 'x', position: 61.5, start: 20, end: 124,
+      });
+      assert.deepEqual(result.guides[1], {
+        axis: 'y', position: 72, start: 10, end: 113,
+      });
     });
 
     const centeredTarget: AABB = {
@@ -145,6 +166,59 @@ describe('Guías dinámicas de ajuste (snapping)', () => {
     assert.equal(created.height, 60);
     assert.deepEqual(controller.activeGuides, []);
     controller.destroy();
+  });
+
+  it('crea y escala en ambos ejes aunque el borde fijo ya esté alineado a la mesa de trabajo', () => {
+    const creationState = new StateManager();
+    const creationLayerId = creationState.getState().children[0].id;
+    creationState.addShape(creationLayerId, {
+      id: 'corner-target-create', type: 'rectangle', name: 'Target',
+      x: 103, y: 103, width: 30, height: 30,
+    });
+    const creationCanvas = createCanvas();
+    const creationController = new InputController(
+      creationCanvas,
+      creationState,
+      new CommandManager()
+    );
+    creationController.setTool('rectangle');
+    creationCanvas.dispatch('mousedown', { clientX: 0, clientY: 0, button: 0 });
+    creationCanvas.dispatch('mousemove', { clientX: 101, clientY: 101 });
+    assert.equal(creationController.shapePreview?.width, 103);
+    assert.equal(creationController.shapePreview?.height, 103);
+    assert.deepEqual(creationController.activeGuides.map((guide) => guide.axis), ['x', 'y']);
+    creationCanvas.dispatch('mouseup', { clientX: 101, clientY: 101, button: 0 });
+    creationController.destroy();
+
+    const resizeState = new StateManager();
+    const resizeLayerId = resizeState.getState().children[0].id;
+    const moving: Rectangle = {
+      id: 'corner-moving', type: 'rectangle', name: 'Moving',
+      x: 0, y: 0, width: 100, height: 100,
+    };
+    resizeState.addShape(resizeLayerId, moving);
+    resizeState.addShape(resizeLayerId, {
+      id: 'corner-target-resize', type: 'rectangle', name: 'Target',
+      x: 103, y: 103, width: 30, height: 30,
+    });
+    resizeState.selectNode(moving.id);
+    const resizeCanvas = createCanvas();
+    const resizeController = new InputController(resizeCanvas, resizeState, new CommandManager());
+    const bottomRight = getSelectionHandles(moving, 8, 30).find(
+      (handle) => handle.type === 'bottom-right'
+    )!;
+    resizeCanvas.dispatch('mousedown', {
+      clientX: (bottomRight.minX + bottomRight.maxX) / 2,
+      clientY: (bottomRight.minY + bottomRight.maxY) / 2,
+      button: 0,
+    });
+    resizeCanvas.dispatch('mousemove', { clientX: 101, clientY: 101 });
+    const resized = resizeState.findNode(moving.id) as Rectangle;
+    assert.equal(resized.width, 103);
+    assert.equal(resized.height, 103);
+    assert.deepEqual(resizeController.activeGuides.map((guide) => guide.axis), ['x', 'y']);
+    resizeCanvas.dispatch('mouseup', { clientX: 101, clientY: 101, button: 0 });
+    resizeController.destroy();
   });
 
   it('corrige el doble del delta cuando se ajusta el centro durante creación o escalado', () => {
