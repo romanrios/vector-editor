@@ -1843,7 +1843,17 @@ export class InputController {
       width: maxX - minX,
       height: maxY - minY,
     };
-    const movingIds = new Set(initialShapesPositions.keys());
+    return this.calculateAABBSnap(movingAABB, new Set(initialShapesPositions.keys()));
+  }
+
+  private calculateAABBSnap(
+    movingAABB: AABB,
+    excludedShapeIds: ReadonlySet<string> = new Set()
+  ): { dx: number; dy: number; guides: SnapGuide[] } {
+    if (!this._smartGuidesEnabled) {
+      return { dx: 0, dy: 0, guides: [] };
+    }
+
     const targetAABBs: AABB[] = [];
     const document = this.stateManager.getState();
     if (document.width > 0 && document.height > 0) {
@@ -1862,7 +1872,7 @@ export class InputController {
         if (!this.stateManager.isEffectivelyVisible(node.id)) continue;
         if (isGroup(node)) {
           visit(node.children);
-        } else if (isShape(node) && !movingIds.has(node.id)) {
+        } else if (isShape(node) && !excludedShapeIds.has(node.id)) {
           targetAABBs.push(getShapeAABB(node));
         }
       }
@@ -1874,6 +1884,133 @@ export class InputController {
     }
 
     return calculateSnapping(movingAABB, targetAABBs, 5 / this.viewportManager.zoom);
+  }
+
+  private adjustAnchoredSnap(
+    movingAABB: AABB,
+    snap: { dx: number; dy: number; guides: SnapGuide[] },
+    fixedXFeature: 0 | 2 | 'all',
+    fixedYFeature: 0 | 2 | 'all'
+  ): { dx: number; dy: number; guides: SnapGuide[] } {
+    const adjustAxis = (
+      axis: 'x' | 'y',
+      correction: number,
+      fixedFeature: 0 | 2 | 'all'
+    ): { correction: number; usable: boolean } => {
+      const guide = snap.guides.find((candidate) => candidate.axis === axis);
+      if (!guide) return { correction: 0, usable: false };
+
+      const min = axis === 'x' ? movingAABB.minX : movingAABB.minY;
+      const max = axis === 'x' ? movingAABB.maxX : movingAABB.maxY;
+      const center = (min + max) / 2;
+      const features = [min, center, max];
+      let matchedFeature = 0;
+      let closestDistance = Infinity;
+      for (let index = 0; index < features.length; index++) {
+        const distance = Math.abs(features[index] + correction - guide.position);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          matchedFeature = index;
+        }
+      }
+
+      if (correction !== 0 && (fixedFeature === 'all' || matchedFeature === fixedFeature)) {
+        return { correction: 0, usable: false };
+      }
+      return {
+        correction: matchedFeature === 1 ? correction * 2 : correction,
+        usable: true,
+      };
+    };
+
+    const x = adjustAxis('x', snap.dx, fixedXFeature);
+    const y = adjustAxis('y', snap.dy, fixedYFeature);
+    return {
+      dx: x.correction,
+      dy: y.correction,
+      guides: snap.guides.filter((guide) => guide.axis === 'x' ? x.usable : y.usable),
+    };
+  }
+
+  private snapCreationPoint(
+    start: Vector2D,
+    point: Vector2D,
+    tool: 'rectangle' | 'ellipse',
+    shiftKey: boolean
+  ): Vector2D {
+    const candidateBounds = normalizeShapeBounds(start, point, tool, shiftKey);
+    const movingAABB: AABB = {
+      minX: candidateBounds.x,
+      minY: candidateBounds.y,
+      maxX: candidateBounds.x + candidateBounds.width,
+      maxY: candidateBounds.y + candidateBounds.height,
+      width: candidateBounds.width,
+      height: candidateBounds.height,
+    };
+    const rawSnap = this.calculateAABBSnap(movingAABB);
+    const snap = this.adjustAnchoredSnap(
+      movingAABB,
+      rawSnap,
+      point.x >= start.x ? 0 : 2,
+      point.y >= start.y ? 0 : 2
+    );
+    this.activeGuides = snap.guides;
+    return { x: point.x + snap.dx, y: point.y + snap.dy };
+  }
+
+  private calculateSnappedResizeDimensions(
+    mouseX: number,
+    mouseY: number,
+    shiftKey: boolean
+  ): ShapeDimensions | null {
+    if (
+      !this.resizingShapeId ||
+      !this.resizeOrigin ||
+      !this.activeResizeHandle ||
+      !this.initialDimensions
+    ) {
+      return null;
+    }
+
+    const deltaX = mouseX - this.resizeOrigin.x;
+    const deltaY = mouseY - this.resizeOrigin.y;
+    const candidateDimensions = this.calculateResizedDimensions(
+      this.initialDimensions,
+      this.activeResizeHandle,
+      deltaX,
+      deltaY,
+      shiftKey
+    );
+    this.stateManager.updateShapeDimensions(this.resizingShapeId, candidateDimensions);
+
+    const candidateShape = this.stateManager.findNode(this.resizingShapeId);
+    if (!candidateShape || !isShape(candidateShape)) {
+      this.activeGuides = [];
+      return candidateDimensions;
+    }
+
+    const rawSnap = this.calculateAABBSnap(
+      getShapeAABB(candidateShape),
+      new Set([this.resizingShapeId])
+    );
+    const handle = this.activeResizeHandle;
+    const fixedXFeature: 0 | 2 | 'all' = handle.includes('right')
+      ? 0
+      : handle.includes('left') ? 2 : 'all';
+    const fixedYFeature: 0 | 2 | 'all' = handle.includes('bottom')
+      ? 0
+      : handle.includes('top') ? 2 : 'all';
+    const snap = this.adjustAnchoredSnap(getShapeAABB(candidateShape), rawSnap, fixedXFeature, fixedYFeature);
+    this.activeGuides = snap.guides;
+    const finalDimensions = this.calculateResizedDimensions(
+      this.initialDimensions,
+      this.activeResizeHandle,
+      deltaX + snap.dx,
+      deltaY + snap.dy,
+      shiftKey
+    );
+    this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
+    return finalDimensions;
   }
 
   /**
@@ -2096,18 +2233,7 @@ export class InputController {
         this.initialDimensions
       ) {
         this._lastResizeMousePos = { x, y };
-        const deltaX = x - this.resizeOrigin.x;
-        const deltaY = y - this.resizeOrigin.y;
-
-        const newDimensions = this.calculateResizedDimensions(
-          this.initialDimensions,
-          this.activeResizeHandle,
-          deltaX,
-          deltaY,
-          Boolean(event.shiftKey)
-        );
-
-        this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
+        this.calculateSnappedResizeDimensions(x, y, Boolean(event.shiftKey));
 
         const currentShape = this.stateManager.findNode(this.resizingShapeId) as Shape | null;
         this.canvas.style.cursor = this.getResizeCursor(
@@ -2248,6 +2374,12 @@ export class InputController {
       }
 
       const isLocked = Boolean(event.shiftKey || this._creationShiftKey);
+      const snappedPoint = this.snapCreationPoint(
+        start,
+        { x, y },
+        this._currentTool,
+        isLocked
+      );
 
       const currentState = this.stateManager.getState();
       const targetLayer = currentState.children[0];
@@ -2259,7 +2391,7 @@ export class InputController {
       const style = this.stateManager.getDrawingStyle();
       let newShape: Shape;
       if (this._currentTool === 'rectangle') {
-        const bounds = normalizeShapeBounds(start, { x, y }, 'rectangle', isLocked);
+        const bounds = normalizeShapeBounds(start, snappedPoint, 'rectangle', isLocked);
         this.rectangleCounter++;
         const rectShape: Rectangle = {
           id: `rect-${Date.now()}-${this.rectangleCounter}`,
@@ -2279,7 +2411,7 @@ export class InputController {
         };
         newShape = rectShape;
       } else {
-        const bounds = normalizeShapeBounds(start, { x, y }, 'ellipse', isLocked);
+        const bounds = normalizeShapeBounds(start, snappedPoint, 'ellipse', isLocked);
         this.ellipseCounter++;
         const ellipseShape: Ellipse = {
           id: `ellipse-${Date.now()}-${this.ellipseCounter}`,
@@ -2411,20 +2543,13 @@ export class InputController {
         this.initialDimensions
       ) {
         const { x, y } = this.getLocalCoordinates(event);
-        const deltaX = x - this.resizeOrigin.x;
-        const deltaY = y - this.resizeOrigin.y;
-
-        const finalDimensions = this.calculateResizedDimensions(
-          this.initialDimensions,
-          this.activeResizeHandle,
-          deltaX,
-          deltaY,
+        const finalDimensions = this.calculateSnappedResizeDimensions(
+          x,
+          y,
           Boolean(event.shiftKey)
         );
 
-        this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
-
-        if (this.hasDimensionsChanged(this.initialDimensions, finalDimensions)) {
+        if (finalDimensions && this.hasDimensionsChanged(this.initialDimensions, finalDimensions)) {
           const command = new ResizeCommand(
             this.stateManager,
             this.resizingShapeId,
@@ -3041,16 +3166,11 @@ export class InputController {
           this.initialDimensions &&
           this._lastResizeMousePos
         ) {
-          const deltaX = this._lastResizeMousePos.x - this.resizeOrigin.x;
-          const deltaY = this._lastResizeMousePos.y - this.resizeOrigin.y;
-          const newDimensions = this.calculateResizedDimensions(
-            this.initialDimensions,
-            this.activeResizeHandle,
-            deltaX,
-            deltaY,
+          this.calculateSnappedResizeDimensions(
+            this._lastResizeMousePos.x,
+            this._lastResizeMousePos.y,
             true
           );
-          this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
           this.stateManager.markDirty();
         }
         return;
@@ -3205,16 +3325,11 @@ export class InputController {
           this.initialDimensions &&
           this._lastResizeMousePos
         ) {
-          const deltaX = this._lastResizeMousePos.x - this.resizeOrigin.x;
-          const deltaY = this._lastResizeMousePos.y - this.resizeOrigin.y;
-          const newDimensions = this.calculateResizedDimensions(
-            this.initialDimensions,
-            this.activeResizeHandle,
-            deltaX,
-            deltaY,
+          this.calculateSnappedResizeDimensions(
+            this._lastResizeMousePos.x,
+            this._lastResizeMousePos.y,
             false
           );
-          this.stateManager.updateShapeDimensions(this.resizingShapeId, newDimensions);
           this.stateManager.markDirty();
         }
       }
@@ -3376,6 +3491,9 @@ export class InputController {
     this._creationCurrent = null;
     this._shapePreview = null;
     this._textCreation = null;
+    if (this.activeGuides.length > 0) {
+      this.activeGuides = [];
+    }
     if (wasCreating) {
       this.stateManager.markDirty();
     }
@@ -3396,11 +3514,17 @@ export class InputController {
     }
 
     const lock = shiftKey ?? this._creationShiftKey;
-    const bounds = normalizeShapeBounds(
+    const snappedCurrent = this.snapCreationPoint(
       this._creationStart,
       this._creationCurrent,
       this._currentTool,
       lock
+    );
+    const bounds = normalizeShapeBounds(
+    this._creationStart,
+    snappedCurrent,
+    this._currentTool,
+    lock
     );
 
     const style = this.stateManager.getDrawingStyle();
@@ -3524,22 +3648,28 @@ export class InputController {
 
   private resetMultiTransform(): void {
     this._multiTransformState = null;
+    if (this.activeGuides.length > 0) {
+      this.activeGuides = [];
+      this.stateManager.markDirty();
+    }
   }
 
   private applyMultiTransform(x: number, y: number, shiftKey: boolean): void {
     if (!this._multiTransformState) {
       return;
     }
-    this._multiTransformState.lastMouse = { x, y };
+    const transformState = this._multiTransformState;
+    transformState.lastMouse = { x, y };
 
-    if (this._multiTransformState.type === 'rotate') {
-      const pivot = this._multiTransformState.anchorOrPivot;
-      const startMouse = this._multiTransformState.startMouse;
+    if (transformState.type === 'rotate') {
+      this.activeGuides = [];
+      const pivot = transformState.anchorOrPivot;
+      const startMouse = transformState.startMouse;
       const currentMouse = { x, y };
       const deltaDeg = computeRotationDelta(pivot, startMouse, currentMouse, shiftKey);
-      const changes = rotateShapesAboutPivot(this._multiTransformState.leafShapes, pivot, deltaDeg);
+      const changes = rotateShapesAboutPivot(transformState.leafShapes, pivot, deltaDeg);
       if (changes.length === 0) {
-        const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
+        const restoreEntries = transformState.leafShapes.map((shape) => ({
           id: shape.id,
           dimensions: getShapeDimensions(shape),
         }));
@@ -3548,21 +3678,66 @@ export class InputController {
         this.stateManager.updateShapesDimensions(changes);
       }
       this.canvas.style.cursor = 'crosshair';
-    } else if (this._multiTransformState.type === 'scale') {
-      const handle = this._multiTransformState.handle!;
-      const bounds = this._multiTransformState.initialBounds;
-      const dx = x - this._multiTransformState.startMouse.x;
-      const dy = y - this._multiTransformState.startMouse.y;
-      const { anchor, sx, sy } = computeBoxScale(bounds, handle, dx, dy, shiftKey);
-      const changes = scaleShapesAboutAnchor(this._multiTransformState.leafShapes, anchor, sx, sy);
-      if (changes.length === 0) {
-        const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
-          id: shape.id,
-          dimensions: getShapeDimensions(shape),
-        }));
-        this.stateManager.updateShapesDimensions(restoreEntries);
+    } else if (transformState.type === 'scale') {
+      const handle = transformState.handle!;
+      const bounds = transformState.initialBounds;
+      const applyScale = (mouseX: number, mouseY: number): void => {
+        const dx = mouseX - transformState.startMouse.x;
+        const dy = mouseY - transformState.startMouse.y;
+        const { anchor, sx, sy } = computeBoxScale(bounds, handle, dx, dy, shiftKey);
+        const changes = scaleShapesAboutAnchor(transformState.leafShapes, anchor, sx, sy);
+        if (changes.length === 0) {
+          const restoreEntries = transformState.leafShapes.map((shape) => ({
+            id: shape.id,
+            dimensions: getShapeDimensions(shape),
+          }));
+          this.stateManager.updateShapesDimensions(restoreEntries);
+        } else {
+          this.stateManager.updateShapesDimensions(changes);
+        }
+      };
+
+      applyScale(x, y);
+      const scaledShapes = transformState.leafShapes
+        .map((shape) => this.stateManager.findNode(shape.id))
+        .filter((shape): shape is Shape => Boolean(shape && isShape(shape)));
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const shape of scaledShapes) {
+        const shapeBounds = getShapeAABB(shape);
+        minX = Math.min(minX, shapeBounds.minX);
+        minY = Math.min(minY, shapeBounds.minY);
+        maxX = Math.max(maxX, shapeBounds.maxX);
+        maxY = Math.max(maxY, shapeBounds.maxY);
+      }
+      if (Number.isFinite(minX) && Number.isFinite(minY)) {
+        const scaledBounds: AABB = {
+          minX,
+          minY,
+          maxX,
+          maxY,
+          width: maxX - minX,
+          height: maxY - minY,
+        };
+        const rawSnap = this.calculateAABBSnap(
+          scaledBounds,
+          new Set(transformState.leafShapes.map((shape) => shape.id))
+        );
+        const fixedXFeature: 0 | 2 | 'all' = handle.includes('right')
+          ? 0
+          : handle.includes('left') ? 2 : 'all';
+        const fixedYFeature: 0 | 2 | 'all' = handle.includes('bottom')
+          ? 0
+          : handle.includes('top') ? 2 : 'all';
+        const snap = this.adjustAnchoredSnap(scaledBounds, rawSnap, fixedXFeature, fixedYFeature);
+        this.activeGuides = snap.guides;
+        if (snap.dx !== 0 || snap.dy !== 0) {
+          applyScale(x + snap.dx, y + snap.dy);
+        }
       } else {
-        this.stateManager.updateShapesDimensions(changes);
+        this.activeGuides = [];
       }
       this.canvas.style.cursor = this.getResizeCursor(handle, 0);
     }
