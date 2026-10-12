@@ -491,13 +491,13 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     stateManager.addShape(layerId, textNode);
     stateManager.setSelection(['text-weight-style']);
 
-    // Modificar peso a 700
+    // Modificar peso a 800
     const selectWeight = elements['#select-font-weight'];
-    selectWeight.value = '700';
+    selectWeight.value = '800';
     selectWeight.dispatchEvent({ type: 'change' });
 
     let current = stateManager.findNode('text-weight-style') as Text;
-    assert.equal(current.fontWeight, 700);
+    assert.equal(current.fontWeight, 800);
 
     // Modificar estilo a italic
     const selectStyle = elements['#select-font-style'];
@@ -520,7 +520,7 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     // Redo peso y estilo
     commandManager.redo();
     current = stateManager.findNode('text-weight-style') as Text;
-    assert.equal(current.fontWeight, 700);
+    assert.equal(current.fontWeight, 800);
 
     commandManager.redo();
     current = stateManager.findNode('text-weight-style') as Text;
