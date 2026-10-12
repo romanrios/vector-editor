@@ -1,5 +1,6 @@
 import { StateManager, getLeafShapes, type ShapeStyleEntry } from './state/StateManager.ts';
-import { injectSampleShapes, SAMPLE_SHAPES } from './state/injectSampleShapes.ts';
+import { DEFAULT_DOCUMENT, DEFAULT_DOCUMENT_ZOOM } from './state/defaultDocument.ts';
+import { injectSampleShapes } from './state/injectSampleShapes.ts';
 import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
 import { CommandManager } from './commands/CommandManager.ts';
@@ -19,7 +20,6 @@ import {
   isSelectable,
   isShape,
   isText,
-  type Path,
   type SelectableNode,
   type Shape,
   type Text,
@@ -43,35 +43,11 @@ debug('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]
 
 // 1. Inicializar el StateManager inmutable, el CommandManager y el ViewportManager
 const commandManager = new CommandManager();
-const stateManager = new StateManager(undefined, commandManager);
-const viewportManager = new ViewportManager();
+const stateManager = new StateManager(DEFAULT_DOCUMENT, commandManager);
+const viewportManager = new ViewportManager({ zoom: DEFAULT_DOCUMENT_ZOOM, panX: 0, panY: 0 });
 const moduleStateManager = stateManager;
 
-// 2. Inyectar las 3 figuras de prueba hardcodeadas iniciales
-injectSampleShapes(stateManager);
-debug('✅ Figuras de prueba cargadas:', SAMPLE_SHAPES);
-
-// 3. Inyectar un trazado vectorial Path con múltiples curvas Bézier cúbicas de demostración
-const samplePath: Path = {
-  id: 'shape-path-sample',
-  type: 'path',
-  name: 'Curva Bézier S (Trazado)',
-  x: 120,
-  y: 450,
-  points: [
-    { x: 120, y: 480, handleOut: { x: 220, y: 390 } },
-    { x: 340, y: 480, handleIn: { x: 260, y: 570 }, handleOut: { x: 420, y: 390 } },
-    { x: 540, y: 480, handleIn: { x: 460, y: 570 } },
-  ],
-  stroke: '#38bdf8',
-  strokeWidth: 4,
-  fill: 'transparent',
-  visible: true,
-  locked: false,
-};
-stateManager.addShape(stateManager.getState().children[0].id, samplePath);
-
-debug('✅ Estado inicial cargado con figuras y trazado vectorial Bézier.');
+debug('✅ Documento predeterminado cargado con zoom inicial al 50%.');
 
 /**
  * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)

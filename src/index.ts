@@ -15,6 +15,7 @@ export * from './state/StateManager.ts';
 
 // Inyección de Figuras de Prueba
 export * from './state/injectSampleShapes.ts';
+export * from './state/defaultDocument.ts';
 
 // Motor de Renderizado Canvas 2D
 export * from './render/RenderEngine.ts';
