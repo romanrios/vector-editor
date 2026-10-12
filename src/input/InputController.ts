@@ -1,5 +1,6 @@
 import type { StateManager, ShapePositionEntry } from '../state/StateManager.ts';
 import { getLeafShapes } from '../state/StateManager.ts';
+import type { SnapGuide } from '../types/engine.ts';
 import {
   isGroup,
   isLayer,
@@ -25,6 +26,7 @@ import {
   getSelectionBounds,
   getSelectionBoxHandles,
   getSelectionHandles,
+  calculateSnapping,
   getShapeAABB,
   getShapesIntersectingRect,
   getTextBaseAABB,
@@ -248,8 +250,12 @@ export class InputController {
 
   // Estado del arrastre (modo Selección)
   private _isDragging: boolean = false;
+  public activeGuides: SnapGuide[] = [];
+  private _smartGuidesEnabled: boolean = true;
   private dragOrigin: { x: number; y: number } | null = null;
   private initialShapesPositions: Map<string, { x: number; y: number }> | null = null;
+  private initialShapesBounds: Map<string, AABB> | null = null;
+  private originalLeafBounds: Map<string, AABB> | null = null;
   private pendingSingleSelectionId: string | null = null;
   private dragStartScreen: { x: number; y: number } | null = null;
   private hasMovedPastThreshold: boolean = false;
@@ -464,6 +470,19 @@ export class InputController {
 
   public get isDragging(): boolean {
     return this._isDragging;
+  }
+
+  public get smartGuidesEnabled(): boolean {
+    return this._smartGuidesEnabled;
+  }
+
+  public setSmartGuidesEnabled(enabled: boolean): void {
+    if (this._smartGuidesEnabled === enabled) return;
+    this._smartGuidesEnabled = enabled;
+    if (!enabled && this.activeGuides.length > 0) {
+      this.activeGuides = [];
+    }
+    this.stateManager.markDirty();
   }
 
   public get isCopyDragging(): boolean {
@@ -1386,10 +1405,14 @@ export class InputController {
       const selectedNodes = this.stateManager.getSelectedNodes();
       const leafShapes = getLeafShapes(selectedNodes);
       this.initialShapesPositions = new Map<string, { x: number; y: number }>();
+      this.initialShapesBounds = new Map<string, AABB>();
       this.originalLeafPositions = new Map<string, { x: number; y: number }>();
+      this.originalLeafBounds = new Map<string, AABB>();
       for (const node of leafShapes) {
         this.initialShapesPositions.set(node.id, { x: node.x, y: node.y });
+        this.initialShapesBounds.set(node.id, getShapeAABB(node));
         this.originalLeafPositions.set(node.id, { x: node.x, y: node.y });
+        this.originalLeafBounds.set(node.id, getShapeAABB(node));
       }
 
       this.canvas.style.cursor = 'grabbing';
@@ -1787,6 +1810,72 @@ export class InputController {
     return lineStarts[targetLineIdx] + targetCol;
   }
 
+  private calculateDragSnap(deltaX: number, deltaY: number): { dx: number; dy: number; guides: SnapGuide[] } {
+    if (!this._smartGuidesEnabled) {
+      return { dx: 0, dy: 0, guides: [] };
+    }
+    const initialShapesBounds = this.initialShapesBounds;
+    const initialShapesPositions = this.initialShapesPositions;
+    if (!initialShapesBounds || !initialShapesPositions || this._isCopyDragging) {
+      return { dx: 0, dy: 0, guides: [] };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const bounds of initialShapesBounds.values()) {
+      minX = Math.min(minX, bounds.minX + deltaX);
+      minY = Math.min(minY, bounds.minY + deltaY);
+      maxX = Math.max(maxX, bounds.maxX + deltaX);
+      maxY = Math.max(maxY, bounds.maxY + deltaY);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+      return { dx: 0, dy: 0, guides: [] };
+    }
+
+    const movingAABB: AABB = {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+    const movingIds = new Set(initialShapesPositions.keys());
+    const targetAABBs: AABB[] = [];
+    const document = this.stateManager.getState();
+    if (document.width > 0 && document.height > 0) {
+      targetAABBs.push({
+        minX: 0,
+        minY: 0,
+        maxX: document.width,
+        maxY: document.height,
+        width: document.width,
+        height: document.height,
+      });
+    }
+
+    const visit = (nodes: readonly LayerChildNode[]): void => {
+      for (const node of nodes) {
+        if (!this.stateManager.isEffectivelyVisible(node.id)) continue;
+        if (isGroup(node)) {
+          visit(node.children);
+        } else if (isShape(node) && !movingIds.has(node.id)) {
+          targetAABBs.push(getShapeAABB(node));
+        }
+      }
+    };
+    for (const layer of document.children) {
+      if (this.stateManager.isEffectivelyVisible(layer.id)) {
+        visit(layer.children);
+      }
+    }
+
+    return calculateSnapping(movingAABB, targetAABBs, 5 / this.viewportManager.zoom);
+  }
+
   /**
    * Maneja el evento mousemove según la herramienta activa.
    */
@@ -1977,8 +2066,12 @@ export class InputController {
         // Evaluar Alt para alternar entre modo copia y modo normal
         this.syncCopyDragMode(Boolean(event.altKey));
 
-        const deltaX = x - this.dragOrigin.x;
-        const deltaY = y - this.dragOrigin.y;
+        const rawDeltaX = x - this.dragOrigin.x;
+        const rawDeltaY = y - this.dragOrigin.y;
+        const snap = this.calculateDragSnap(rawDeltaX, rawDeltaY);
+        this.activeGuides = snap.guides;
+        const deltaX = rawDeltaX + snap.dx;
+        const deltaY = rawDeltaY + snap.dy;
 
         const entries: ShapePositionEntry[] = [];
         for (const [id, initialPos] of this.initialShapesPositions.entries()) {
@@ -2405,14 +2498,14 @@ export class InputController {
       // Evaluar Alt también en el mouseup
       this.syncCopyDragMode(Boolean(event.altKey));
 
-      const deltaX = x - this.dragOrigin.x;
-      const deltaY = y - this.dragOrigin.y;
+      const rawDeltaX = x - this.dragOrigin.x;
+      const rawDeltaY = y - this.dragOrigin.y;
 
       if (this._isCopyDragging && this.activeClonePlacements) {
         // Asegurar posición final de las figuras hoja de los clones
         const entries: ShapePositionEntry[] = [];
         for (const [id, initialPos] of this.initialShapesPositions.entries()) {
-          entries.push({ id, x: initialPos.x + deltaX, y: initialPos.y + deltaY });
+          entries.push({ id, x: initialPos.x + rawDeltaX, y: initialPos.y + rawDeltaY });
         }
         this.stateManager.updateShapesPosition(entries);
 
@@ -2436,6 +2529,10 @@ export class InputController {
         return;
       }
 
+      const snap = this.calculateDragSnap(rawDeltaX, rawDeltaY);
+      this.activeGuides = snap.guides;
+      const deltaX = rawDeltaX + snap.dx;
+      const deltaY = rawDeltaY + snap.dy;
       const selectedNodes = this.stateManager.getSelectedNodes();
       const isGroupSelected = selectedNodes.some(isGroup);
 
@@ -3355,8 +3452,10 @@ export class InputController {
       const clonedSelectedNodes = this.stateManager.getSelectedNodes();
       const clonedLeafShapes = getLeafShapes(clonedSelectedNodes);
       this.initialShapesPositions = new Map<string, { x: number; y: number }>();
+      this.initialShapesBounds = new Map<string, AABB>();
       for (const leaf of clonedLeafShapes) {
         this.initialShapesPositions.set(leaf.id, { x: leaf.x, y: leaf.y });
+        this.initialShapesBounds.set(leaf.id, getShapeAABB(leaf));
       }
 
       this._isCopyDragging = true;
@@ -3377,19 +3476,28 @@ export class InputController {
       if (this.originalLeafPositions) {
         this.initialShapesPositions = new Map(this.originalLeafPositions);
       }
+      if (this.originalLeafBounds) {
+        this.initialShapesBounds = new Map(this.originalLeafBounds);
+      }
 
       this._isCopyDragging = false;
     }
   }
 
   private resetDrag(): void {
+    if (this.activeGuides.length > 0) {
+      this.activeGuides = [];
+      this.stateManager.markDirty();
+    }
     this._isDragging = false;
     this._isCopyDragging = false;
     this.originalSelectionIds = [];
     this.originalLeafPositions = null;
+    this.originalLeafBounds = null;
     this.activeClonePlacements = null;
     this.dragOrigin = null;
     this.initialShapesPositions = null;
+    this.initialShapesBounds = null;
     this.pendingSingleSelectionId = null;
     this.dragStartScreen = null;
     this.hasMovedPastThreshold = false;

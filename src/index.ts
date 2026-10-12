@@ -1,5 +1,6 @@
 // Interfaces y Tipos del Scene Graph
 export * from './types/scene-graph.ts';
+export * from './types/engine.ts';
 
 // Utilidades de Inmutabilidad, Geometría y Traversal
 export * from './utils/immutable.ts';

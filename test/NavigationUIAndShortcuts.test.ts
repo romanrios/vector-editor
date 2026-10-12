@@ -209,6 +209,7 @@ function setupMockEnvironment() {
     '#menu-item-send-to-back': new MockElement('menu-item-send-to-back', 'button'),
 
     // Ítems del menú Vista
+    '#menu-item-smart-guides': new MockElement('menu-item-smart-guides', 'button'),
     '#menu-item-zoom-in': new MockElement('menu-item-zoom-in', 'button'),
     '#menu-item-zoom-out': new MockElement('menu-item-zoom-out', 'button'),
     '#menu-item-zoom-fit': new MockElement('menu-item-zoom-fit', 'button'),
@@ -240,6 +241,7 @@ function setupMockEnvironment() {
   elements['.menu-bar'].appendChild(elements['#menu-btn-view']);
   elements['.menu-bar'].appendChild(elements['#menu-dropdown-view']);
   elements['#menu-dropdown-view'].appendChild(elements['#menu-item-zoom-in']);
+  elements['#menu-dropdown-view'].appendChild(elements['#menu-item-smart-guides']);
   elements['#menu-dropdown-view'].appendChild(elements['#menu-item-zoom-out']);
   elements['#menu-dropdown-view'].appendChild(elements['#menu-item-zoom-fit']);
   elements['#menu-dropdown-view'].appendChild(elements['#menu-item-zoom-100']);
@@ -683,6 +685,29 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     cleanup();
   });
 
+  it('el menú Vista activa y desactiva las guías inteligentes y cleanup remueve el listener', () => {
+    const { elements } = setupMockEnvironment();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const inputController = new InputController(createMockCanvas(), stateManager, commandManager);
+    const smartGuidesItem = elements['#menu-item-smart-guides'];
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    assert.equal(inputController.smartGuidesEnabled, true);
+    assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'true');
+
+    smartGuidesItem.click();
+    assert.equal(inputController.smartGuidesEnabled, false);
+    assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'false');
+
+    smartGuidesItem.click();
+    assert.equal(inputController.smartGuidesEnabled, true);
+    assert.equal(smartGuidesItem.getAttribute('aria-checked'), 'true');
+
+    cleanup();
+    assert.equal(smartGuidesItem.getListenerCount('click'), 0);
+  });
+
   it('7. cleanup() desvincula correctamente todos los nuevos listeners', () => {
     const { elements, presetElements } = setupMockEnvironment();
     const stateManager = new StateManager();
@@ -697,6 +722,7 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     const zoomDropdown = elements['#zoom-dropdown'];
     const btnHand = elements['#tool-hand'];
     const itemZoomIn = elements['#menu-item-zoom-in'];
+    const smartGuidesItem = elements['#menu-item-smart-guides'];
 
     // Comprobar que los elementos tienen listeners registrados
     assert.ok(statusZoomBtn.getListenerCount('click') > 0);
@@ -704,6 +730,7 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     assert.ok(zoomDropdown.getListenerCount('keydown') > 0);
     assert.ok(btnHand.getListenerCount('click') > 0);
     assert.ok(itemZoomIn.getListenerCount('click') > 0);
+    assert.ok(smartGuidesItem.getListenerCount('click') > 0);
     assert.ok(presetElements[0].getListenerCount('click') > 0);
 
     cleanup();
@@ -714,6 +741,7 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     assert.equal(zoomDropdown.getListenerCount('keydown'), 0);
     assert.equal(btnHand.getListenerCount('click'), 0);
     assert.equal(itemZoomIn.getListenerCount('click'), 0);
+    assert.equal(smartGuidesItem.getListenerCount('click'), 0);
     assert.equal(presetElements[0].getListenerCount('click'), 0);
   });
 

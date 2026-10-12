@@ -26,6 +26,7 @@ import {
   getVisiblePathHandles,
 } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
+import type { SnapGuide } from '../types/engine.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 import { isNonePaint } from '../utils/color.ts';
 
@@ -61,6 +62,7 @@ export interface RenderEngineOptions {
    * Proveedor funcional opcional del estado de edición de texto en curso.
    */
   textEditProvider?: () => TextEditRenderState | null;
+  activeGuidesProvider?: () => readonly SnapGuide[];
   /**
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
@@ -281,6 +283,8 @@ export class RenderEngine {
     if (activePreview) {
       this.renderShapePreview(activePreview, zoom);
     }
+
+    this.renderSnapGuides(this.options.activeGuidesProvider?.() ?? [], zoom);
 
     this.ctx.restore();
     this._renderCount++;
@@ -1303,6 +1307,27 @@ export class RenderEngine {
       this.ctx.stroke();
     }
 
+    this.ctx.restore();
+  }
+
+  private renderSnapGuides(guides: readonly SnapGuide[], zoom: number): void {
+    if (guides.length === 0) return;
+
+    this.ctx.save();
+    this.ctx.setLineDash([]);
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.strokeStyle = '#FF00FF';
+    this.ctx.beginPath();
+    for (const guide of guides) {
+      if (guide.axis === 'x') {
+        this.ctx.moveTo(guide.position, guide.start);
+        this.ctx.lineTo(guide.position, guide.end);
+      } else {
+        this.ctx.moveTo(guide.start, guide.position);
+        this.ctx.lineTo(guide.end, guide.position);
+      }
+    }
+    this.ctx.stroke();
     this.ctx.restore();
   }
 }

@@ -25,12 +25,14 @@ function createMockCanvas(): {
   transforms: Array<{ a: number; b: number; c: number; d: number; e: number; f: number }>;
   rotations: number[];
   translations: Array<{ x: number; y: number }>;
+  pathPoints: Array<{ x: number; y: number }>;
 } {
   const calls: string[] = [];
   const textCalls: TextCallSnapshot[] = [];
   const transforms: Array<{ a: number; b: number; c: number; d: number; e: number; f: number }> = [];
   const rotations: number[] = [];
   const translations: Array<{ x: number; y: number }> = [];
+  const pathPoints: Array<{ x: number; y: number }> = [];
 
   const stateStack: Array<{
     font: string;
@@ -81,8 +83,14 @@ function createMockCanvas(): {
     clearRect: () => calls.push('clearRect'),
     fillRect: () => calls.push('fillRect'),
     beginPath: () => calls.push('beginPath'),
-    moveTo: () => calls.push('moveTo'),
-    lineTo: () => calls.push('lineTo'),
+    moveTo: (x: number, y: number) => {
+      calls.push('moveTo');
+      pathPoints.push({ x, y });
+    },
+    lineTo: (x: number, y: number) => {
+      calls.push('lineTo');
+      pathPoints.push({ x, y });
+    },
     stroke: () => calls.push('stroke'),
     fill: () => calls.push('fill'),
     arc: () => calls.push('arc'),
@@ -166,10 +174,32 @@ function createMockCanvas(): {
     },
   } as unknown as HTMLCanvasElement;
 
-  return { canvas: mockCanvas, calls, textCalls, transforms, rotations, translations };
+  return { canvas: mockCanvas, calls, textCalls, transforms, rotations, translations, pathPoints };
 }
 
 describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
+  it('dibuja guías de ajuste al final del renderizado en las posiciones indicadas', () => {
+    const { canvas, calls, pathPoints } = createMockCanvas();
+    const manager = new StateManager();
+    const engine = new RenderEngine(canvas, manager, {
+      highDpi: false,
+      activeGuidesProvider: () => [
+        { axis: 'x', position: 42, start: 10, end: 90 },
+        { axis: 'y', position: 55, start: 5, end: 70 },
+      ],
+    });
+
+    engine.render();
+
+    assert.deepEqual(pathPoints.slice(-4), [
+      { x: 42, y: 10 },
+      { x: 42, y: 90 },
+      { x: 5, y: 55 },
+      { x: 70, y: 55 },
+    ]);
+    assert.equal(calls[calls.length - 3], 'stroke');
+  });
+
   it('inicializa y obtiene el contexto 2D sin errores', () => {
     const { canvas } = createMockCanvas();
     const manager = new StateManager();
@@ -590,4 +620,3 @@ describe('RenderEngine - Renderizado de nodos Text', () => {
     assert.equal(textCalls[0].y, 60);
   });
 });
-

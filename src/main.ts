@@ -236,6 +236,7 @@ export function setupUIBindings(
   const menuItemZoomOut = document.querySelector<HTMLButtonElement>('#menu-item-zoom-out');
   const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
   const menuItemZoom100 = document.querySelector<HTMLButtonElement>('#menu-item-zoom-100');
+  const menuItemSmartGuides = document.querySelector<HTMLButtonElement>('#menu-item-smart-guides');
   const menuItemShortcuts = document.querySelector<HTMLButtonElement>('#menu-item-shortcuts');
   const menuItemAbout = document.querySelector<HTMLButtonElement>('#menu-item-about');
   const btnAboutBrand = document.querySelector<HTMLButtonElement>('#btn-about-brand');
@@ -2208,6 +2209,7 @@ export function setupUIBindings(
       trigger: menuBtnView,
       dropdown: menuDropdownView,
       items: [
+        menuItemSmartGuides,
         menuItemZoomIn,
         menuItemZoomOut,
         menuItemZoomFit,
@@ -2883,6 +2885,16 @@ export function setupUIBindings(
   };
   updateZoomIndicator(viewportManager.zoom);
 
+  const syncSmartGuidesMenuItem = () => {
+    menuItemSmartGuides?.setAttribute('aria-checked', String(inputController.smartGuidesEnabled));
+  };
+  const onMenuSmartGuidesClick = () => {
+    inputController.setSmartGuidesEnabled(!inputController.smartGuidesEnabled);
+    syncSmartGuidesMenuItem();
+  };
+  syncSmartGuidesMenuItem();
+  menuItemSmartGuides?.addEventListener('click', onMenuSmartGuidesClick);
+
   const unsubscribeViewport = viewportManager.subscribe((vp) => {
     updateZoomIndicator(vp.zoom);
     syncMenuItems();
@@ -3226,6 +3238,7 @@ export function setupUIBindings(
       menuItemZoomOut?.removeEventListener('click', onMenuZoomOutClick);
       menuItemZoomFit?.removeEventListener('click', onMenuZoomFitClick);
       menuItemZoom100?.removeEventListener('click', onMenuZoom100Click);
+      menuItemSmartGuides?.removeEventListener('click', onMenuSmartGuidesClick);
       menuItemShortcuts?.removeEventListener('click', onMenuShortcutsClick);
       btnCloseShortcuts?.removeEventListener('click', closeShortcutsDialog);
       menuItemAbout?.removeEventListener('click', onMenuAboutClick);
@@ -3270,6 +3283,7 @@ if (typeof document !== 'undefined') {
       previewProvider: () => inputController?.shapePreview ?? null,
       pathEditProvider: () => inputController?.pathEditState ?? null,
       textEditProvider: () => inputController?.textEditState ?? null,
+      activeGuidesProvider: () => inputController?.activeGuides ?? [],
     });
     renderEngine.start();
 

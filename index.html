@@ -245,6 +245,17 @@
         white-space: nowrap;
       }
 
+      .menu-check {
+        width: 16px;
+        margin-right: 8px;
+        color: var(--accent);
+        visibility: hidden;
+      }
+
+      [aria-checked="true"] .menu-check {
+        visibility: visible;
+      }
+
       .menu-divider {
         height: 1px;
         background: var(--border-subtle);
@@ -1414,6 +1425,11 @@
               Vista
             </button>
             <div id="menu-dropdown-view" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-view" hidden>
+              <button id="menu-item-smart-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
+                <span class="menu-check" aria-hidden="true">✓</span>
+                <span class="menu-item-label">Guías inteligentes</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
               <button id="menu-item-zoom-in" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Acercar</span>
                 <span class="menu-shortcut">Ctrl++</span>

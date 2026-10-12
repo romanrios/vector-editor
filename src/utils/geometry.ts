@@ -1,5 +1,6 @@
 import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, Shape, Text, Vector2D } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
+import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
 
 /**
@@ -397,6 +398,73 @@ export function measureSingleLineTextWidth(
  * Divide el contenido de un nodo Text en líneas respetando saltos de línea explícitos
  * y aplicando ajuste de línea automático (word-wrapping) si `boxWidth` está definido.
  */
+export function calculateSnapping(
+  movingAABB: AABB,
+  targetAABBs: readonly AABB[],
+  tolerance: number = 5
+): { dx: number; dy: number; guides: SnapGuide[] } {
+  const movingX = [movingAABB.minX, (movingAABB.minX + movingAABB.maxX) / 2, movingAABB.maxX];
+  const movingY = [movingAABB.minY, (movingAABB.minY + movingAABB.maxY) / 2, movingAABB.maxY];
+  let dx = 0;
+  let dy = 0;
+  let bestXDistance = tolerance + Number.EPSILON;
+  let bestYDistance = tolerance + Number.EPSILON;
+  let xGuidePosition: number | null = null;
+  let xGuideTarget: AABB | null = null;
+  let yGuidePosition: number | null = null;
+  let yGuideTarget: AABB | null = null;
+
+  for (const target of targetAABBs) {
+    const targetX = [target.minX, (target.minX + target.maxX) / 2, target.maxX];
+    const targetY = [target.minY, (target.minY + target.maxY) / 2, target.maxY];
+
+    for (const movingPosition of movingX) {
+      for (const targetPosition of targetX) {
+        const correction = targetPosition - movingPosition;
+        const distance = Math.abs(correction);
+        if (distance <= tolerance && distance < bestXDistance) {
+          bestXDistance = distance;
+          dx = correction;
+          xGuidePosition = targetPosition;
+          xGuideTarget = target;
+        }
+      }
+    }
+
+    for (const movingPosition of movingY) {
+      for (const targetPosition of targetY) {
+        const correction = targetPosition - movingPosition;
+        const distance = Math.abs(correction);
+        if (distance <= tolerance && distance < bestYDistance) {
+          bestYDistance = distance;
+          dy = correction;
+          yGuidePosition = targetPosition;
+          yGuideTarget = target;
+        }
+      }
+    }
+  }
+
+  const guides: SnapGuide[] = [];
+  if (xGuidePosition !== null && xGuideTarget) {
+    guides.push({
+      axis: 'x',
+      position: xGuidePosition,
+      start: Math.min(movingAABB.minY + dy, xGuideTarget.minY),
+      end: Math.max(movingAABB.maxY + dy, xGuideTarget.maxY),
+    });
+  }
+  if (yGuidePosition !== null && yGuideTarget) {
+    guides.push({
+      axis: 'y',
+      position: yGuidePosition,
+      start: Math.min(movingAABB.minX + dx, yGuideTarget.minX),
+      end: Math.max(movingAABB.maxX + dx, yGuideTarget.maxX),
+    });
+  }
+  return { dx, dy, guides };
+}
+
 export function getTextLineRanges(
   text: Text,
   ctx?: CanvasRenderingContext2D | null
