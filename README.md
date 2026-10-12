@@ -1,8 +1,8 @@
-# Vector Editor
+# Vectedit
 
-Editor gráfico vectorial 2D interactivo desarrollado en TypeScript sobre Canvas 2D nativo.
+Vectedit es un editor gráfico vectorial 2D interactivo desarrollado en TypeScript sobre Canvas 2D nativo.
 
-![Captura de Vector Editor](public/screenshot_01.webp)
+![Captura de Vectedit](public/screenshot_01.webp)
 
 El proyecto está diseñado bajo una arquitectura modular, predecible y extensible. Implementa un **Scene Graph inmutable** con compartición estructural (*structural sharing*), renderizado reactivo optimizado mediante bucle de repintado controlado (*dirty loop*), transformaciones geométricas continuas con soporte para marcos locales rotados, manipulación directa de curvas Bézier y un sistema completo de historial Deshacer / Rehacer basado en el patrón Command.
 

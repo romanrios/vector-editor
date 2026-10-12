@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_DOCUMENT, DEFAULT_DOCUMENT_ZOOM } from '../src/state/defaultDocument.ts';
 import { Serializer } from '../src/state/Serializer.ts';
-import { isGroup, isText } from '../src/types/scene-graph.ts';
+import { isText } from '../src/types/scene-graph.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
 
 test('el documento inicial usa el diseño predeterminado y el zoom del 50%', () => {
@@ -13,17 +13,22 @@ test('el documento inicial usa el diseño predeterminado y el zoom del 50%', () 
   assert.equal(DEFAULT_DOCUMENT.height, 1080);
 
   const children = DEFAULT_DOCUMENT.children[0].children;
-  assert.equal(children.length, 5);
+  assert.equal(children.length, 13);
 
-  const title = children.find((node) => isText(node) && node.text === 'Vector Editor');
+  const title = children.find((node) => isText(node) && node.text === 'Vectedit');
   assert.ok(title && isText(title));
+  assert.equal(title.x, 299.31669095553843);
+  assert.equal(title.y, 403.0819841145182);
   assert.equal(title.fontFamily, 'Montserrat');
-  assert.equal(title.fontSize, 187);
+  assert.equal(title.fontSize, 287);
   assert.equal(title.fontWeight, 800);
 
-  const group = children.find(isGroup);
-  assert.ok(group);
-  assert.equal(group.children.length, 9);
+  const subtitle = children.find(
+    (node) => isText(node) && node.text === 'Editor gráfico vectorial 2D sobre Canvas nativo'
+  );
+  assert.ok(subtitle && isText(subtitle));
+  assert.equal(subtitle.fontSize, 58);
+  assert.equal(children.filter((node) => node.type === 'rectangle' || node.type === 'path').length, 9);
 });
 
 test('el documento predeterminado pasa la validación de importación JSON', async () => {

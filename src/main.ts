@@ -39,7 +39,7 @@ function debug(...args: unknown[]): void {
   }
 }
 
-debug('%c[Vector Editor - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
+debug('%c[Vectedit - Scene Graph, RenderEngine, Pluma & Observabilidad DOM]', 'color: #38bdf8; font-weight: bold; font-size: 15px;');
 
 // 1. Inicializar el StateManager inmutable, el CommandManager y el ViewportManager
 const commandManager = new CommandManager();

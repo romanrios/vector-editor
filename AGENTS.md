@@ -1,4 +1,4 @@
-# Vector Editor
+# Vectedit
 
 Editor gráfico vectorial 2D interactivo en TypeScript sobre Canvas 2D nativo.
 Implementa un Scene Graph inmutable (Document > Layer > Group* > Shape) con renderizado por dirty-loop.
