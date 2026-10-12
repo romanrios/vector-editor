@@ -397,44 +397,69 @@ export function measureSingleLineTextWidth(
  * Divide el contenido de un nodo Text en líneas respetando saltos de línea explícitos
  * y aplicando ajuste de línea automático (word-wrapping) si `boxWidth` está definido.
  */
-export function getWrappedTextLines(text: Text, ctx?: CanvasRenderingContext2D | null): string[] {
+export function getTextLineRanges(
+  text: Text,
+  ctx?: CanvasRenderingContext2D | null
+): Array<{ text: string; start: number; end: number }> {
   const content = text.text ?? '';
   if (text.boxWidth === undefined) {
-    return content.split('\n');
+    let start = 0;
+    return content.split('\n').map((line) => {
+      const range = { text: line, start, end: start + line.length };
+      start = range.end + 1;
+      return range;
+    });
   }
 
-  const boxWidth = text.boxWidth;
+  const ranges: Array<{ text: string; start: number; end: number }> = [];
   const paragraphs = content.split('\n');
-  const result: string[] = [];
+  let paragraphStart = 0;
 
   for (const paragraph of paragraphs) {
     if (!paragraph) {
-      result.push('');
+      ranges.push({ text: '', start: paragraphStart, end: paragraphStart });
+      paragraphStart++;
       continue;
     }
 
     const words = paragraph.split(' ');
+    let wordStart = paragraphStart;
     let currentLine = '';
+    let currentStart = wordStart;
+    let currentEnd = wordStart;
 
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
       const testLine = currentLine ? `${currentLine} ${word}` : word;
       const width = measureSingleLineTextWidth(text, testLine, ctx);
 
-      if (width <= boxWidth || !currentLine) {
+      if (width <= text.boxWidth || !currentLine) {
+        if (!currentLine) {
+          currentStart = wordStart;
+        }
         currentLine = testLine;
+        currentEnd = wordStart + word.length;
       } else {
-        result.push(currentLine);
+        ranges.push({ text: currentLine, start: currentStart, end: currentEnd });
         currentLine = word;
+        currentStart = wordStart;
+        currentEnd = wordStart + word.length;
       }
+
+      wordStart += word.length + (i < words.length - 1 ? 1 : 0);
     }
 
     if (currentLine) {
-      result.push(currentLine);
+      ranges.push({ text: currentLine, start: currentStart, end: currentEnd });
     }
+    paragraphStart += paragraph.length + 1;
   }
 
-  return result.length > 0 ? result : [''];
+  return ranges.length > 0 ? ranges : [{ text: '', start: 0, end: 0 }];
+}
+
+export function getWrappedTextLines(text: Text, ctx?: CanvasRenderingContext2D | null): string[] {
+  return getTextLineRanges(text, ctx).map((line) => line.text);
 }
 
 /**
@@ -513,20 +538,7 @@ export function getTextIndexAtPosition(
   }
 
   // 2. Dividir en líneas y calcular posiciones iniciales
-  const lines = text.boxWidth !== undefined ? getWrappedTextLines(text, ctx) : content.split('\n');
-  const lineStarts: number[] = [];
-  let currStart = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const pos = content.indexOf(line, currStart);
-    if (pos !== -1) {
-      lineStarts.push(pos);
-      currStart = pos + line.length;
-    } else {
-      lineStarts.push(currStart);
-      currStart += line.length + 1;
-    }
-  }
+  const lines = getTextLineRanges(text, ctx);
 
   // 3. Identificar la línea más cercana según coordenada Y y lineHeight
   const lineHeight = getTextLineHeight(text);
@@ -536,7 +548,7 @@ export function getTextIndexAtPosition(
   if (lineIndex >= lines.length) lineIndex = lines.length - 1;
 
   // 4. Determinar la posición horizontal de inicio de la línea seleccionada según textAlign
-  const currentLine = lines[lineIndex];
+  const { text: currentLine, start: lineStart, end: lineEnd } = lines[lineIndex];
   const lineWidth = measureSingleLineTextWidth(text, currentLine, ctx);
   let startX = text.x;
   if (text.textAlign === 'center') {
@@ -548,10 +560,10 @@ export function getTextIndexAtPosition(
   // 5. Desplazamiento horizontal relativo al inicio de la línea
   const offsetX = unrotX - startX;
   if (offsetX <= 0) {
-    return lineStarts[lineIndex];
+    return lineStart;
   }
   if (offsetX >= lineWidth) {
-    return lineStarts[lineIndex] + currentLine.length;
+    return lineEnd;
   }
 
   // 6. Buscar el carácter más cercano dentro de esa línea
@@ -566,7 +578,7 @@ export function getTextIndexAtPosition(
     }
   }
 
-  return lineStarts[lineIndex] + closestCol;
+  return Math.min(lineStart + closestCol, lineEnd);
 }
 
 /**
@@ -2297,4 +2309,3 @@ export function isSmoothPoint(point: PathPoint): boolean {
   const cross = Math.abs(uInX * uOutY - uInY * uOutX);
   return cross < 1e-3;
 }
-

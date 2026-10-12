@@ -20,6 +20,7 @@ import {
   getPathBaseAABB,
   getTextBaseAABB,
   getTextLineHeight,
+  getTextLineRanges,
   getSelectionBounds,
   getShapeAABB,
   getVisiblePathHandles,
@@ -173,6 +174,7 @@ export class RenderEngine {
       this.resizeObserver.observe(target);
     }
   }
+
 
   /**
    * Inicia el bucle de renderizado con requestAnimationFrame.
@@ -997,42 +999,7 @@ export class RenderEngine {
     const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
     const lineHeight = getTextLineHeight(text);
 
-    let lines: string[];
-    if (text.boxWidth !== undefined) {
-      lines = [];
-      const paragraphs = displayText.split('\n');
-      for (const paragraph of paragraphs) {
-        if (!paragraph) {
-          lines.push('');
-          continue;
-        }
-        const words = paragraph.split(' ');
-        let currentLine = '';
-        for (let j = 0; j < words.length; j++) {
-          const word = words[j];
-          const testLine = currentLine ? `${currentLine} ${word}` : word;
-          const metrics = typeof this.ctx.measureText === 'function' ? this.ctx.measureText(testLine) : null;
-          const testWidth = metrics && typeof metrics.width === 'number' && metrics.width > 0
-            ? metrics.width
-            : testLine.length * (fontSize * 0.6);
-
-          if (testWidth <= text.boxWidth || !currentLine) {
-            currentLine = testLine;
-          } else {
-            lines.push(currentLine);
-            currentLine = word;
-          }
-        }
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-      }
-      if (lines.length === 0) {
-        lines = [''];
-      }
-    } else {
-      lines = displayText.split('\n');
-    }
+    const lines = getTextLineRanges({ ...text, text: displayText }, this.ctx);
 
     // 6. Si está en edición y existe selección de caracteres, renderizar el resaltado DETRÁS del texto
     if (
@@ -1043,7 +1010,8 @@ export class RenderEngine {
     ) {
       this.renderTextSelectionHighlight(
         text,
-        displayText,
+        lines,
+        displayText.length,
         textEdit.selectionStart,
         textEdit.selectionEnd,
         fontSize,
@@ -1054,7 +1022,7 @@ export class RenderEngine {
     // 7. Dibujo de cada línea de texto
     for (let i = 0; i < lines.length; i++) {
       const lineY = text.y + i * lineHeight;
-      this.ctx.fillText(lines[i], text.x, lineY);
+      this.ctx.fillText(lines[i].text, text.x, lineY);
     }
 
     this.ctx.restore();
@@ -1066,40 +1034,30 @@ export class RenderEngine {
    */
   private renderTextSelectionHighlight(
     text: Text,
-    displayText: string,
+    lines: Array<{ text: string; start: number; end: number }>,
+    textLength: number,
     selectionStart: number,
     selectionEnd: number,
     fontSize: number,
     lineHeight: number
   ): void {
-    const minIdx = Math.max(0, Math.min(displayText.length, Math.min(selectionStart, selectionEnd)));
-    const maxIdx = Math.max(0, Math.min(displayText.length, Math.max(selectionStart, selectionEnd)));
+    const minIdx = Math.max(0, Math.min(textLength, Math.min(selectionStart, selectionEnd)));
+    const maxIdx = Math.max(0, Math.min(textLength, Math.max(selectionStart, selectionEnd)));
     if (minIdx === maxIdx) return;
-
-    const lines = displayText.split('\n');
-    const lineStarts: number[] = [];
-    let currStart = 0;
-    for (let i = 0; i < lines.length; i++) {
-      lineStarts.push(currStart);
-      currStart += lines[i].length + 1; // +1 por el '\n'
-    }
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(59, 130, 246, 0.35)';
 
     for (let i = 0; i < lines.length; i++) {
-      const lineStart = lineStarts[i];
-      const lineText = lines[i];
-      const lineEnd = lineStart + lineText.length;
-
-      // Intersección de la selección con el rango de esta línea
+      const { text: lineText, start: lineStart, end: lineEnd } = lines[i];
       const selStartInLine = Math.max(lineStart, minIdx);
       const selEndInLine = Math.min(lineEnd, maxIdx);
 
       const hasSelectionInThisLine = selStartInLine < selEndInLine;
-      const isNewlineSelected = maxIdx > lineEnd && minIdx <= lineEnd;
+      const nextLineStart = lines[i + 1]?.start ?? lineEnd;
+      const isLineBreakSelected = maxIdx > lineEnd && minIdx < nextLineStart;
 
-      if (!hasSelectionInThisLine && !isNewlineSelected) {
+      if (!hasSelectionInThisLine && !isLineBreakSelected) {
         continue;
       }
 
@@ -1117,7 +1075,7 @@ export class RenderEngine {
       const wBefore = this.ctx.measureText(lineText.slice(0, charStart)).width;
       let wSelected = this.ctx.measureText(lineText.slice(charStart, charEnd)).width;
 
-      if (isNewlineSelected && wSelected === 0) {
+      if (isLineBreakSelected && wSelected === 0) {
         wSelected = Math.max(6, fontSize * 0.3);
       }
 
@@ -1181,21 +1139,17 @@ export class RenderEngine {
       this.ctx.font = fontParts.join(' ');
 
       // Determinar en qué línea está el cursor
-      const lines = currentText.split('\n');
+      const lines = getTextLineRanges(tempNode, this.ctx);
       let lineIdx = 0;
-      let currStart = 0;
-      let lineStart = 0;
       for (let i = 0; i < lines.length; i++) {
-        const nextStart = currStart + lines[i].length + 1;
-        if (cursorIndex <= currStart + lines[i].length || i === lines.length - 1) {
+        if (cursorIndex <= lines[i].end || i === lines.length - 1) {
           lineIdx = i;
-          lineStart = currStart;
           break;
         }
-        currStart = nextStart;
       }
 
-      const currentLine = lines[lineIdx] ?? '';
+      const currentLine = lines[lineIdx]?.text ?? '';
+      const lineStart = lines[lineIdx]?.start ?? 0;
       const col = Math.max(0, Math.min(currentLine.length, cursorIndex - lineStart));
       const lineWidth = this.ctx.measureText(currentLine).width;
 
@@ -1352,4 +1306,3 @@ export class RenderEngine {
     this.ctx.restore();
   }
 }
-

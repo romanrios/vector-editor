@@ -18,11 +18,13 @@ function createMockCanvas(options?: { charWidth?: number }): {
   mockCtx: CanvasRenderingContext2D;
   fillCalls: { text: string; x: number; y: number }[];
   rectCalls: { x: number; y: number; w: number; h: number }[];
+  lineCalls: Array<{ x: number; y: number }>;
 } {
   const listeners: Record<string, ((e: unknown) => void)[]> = {};
   const charWidth = options?.charWidth ?? 10;
   const fillCalls: { text: string; x: number; y: number }[] = [];
   const rectCalls: { x: number; y: number; w: number; h: number }[] = [];
+  const lineCalls: Array<{ x: number; y: number }> = [];
 
   const mockCtx = {
     font: '16px sans-serif',
@@ -38,8 +40,12 @@ function createMockCanvas(options?: { charWidth?: number }): {
     beginPath: () => {},
     stroke: () => {},
     fill: () => {},
-    moveTo: () => {},
-    lineTo: () => {},
+    moveTo: (x: number, y: number) => {
+      lineCalls.push({ x, y });
+    },
+    lineTo: (x: number, y: number) => {
+      lineCalls.push({ x, y });
+    },
     setLineDash: () => {},
     arc: () => {},
     setTransform: () => {},
@@ -94,7 +100,7 @@ function createMockCanvas(options?: { charWidth?: number }): {
     },
   } as unknown as HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
 
-  return { canvas, mockCtx, fillCalls, rectCalls };
+  return { canvas, mockCtx, fillCalls, rectCalls, lineCalls };
 }
 
 describe('Ajuste de caja de párrafo (word-wrapping) y manejador right-center', () => {
@@ -278,6 +284,43 @@ describe('Ajuste de caja de párrafo (word-wrapping) y manejador right-center', 
       assert.equal(fillCalls[0].y, 20);
       assert.equal(fillCalls[1].y, 20 + 25);
       assert.equal(fillCalls[2].y, 20 + 50);
+    });
+
+    it('renderiza la selección y el cursor en la línea automática correspondiente', () => {
+      const { canvas, rectCalls, lineCalls } = createMockCanvas({ charWidth: 10 });
+      const stateManager = new StateManager();
+      const text: Text = {
+        id: 't-edit-wrap',
+        type: 'text',
+        name: 'Wrapped edit',
+        x: 10,
+        y: 20,
+        text: 'Palabra1 Palabra2 Palabra3',
+        fontSize: 16,
+        lineHeight: 25,
+        boxWidth: 100,
+      };
+      const layerId = stateManager.getState().children[0].id;
+      stateManager.addShape(layerId, text);
+      stateManager.selectNode(text.id);
+
+      const engine = new RenderEngine(canvas, stateManager, {
+        textEditProvider: () => ({
+          textId: text.id,
+          text: text.text,
+          cursorIndex: 14,
+          selectionStart: 11,
+          selectionEnd: 14,
+        }),
+      });
+
+      engine.render();
+
+      assert.ok(
+        rectCalls.some((rect) => rect.x === 30 && rect.y === 45 && rect.w === 30 && rect.h === 25),
+        'La selección de la segunda palabra debe resaltarse en la segunda línea'
+      );
+      assert.deepEqual(lineCalls.slice(-2), [{ x: 60, y: 45 }, { x: 60, y: 70 }]);
     });
 
     it('renderSingleShapeSelection renderiza el manejador right-center en (baseX + baseWidth, baseY + baseHeight / 2)', () => {
