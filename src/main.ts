@@ -127,6 +127,8 @@ export function setupUIBindings(
   const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
 
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+  const inputOpacity = document.querySelector<HTMLInputElement>('#input-opacity');
+  const inputOpacityValue = document.querySelector<HTMLInputElement>('#input-opacity-value');
 
   // Sección Tipografía (para nodo Text individual)
   const sectionTypography = document.querySelector<HTMLDetailsElement>('#section-typography');
@@ -606,6 +608,7 @@ export function setupUIBindings(
     readonly fill?: string;
     readonly stroke?: string;
     readonly strokeWidth?: number;
+    readonly opacity?: number;
   }
   let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
   let lastRememberedFill = '#38bdf8';
@@ -651,6 +654,7 @@ export function setupUIBindings(
           fill: shape.fill,
           stroke: 'stroke' in shape ? (shape as { stroke?: string }).stroke : undefined,
           strokeWidth: 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined,
+          opacity: shape.opacity,
         });
       }
     }
@@ -916,6 +920,16 @@ export function setupUIBindings(
 
     if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
       inputStrokeWidth.value = String(firstShape ? (('strokeWidth' in firstShape ? (firstShape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1) : (defaultStyle?.strokeWidth ?? 2));
+    }
+    const opacities = leafShapes.map((shape) => shape.opacity ?? 1);
+    const isOpacityMixed = opacities.some((opacity) => opacity !== opacities[0]);
+    const displayedOpacity = opacities.length > 0 ? opacities[0] : (defaultStyle?.opacity ?? 1);
+    if (inputOpacity && (typeof document === 'undefined' || document.activeElement !== inputOpacity)) {
+      inputOpacity.value = String(Math.round(displayedOpacity * 100));
+    }
+    if (inputOpacityValue && (typeof document === 'undefined' || document.activeElement !== inputOpacityValue)) {
+      inputOpacityValue.value = isOpacityMixed ? '' : String(Math.round(displayedOpacity * 100));
+      inputOpacityValue.placeholder = isOpacityMixed ? 'Mixto' : '';
     }
 
     const currentDoc = stateManager.getState();
@@ -1300,6 +1314,83 @@ export function setupUIBindings(
   inputFill?.addEventListener('input', onFillInput);
   inputStroke?.addEventListener('input', onStrokeInput);
   inputStrokeWidth?.addEventListener('input', onStrokeWidthInput);
+  const onOpacityInput = (source: HTMLInputElement) => {
+    const parsed = Number(source.value);
+    if (source.value.trim() === '' || !Number.isFinite(parsed)) return;
+    const percent = Math.round(Math.max(0, Math.min(100, parsed)));
+    const opacity = percent / 100;
+    if (inputOpacity) inputOpacity.value = String(percent);
+    if (inputOpacityValue && source !== inputOpacityValue) inputOpacityValue.value = String(percent);
+    if (!Number.isFinite(opacity)) return;
+
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    stateManager.setDrawingStyle({ opacity });
+    if (leafShapes.length === 0) return;
+
+    if (!initialStyleSnapshots) captureInitialStyle();
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { opacity },
+    })));
+  };
+
+  const onOpacityChange = (source: HTMLInputElement) => {
+    const parsed = Number(source.value);
+    if (source.value.trim() === '' || !Number.isFinite(parsed)) {
+      syncPropertiesPanel();
+      return;
+    }
+    const percent = Math.round(Math.max(0, Math.min(100, parsed)));
+    const opacity = percent / 100;
+    if (inputOpacity) inputOpacity.value = String(percent);
+    if (inputOpacityValue) inputOpacityValue.value = String(percent);
+    if (!Number.isFinite(opacity)) return;
+
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    stateManager.setDrawingStyle({ opacity });
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+    if (!initialStyleSnapshots) captureInitialStyle();
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { opacity: initialStyleSnapshots?.get(shape.id)?.opacity ?? shape.opacity ?? 1 },
+      after: { opacity },
+    }));
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { opacity },
+    })));
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) commandManager.recordCommand(command);
+    initialStyleSnapshots = null;
+  };
+
+  const onOpacitySliderInput = () => {
+    if (inputOpacity) onOpacityInput(inputOpacity);
+  };
+  const onOpacitySliderChange = () => {
+    if (inputOpacity) onOpacityChange(inputOpacity);
+  };
+  const onOpacityValueInput = () => {
+    if (inputOpacityValue) onOpacityInput(inputOpacityValue);
+  };
+  const onOpacityValueChange = () => {
+    if (inputOpacityValue) onOpacityChange(inputOpacityValue);
+  };
+
+  inputOpacity?.addEventListener('mousedown', onInputStart);
+  inputOpacity?.addEventListener('click', onInputStart);
+  inputOpacity?.addEventListener('focus', onInputStart);
+  inputOpacity?.addEventListener('input', onOpacitySliderInput);
+  inputOpacity?.addEventListener('change', onOpacitySliderChange);
+  inputOpacityValue?.addEventListener('mousedown', onInputStart);
+  inputOpacityValue?.addEventListener('click', onInputStart);
+  inputOpacityValue?.addEventListener('focus', onInputStart);
+  inputOpacityValue?.addEventListener('input', onOpacityValueInput);
+  inputOpacityValue?.addEventListener('change', onOpacityValueChange);
 
   // Consolidación final (evento 'change'): genera StyleShapesCommand y registra en CommandManager
   const onFillChange = () => {
@@ -3085,6 +3176,17 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('focus', onInputStart);
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
+
+      inputOpacity?.removeEventListener('mousedown', onInputStart);
+      inputOpacity?.removeEventListener('click', onInputStart);
+      inputOpacity?.removeEventListener('focus', onInputStart);
+      inputOpacity?.removeEventListener('input', onOpacitySliderInput);
+      inputOpacity?.removeEventListener('change', onOpacitySliderChange);
+      inputOpacityValue?.removeEventListener('mousedown', onInputStart);
+      inputOpacityValue?.removeEventListener('click', onInputStart);
+      inputOpacityValue?.removeEventListener('focus', onInputStart);
+      inputOpacityValue?.removeEventListener('input', onOpacityValueInput);
+      inputOpacityValue?.removeEventListener('change', onOpacityValueChange);
 
       inputObjectX?.removeEventListener('change', onObjectXChange);
       inputObjectY?.removeEventListener('change', onObjectYChange);

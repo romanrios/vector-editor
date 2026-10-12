@@ -18,11 +18,12 @@ function areStylesEqual(a: ShapeStyleUpdate, b: ShapeStyleUpdate): boolean {
   if (a.fill !== b.fill) return false;
   if (a.stroke !== b.stroke) return false;
   if (a.strokeWidth !== b.strokeWidth) return false;
+  if (a.opacity !== b.opacity) return false;
   return true;
 }
 
 /**
- * Comando que encapsula la modificación de estilos (fill, stroke, strokeWidth)
+ * Comando que encapsula la modificación de estilos (fill, stroke, strokeWidth, opacity)
  * sobre múltiples figuras o una sola figura, permitiendo deshacer y rehacer.
  * execute() y undo() realizan una sola llamada a StateManager.updateShapesStyle().
  */

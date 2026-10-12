@@ -884,6 +884,49 @@
         pointer-events: none;
       }
 
+      .range-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: 150px;
+      }
+
+      .range-control input[type="range"] {
+        flex: 1;
+        min-width: 0;
+        accent-color: var(--accent);
+      }
+
+      .range-unit {
+        color: var(--text-secondary);
+        font-size: 10px;
+      }
+
+      .range-control input[type="number"] {
+        width: 48px;
+        height: 24px;
+        padding: 0 4px;
+        appearance: textfield;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+        text-align: right;
+      }
+
+      .range-control input[type="number"]::-webkit-inner-spin-button,
+      .range-control input[type="number"]::-webkit-outer-spin-button {
+        margin: 0;
+        appearance: none;
+      }
+
+      .range-control input[type="number"]:focus-visible {
+        border-color: var(--border-focus);
+        outline: 1px solid var(--border-focus);
+      }
+
       #input-artboard-width,
       #input-artboard-height {
         width: 104px;
@@ -1657,6 +1700,14 @@
             <div class="input-number-wrapper">
               <input type="number" id="input-stroke-width" min="0" max="100" value="2">
               <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+          <div class="control-group" id="group-opacity">
+            <label for="input-opacity">Opacidad</label>
+            <div class="range-control">
+              <input type="range" id="input-opacity" min="0" max="100" step="1" value="100" aria-label="Opacidad">
+              <input type="number" id="input-opacity-value" min="0" max="100" step="1" value="100" aria-label="Porcentaje de opacidad">
+              <span class="range-unit" aria-hidden="true">%</span>
             </div>
           </div>
         </div>

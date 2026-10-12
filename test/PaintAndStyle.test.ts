@@ -505,7 +505,7 @@ describe('toValidHexColor (compatibilidad)', () => {
 });
 
 describe('Estilo de dibujo actual (drawingStyle)', () => {
-  it('tras setDrawingStyle({fill:"#ff0000", stroke:"#00ff00", strokeWidth:5}), un rectángulo y una elipse creados por arrastre nacen con esos valores y opacity 1', () => {
+  it('aplica fill, stroke, grosor y opacidad del estilo de dibujo a nuevas figuras', () => {
     const manager = new StateManager();
     const cmdManager = new CommandManager();
     const { canvas } = createMockCanvas();
@@ -515,12 +515,14 @@ describe('Estilo de dibujo actual (drawingStyle)', () => {
       fill: '#ff0000',
       stroke: '#00ff00',
       strokeWidth: 5,
+      opacity: 0.6,
     });
 
     const style = manager.getDrawingStyle();
     assert.equal(style.fill, '#ff0000');
     assert.equal(style.stroke, '#00ff00');
     assert.equal(style.strokeWidth, 5);
+    assert.equal(style.opacity, 0.6);
 
     // 1. Crear rectángulo por arrastre
     controller.setTool('rectangle');
@@ -534,7 +536,7 @@ describe('Estilo de dibujo actual (drawingStyle)', () => {
     assert.equal(rect.fill, '#ff0000');
     assert.equal(rect.stroke, '#00ff00');
     assert.equal(rect.strokeWidth, 5);
-    assert.equal(rect.opacity, 1);
+    assert.equal(rect.opacity, 0.6);
 
     // 2. Crear elipse por arrastre
     controller.setTool('ellipse');
@@ -548,7 +550,7 @@ describe('Estilo de dibujo actual (drawingStyle)', () => {
     assert.equal(ellipse.fill, '#ff0000');
     assert.equal(ellipse.stroke, '#00ff00');
     assert.equal(ellipse.strokeWidth, 5);
-    assert.equal(ellipse.opacity, 1);
+    assert.equal(ellipse.opacity, 0.6);
 
     controller.destroy();
   });

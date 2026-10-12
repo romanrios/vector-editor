@@ -1541,7 +1541,7 @@ export class InputController {
       textAlign: 'left',
       fill: style.fill && style.fill !== 'none' ? style.fill : '#000000',
       rotation: 0,
-      opacity: 1,
+      opacity: style.opacity,
       visible: true,
       locked: false,
     };
@@ -2272,7 +2272,7 @@ export class InputController {
           fill: style.fill,
           stroke: style.stroke,
           strokeWidth: style.strokeWidth,
-          opacity: 1,
+          opacity: style.opacity,
           visible: true,
           locked: false,
           rotation: 0,
@@ -2292,7 +2292,7 @@ export class InputController {
           fill: style.fill,
           stroke: style.stroke,
           strokeWidth: style.strokeWidth,
-          opacity: 1,
+          opacity: style.opacity,
           visible: true,
           locked: false,
           rotation: 0,
@@ -3409,7 +3409,7 @@ export class InputController {
       fill: style.fill,
       stroke: style.stroke,
       strokeWidth: style.strokeWidth,
-      opacity: 1,
+      opacity: style.opacity,
     };
   }
 

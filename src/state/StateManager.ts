@@ -36,6 +36,7 @@ export interface ShapeStyleUpdate {
   readonly fill?: string;
   readonly stroke?: string;
   readonly strokeWidth?: number;
+  readonly opacity?: number;
 }
 
 export interface ShapeStyleEntry {
@@ -145,6 +146,7 @@ export interface DrawingStyle {
   fill: string;
   stroke: string;
   strokeWidth: number;
+  opacity: number;
 }
 
 /**
@@ -163,6 +165,7 @@ export class StateManager {
     fill: '#38bdf8',
     stroke: '#0284c7',
     strokeWidth: 2,
+    opacity: 1,
   };
 
   constructor(initialState?: Document, commandManager?: CommandManager) {
@@ -208,11 +211,13 @@ export class StateManager {
       stroke: partial.stroke !== undefined ? partial.stroke : this._drawingStyle.stroke,
       strokeWidth:
         partial.strokeWidth !== undefined ? partial.strokeWidth : this._drawingStyle.strokeWidth,
+      opacity: partial.opacity !== undefined ? partial.opacity : this._drawingStyle.opacity,
     };
     if (
       nextStyle.fill === this._drawingStyle.fill &&
       nextStyle.stroke === this._drawingStyle.stroke &&
-      nextStyle.strokeWidth === this._drawingStyle.strokeWidth
+      nextStyle.strokeWidth === this._drawingStyle.strokeWidth &&
+      nextStyle.opacity === this._drawingStyle.opacity
     ) {
       return;
     }
@@ -1411,8 +1416,9 @@ export class StateManager {
           const hasStrokeChange = targetStyle.stroke !== undefined && targetStyle.stroke !== childStroke;
           const hasStrokeWidthChange =
             targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== childStrokeWidth;
+          const hasOpacityChange = targetStyle.opacity !== undefined && targetStyle.opacity !== child.opacity;
 
-          if (!hasFillChange && !hasStrokeChange && !hasStrokeWidthChange) {
+          if (!hasFillChange && !hasStrokeChange && !hasStrokeWidthChange && !hasOpacityChange) {
             nextChildren[i] = child;
             continue;
           }
@@ -1424,6 +1430,7 @@ export class StateManager {
             ...(targetStyle.fill !== undefined ? { fill: targetStyle.fill } : {}),
             ...(targetStyle.stroke !== undefined && 'stroke' in child ? { stroke: targetStyle.stroke } : {}),
             ...(targetStyle.strokeWidth !== undefined && 'strokeWidth' in child ? { strokeWidth: targetStyle.strokeWidth } : {}),
+            ...(targetStyle.opacity !== undefined ? { opacity: targetStyle.opacity } : {}),
           };
         } else {
           nextChildren[i] = child;
@@ -1604,4 +1611,3 @@ export class StateManager {
     return updated;
   }
 }
-

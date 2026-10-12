@@ -154,6 +154,8 @@ function setupMockEnvironment() {
     '#swatch-stroke-preview': new MockElement('swatch-stroke-preview', 'div'),
 
     '#input-stroke-width': new MockElement('input-stroke-width', 'input'),
+    '#input-opacity': new MockElement('input-opacity', 'input'),
+    '#input-opacity-value': new MockElement('input-opacity-value', 'input'),
     '#section-appearance': new MockElement('section-appearance', 'details'),
     '#no-selection-state': new MockElement('no-selection-state', 'div'),
     '#selection-state': new MockElement('selection-state', 'div'),
@@ -206,6 +208,111 @@ function setupMockEnvironment() {
 }
 
 describe('Control de color en Panel de Apariencia', () => {
+  it('sin selección, Opacidad actualiza el estilo predeterminado sin crear una entrada de historial', () => {
+    const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
+    const slider = elements['#input-opacity'];
+    const valueInput = elements['#input-opacity-value'];
+
+    slider.value = '42';
+    slider.dispatchEvent({ type: 'input' });
+
+    assert.equal(stateManager.getDrawingStyle().opacity, 0.42);
+    assert.equal(valueInput.value, '42');
+    assert.equal(commandManager.undoCount, 0);
+
+    cleanup();
+  });
+
+  it('Opacidad permite previsualizar una selección múltiple, guardar un único comando y deshacer/rehacer', () => {
+    const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
+    const layerId = stateManager.getState().children[0].id;
+    const rect1: Rectangle = {
+      id: 'rect-opacity-1',
+      type: 'rectangle',
+      name: 'Rect Opacity 1',
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 40,
+      opacity: 1,
+    };
+    const rect2: Rectangle = {
+      id: 'rect-opacity-2',
+      type: 'rectangle',
+      name: 'Rect Opacity 2',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 40,
+      opacity: 0.5,
+    };
+    stateManager.addShape(layerId, rect1);
+    stateManager.addShape(layerId, rect2);
+    stateManager.setSelection([rect1.id, rect2.id]);
+
+    const slider = elements['#input-opacity'];
+    const valueInput = elements['#input-opacity-value'];
+    assert.equal(valueInput.value, '');
+    assert.equal(valueInput.placeholder, 'Mixto');
+    slider.dispatchEvent({ type: 'mousedown' });
+    slider.value = '35';
+    slider.dispatchEvent({ type: 'input' });
+
+    assert.equal((stateManager.findNode(rect1.id) as Rectangle).opacity, 0.35);
+    assert.equal((stateManager.findNode(rect2.id) as Rectangle).opacity, 0.35);
+    assert.equal(valueInput.value, '35');
+    assert.equal(commandManager.undoCount, 0, 'La previsualización no debe crear comandos');
+
+    slider.dispatchEvent({ type: 'change' });
+    assert.equal(commandManager.undoCount, 1, 'La selección múltiple debe crear una sola entrada');
+
+    commandManager.undo();
+    assert.equal((stateManager.findNode(rect1.id) as Rectangle).opacity, 1);
+    assert.equal((stateManager.findNode(rect2.id) as Rectangle).opacity, 0.5);
+
+    commandManager.redo();
+    assert.equal((stateManager.findNode(rect1.id) as Rectangle).opacity, 0.35);
+    assert.equal((stateManager.findNode(rect2.id) as Rectangle).opacity, 0.35);
+
+    cleanup();
+  });
+
+  it('permite escribir el porcentaje de opacidad y sincroniza el deslizador con historial undo/redo', () => {
+    const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
+    const shape: Rectangle = {
+      id: 'rect-opacity-typed',
+      type: 'rectangle',
+      name: 'Rect Opacity Typed',
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 40,
+      opacity: 1,
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, shape);
+    stateManager.selectNode(shape.id);
+
+    const slider = elements['#input-opacity'];
+    const valueInput = elements['#input-opacity-value'];
+    valueInput.dispatchEvent({ type: 'focus' });
+    valueInput.value = '27';
+    valueInput.dispatchEvent({ type: 'input' });
+
+    assert.equal((stateManager.findNode(shape.id) as Rectangle).opacity, 0.27);
+    assert.equal(slider.value, '27');
+    assert.equal(commandManager.undoCount, 0);
+
+    valueInput.dispatchEvent({ type: 'change' });
+    assert.equal(commandManager.undoCount, 1);
+
+    commandManager.undo();
+    assert.equal((stateManager.findNode(shape.id) as Rectangle).opacity, 1);
+    commandManager.redo();
+    assert.equal((stateManager.findNode(shape.id) as Rectangle).opacity, 0.27);
+
+    cleanup();
+  });
+
   it('Hex válido (3 y 6 dígitos, con y sin "#", mayúsculas) aplica y normaliza; hex inválido no cambia nada', () => {
     const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
 
@@ -578,5 +685,3 @@ describe('Control de color en Panel de Apariencia', () => {
     cleanup();
   });
 });
-
-
