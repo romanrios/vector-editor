@@ -124,6 +124,8 @@ export interface Text extends BaseNode {
   readonly textAlign?: TextAlign;
   readonly lineHeight?: number;
   readonly fill?: string;
+  readonly stroke?: string;
+  readonly strokeWidth?: number;
   readonly rotation?: number;
   readonly opacity?: number;
   readonly boxWidth?: number;

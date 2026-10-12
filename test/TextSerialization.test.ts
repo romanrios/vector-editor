@@ -19,6 +19,8 @@ describe('Serialización de nodos Text (Exportar / Importar)', () => {
       fontStyle: 'italic',
       textAlign: 'center',
       fill: '#38bdf8',
+      stroke: '#1f2937',
+      strokeWidth: 3,
       rotation: 30,
       opacity: 0.85,
       visible: true,
@@ -67,6 +69,8 @@ describe('Serialización de nodos Text (Exportar / Importar)', () => {
     assert.equal(importedText.fontStyle, 'italic', 'Debe conservar fontStyle');
     assert.equal(importedText.textAlign, 'center', 'Debe conservar textAlign');
     assert.equal(importedText.fill, '#38bdf8', 'Debe conservar color de relleno (fill)');
+    assert.equal(importedText.stroke, '#1f2937', 'Debe conservar color de borde (stroke)');
+    assert.equal(importedText.strokeWidth, 3, 'Debe conservar grosor de borde (strokeWidth)');
     assert.equal(importedText.rotation, 30, 'Debe conservar rotation');
     assert.equal(importedText.opacity, 0.85, 'Debe conservar opacity');
     assert.equal(importedText.visible, true);

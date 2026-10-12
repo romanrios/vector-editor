@@ -962,7 +962,9 @@ export class RenderEngine {
    * donde el origen (x, y) define el extremo superior y el eje Y crece hacia abajo.
    */
   private renderText(text: Text): void {
-    if (text.fill !== undefined && isNonePaint(text.fill)) {
+    const hasFill = text.fill === undefined || !isNonePaint(text.fill);
+    const hasStroke = !isNonePaint(text.stroke) && (text.strokeWidth ?? 1) > 0;
+    if (!hasFill && !hasStroke) {
       return;
     }
 
@@ -989,6 +991,11 @@ export class RenderEngine {
 
     // 3. Color de relleno (negro por defecto si no se indica)
     this.ctx.fillStyle = text.fill ?? '#000000';
+    if (hasStroke) {
+      this.ctx.strokeStyle = text.stroke!;
+      this.ctx.lineWidth = text.strokeWidth ?? 1;
+      this.ctx.lineJoin = 'round';
+    }
 
     // 4. Transformación de rotación respecto a la posición (x, y) del nodo
     if (text.rotation) {
@@ -1026,7 +1033,12 @@ export class RenderEngine {
     // 7. Dibujo de cada línea de texto
     for (let i = 0; i < lines.length; i++) {
       const lineY = text.y + i * lineHeight;
-      this.ctx.fillText(lines[i].text, text.x, lineY);
+      if (hasFill) {
+        this.ctx.fillText(lines[i].text, text.x, lineY);
+      }
+      if (hasStroke) {
+        this.ctx.strokeText(lines[i].text, text.x, lineY);
+      }
     }
 
     this.ctx.restore();

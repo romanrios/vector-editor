@@ -22,6 +22,7 @@ function createMockCanvas(): {
   canvas: HTMLCanvasElement;
   calls: string[];
   textCalls: TextCallSnapshot[];
+  strokeTextCalls: Array<{ text: string; x: number; y: number; strokeStyle: string; lineWidth: number }>;
   transforms: Array<{ a: number; b: number; c: number; d: number; e: number; f: number }>;
   rotations: number[];
   translations: Array<{ x: number; y: number }>;
@@ -29,6 +30,7 @@ function createMockCanvas(): {
 } {
   const calls: string[] = [];
   const textCalls: TextCallSnapshot[] = [];
+  const strokeTextCalls: Array<{ text: string; x: number; y: number; strokeStyle: string; lineWidth: number }> = [];
   const transforms: Array<{ a: number; b: number; c: number; d: number; e: number; f: number }> = [];
   const rotations: number[] = [];
   const translations: Array<{ x: number; y: number }> = [];
@@ -120,6 +122,16 @@ function createMockCanvas(): {
         globalAlpha: state.globalAlpha,
       });
     },
+    strokeText: (text: string, x: number, y: number) => {
+      calls.push('strokeText');
+      strokeTextCalls.push({
+        text,
+        x,
+        y,
+        strokeStyle: String(state.strokeStyle),
+        lineWidth: state.lineWidth,
+      });
+    },
     get font() {
       return state.font;
     },
@@ -174,7 +186,7 @@ function createMockCanvas(): {
     },
   } as unknown as HTMLCanvasElement;
 
-  return { canvas: mockCanvas, calls, textCalls, transforms, rotations, translations, pathPoints };
+  return { canvas: mockCanvas, calls, textCalls, strokeTextCalls, transforms, rotations, translations, pathPoints };
 }
 
 describe('RenderEngine - Canvas 2D & isDirty Loop', () => {
@@ -439,6 +451,35 @@ describe('RenderEngine - Renderizado de nodos Text', () => {
     assert.equal(textCalls[0].textAlign, 'center');
     assert.equal(textCalls[0].textBaseline, 'top');
     assert.equal(textCalls[0].fillStyle, '#38bdf8');
+  });
+
+  it('dibuja el borde del texto con el color y el grosor configurados, incluso sin relleno', () => {
+    const { canvas, calls, textCalls, strokeTextCalls } = createMockCanvas();
+    const manager = new StateManager();
+    manager.addShape('layer-default', {
+      id: 'text-outline',
+      type: 'text',
+      name: 'Texto con borde',
+      x: 10,
+      y: 20,
+      text: 'Outline',
+      fill: 'none',
+      stroke: '#ff0000',
+      strokeWidth: 3,
+    });
+
+    const engine = new RenderEngine(canvas, manager, { highDpi: false });
+    engine.render();
+
+    assert.equal(textCalls.length, 0);
+    assert.deepEqual(strokeTextCalls, [{
+      text: 'Outline',
+      x: 10,
+      y: 20,
+      strokeStyle: '#ff0000',
+      lineWidth: 3,
+    }]);
+    assert.equal(calls.includes('strokeText'), true);
   });
 
   it('respeta las distintas opciones de textAlign (left, center, right)', () => {

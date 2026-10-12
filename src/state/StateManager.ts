@@ -1428,8 +1428,8 @@ export class StateManager {
           nextChildren[i] = {
             ...child,
             ...(targetStyle.fill !== undefined ? { fill: targetStyle.fill } : {}),
-            ...(targetStyle.stroke !== undefined && 'stroke' in child ? { stroke: targetStyle.stroke } : {}),
-            ...(targetStyle.strokeWidth !== undefined && 'strokeWidth' in child ? { strokeWidth: targetStyle.strokeWidth } : {}),
+            ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
+            ...(targetStyle.strokeWidth !== undefined ? { strokeWidth: targetStyle.strokeWidth } : {}),
             ...(targetStyle.opacity !== undefined ? { opacity: targetStyle.opacity } : {}),
           };
         } else {

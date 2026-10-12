@@ -165,13 +165,14 @@ function setupMockEnvironment() {
     '#swatch-stroke-preview': new MockElement('swatch-stroke-preview', 'div'),
 
     '#input-stroke-width': new MockElement('input-stroke-width', 'input'),
-    '#section-appearance': new MockElement('section-appearance', 'details'),
     '#no-selection-state': new MockElement('no-selection-state', 'div'),
     '#selection-state': new MockElement('selection-state', 'div'),
     '#panel-title': new MockElement('panel-title', 'span'),
 
     // Controles de tipografía para Text
     '#section-typography': new MockElement('section-typography', 'details'),
+    '#section-appearance': new MockElement('section-appearance', 'details'),
+    '#group-text-color': new MockElement('group-text-color', 'div'),
     '#input-text-content': new MockElement('input-text-content', 'input'),
     '#select-font-family': new MockElement('select-font-family', 'select'),
     '#input-font-size': new MockElement('input-font-size', 'input'),
@@ -272,10 +273,11 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     assert.equal(elements['#section-typography'].style.display, 'none');
     assert.equal(elements['#section-appearance'].style.display, 'block');
 
-    // Selección única de Text: tipografía visible, apariencia oculta
+    // Selección única de Text: tipografía y apariencia visibles
     stateManager.setSelection(['text-1']);
     assert.equal(elements['#section-typography'].style.display, 'block');
-    assert.equal(elements['#section-appearance'].style.display, 'none');
+    assert.equal(elements['#section-appearance'].style.display, 'block');
+    assert.equal(elements['#group-text-color'].style.display, 'none');
 
     // Selección múltiple (Text + Rectangle): tipografía oculta, apariencia visible
     stateManager.setSelection(['text-1', 'rect-1']);
@@ -301,6 +303,8 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     stateManager.addShape(layerId, textNode);
     stateManager.setSelection(['text-default']);
 
+    assert.equal(elements['#section-appearance'].style.display, 'block');
+    assert.equal(elements['#group-text-color'].style.display, 'none');
     // Comprobar valores iniciales solicitados:
     // fontFamily: Inter, fontSize: 32, fontWeight: 400, fontStyle: normal, textAlign: left
     assert.equal(elements['#input-text-content'].value, 'Texto Inicial');

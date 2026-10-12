@@ -4,7 +4,7 @@ import { StateManager } from '../src/state/StateManager.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
-import type { Rectangle } from '../src/types/scene-graph.ts';
+import type { Rectangle, Text } from '../src/types/scene-graph.ts';
 
 // Mock simple de DOM para testear setupUIBindings
 class MockElement {
@@ -309,6 +309,48 @@ describe('Control de color en Panel de Apariencia', () => {
     assert.equal((stateManager.findNode(shape.id) as Rectangle).opacity, 1);
     commandManager.redo();
     assert.equal((stateManager.findNode(shape.id) as Rectangle).opacity, 0.27);
+
+    cleanup();
+  });
+
+  it('aplica relleno, borde, grosor y opacidad a un nodo Text mediante Apariencia', () => {
+    const { elements, stateManager, commandManager, cleanup } = setupMockEnvironment();
+    const text: Text = {
+      id: 'text-appearance',
+      type: 'text',
+      name: 'Texto Apariencia',
+      x: 0,
+      y: 0,
+      text: 'Texto',
+      fill: '#000000',
+    };
+    stateManager.addShape(stateManager.getState().children[0].id, text);
+    stateManager.selectNode(text.id);
+
+    elements['#input-fill'].value = '#ff0000';
+    elements['#input-fill'].dispatchEvent({ type: 'change' });
+    elements['#input-stroke'].value = '#0000ff';
+    elements['#input-stroke'].dispatchEvent({ type: 'change' });
+    elements['#input-stroke-width'].value = '4';
+    elements['#input-stroke-width'].dispatchEvent({ type: 'change' });
+    const opacity = elements['#input-opacity'];
+    opacity.dispatchEvent({ type: 'mousedown' });
+    opacity.value = '40';
+    opacity.dispatchEvent({ type: 'input' });
+    opacity.dispatchEvent({ type: 'change' });
+
+    const updated = stateManager.findNode(text.id) as Text;
+    assert.equal(updated.fill, '#ff0000');
+    assert.equal(updated.stroke, '#0000ff');
+    assert.equal(updated.strokeWidth, 4);
+    assert.equal(updated.opacity, 0.4);
+
+    commandManager.undo();
+    assert.equal((stateManager.findNode(text.id) as Text).opacity, 1);
+    commandManager.undo();
+    assert.equal((stateManager.findNode(text.id) as Text).strokeWidth, 1);
+    commandManager.undo();
+    assert.equal((stateManager.findNode(text.id) as Text).stroke, 'none');
 
     cleanup();
   });

@@ -2,6 +2,7 @@ import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, 
 import { isShape } from '../types/scene-graph.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
+import { isNonePaint } from './color.ts';
 
 /**
  * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Rectangle.
@@ -670,17 +671,19 @@ export function getTextBaseAABB(text: Text, ctx?: CanvasRenderingContext2D | nul
     minX = text.x - width;
   }
 
-  const minY = text.y;
-  const maxX = minX + width;
-  const maxY = minY + height;
+  const strokePadding = !isNonePaint(text.stroke) ? Math.max(0, text.strokeWidth ?? 1) / 2 : 0;
+  minX -= strokePadding;
+  const minY = text.y - strokePadding;
+  const maxX = minX + width + strokePadding * 2;
+  const maxY = minY + height + strokePadding * 2;
 
   return {
     minX,
     minY,
     maxX,
     maxY,
-    width,
-    height,
+    width: maxX - minX,
+    height: maxY - minY,
   };
 }
 

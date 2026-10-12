@@ -132,6 +132,7 @@ export function setupUIBindings(
 
   // Sección Tipografía (para nodo Text individual)
   const sectionTypography = document.querySelector<HTMLDetailsElement>('#section-typography');
+  const groupTextColor = document.querySelector<HTMLElement>('#group-text-color');
   const inputTextContent = document.querySelector<HTMLInputElement>('#input-text-content');
   const selectFontFamily = document.querySelector<HTMLSelectElement>('#select-font-family');
   const inputFontSize = document.querySelector<HTMLInputElement>('#input-font-size');
@@ -651,10 +652,10 @@ export function setupUIBindings(
       initialStyleSnapshots = new Map();
       for (const shape of leafShapes) {
         initialStyleSnapshots.set(shape.id, {
-          fill: shape.fill,
-          stroke: 'stroke' in shape ? (shape as { stroke?: string }).stroke : undefined,
-          strokeWidth: 'strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined,
-          opacity: shape.opacity,
+          fill: shape.fill ?? (isText(shape) ? '#000000' : 'none'),
+          stroke: ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined) ?? 'none',
+          strokeWidth: ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1,
+          opacity: shape.opacity ?? 1,
         });
       }
     }
@@ -686,7 +687,10 @@ export function setupUIBindings(
       sectionTypography.style.display = isSingleTextSelected ? 'block' : 'none';
     }
     if (sectionAppearance) {
-      sectionAppearance.style.display = isSingleTextSelected ? 'none' : 'block';
+      sectionAppearance.style.display = 'block';
+    }
+    if (groupTextColor) {
+      groupTextColor.style.display = isSingleTextSelected ? 'none' : '';
     }
     if (sectionTransform) {
       sectionTransform.style.display = hasSelection ? 'block' : 'none';
@@ -1234,7 +1238,7 @@ export function setupUIBindings(
           after: { fill: color },
         };
       } else {
-        const beforeStroke = snapshot?.stroke ?? ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined);
+        const beforeStroke = snapshot?.stroke ?? ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined) ?? 'none';
         const beforeStrokeWidth = snapshot?.strokeWidth ?? ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined);
         const needsStrokeWidth =
           !isNonePaint(color) && (beforeStrokeWidth === undefined || beforeStrokeWidth <= 0);
