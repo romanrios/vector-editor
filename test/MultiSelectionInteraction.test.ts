@@ -663,11 +663,12 @@ describe('Interacción de Selección Múltiple (InputController y RenderEngine)'
     });
 
     // 1. Arrastre en pantalla de 40px en X -> en el mundo debe ser 20px
-    // r1 está en mundo (100, 100) -> en pantalla con zoom 2.0 está en (200, 200)
-    canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200, button: 0 });
-    // Mover 40px en pantalla -> (240, 200)
-    canvas.dispatchSimulatedEvent('mousemove', { clientX: 240, clientY: 200 });
-    canvas.dispatchSimulatedEvent('mouseup', { clientX: 240, clientY: 200, button: 0 });
+    // Iniciar dentro de r1, lejos del tirador combinado superior izquierdo.
+    // r1 está en mundo (100, 100) -> su centro está en pantalla (260, 240).
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 260, clientY: 240, button: 0 });
+    // Mover 40px en pantalla -> (300, 240)
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 300, clientY: 240 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 300, clientY: 240, button: 0 });
 
     let s1 = stateManager.findNode('r1') as Rectangle;
     let s2 = stateManager.findNode('r2') as Rectangle;

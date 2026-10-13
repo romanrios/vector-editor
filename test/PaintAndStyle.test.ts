@@ -160,7 +160,7 @@ describe('color.ts', () => {
 
     // Casos no reconocidos
     assert.equal(normalizeColor('none'), null);
-    assert.equal(normalizeColor('transparent'), null);
+    assert.equal(normalizeColor('transparent'), '#000000');
     assert.equal(normalizeColor('invalid-color'), null);
     assert.equal(normalizeColor(''), null);
     assert.equal(normalizeColor(undefined), null);

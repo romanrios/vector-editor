@@ -741,9 +741,9 @@ describe('InputController & Hit-testing AABB', () => {
     let currentPath = stateManager.findNode('path-drag-vertex') as Path;
     assert.equal(currentPath.points[0].x, 120);
     assert.equal(currentPath.points[0].y, 130);
-    // Exclusivamente el vértice: los manejadores no deben desplazarse
-    assert.deepEqual(currentPath.points[0].handleIn, { x: 80, y: 100 });
-    assert.deepEqual(currentPath.points[0].handleOut, { x: 120, y: 100 });
+    // Los manejadores acompañan al ancla para conservar la forma de la curva.
+    assert.deepEqual(currentPath.points[0].handleIn, { x: 100, y: 130 });
+    assert.deepEqual(currentPath.points[0].handleOut, { x: 140, y: 130 });
 
     // 3. Mouse up -> consolida PointCommand
     canvas.dispatchSimulatedEvent('mouseup', { clientX: 120, clientY: 130 });
@@ -764,7 +764,42 @@ describe('InputController & Hit-testing AABB', () => {
     controller.destroy();
   });
 
-  it('herramienta direct-select: arrastra exclusivamente el manejador handleIn en tiempo real y registra PointCommand en mouseup', () => {
+  it('herramienta direct-select: el ancla rotada sigue el delta visual del cursor', () => {
+    const stateManager = new StateManager();
+    const layerId = stateManager.getState().children[0].id;
+    const path: Path = {
+      id: 'path-rotated-anchor',
+      type: 'path',
+      name: 'Trazado con ancla rotada',
+      x: 0,
+      y: 0,
+      rotation: 90,
+      points: [{ x: 100, y: 100 }, { x: 200, y: 100 }],
+      stroke: '#000',
+    };
+    stateManager.addShape(layerId, path);
+    stateManager.selectNode(path.id);
+
+    const canvas = createMockCanvas() as unknown as HTMLCanvasElement & {
+      dispatchSimulatedEvent: (type: string, e: unknown) => void;
+    };
+    const controller = new InputController(canvas, stateManager);
+    controller.setTool('direct-select');
+
+    // El ancla (100, 100) se representa en (150, 50) tras girar 90° alrededor del centro.
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 50 });
+    assert.equal(controller.dragTarget?.type, 'anchor');
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 170, clientY: 50 });
+
+    const updated = stateManager.findNode(path.id) as Path;
+    assert.ok(Math.abs(updated.points[0].x - 100) < 1e-10);
+    assert.ok(Math.abs(updated.points[0].y - 80) < 1e-10);
+    assert.deepEqual(updated.points[1], path.points[1]);
+
+    controller.destroy();
+  });
+
+  it('herramienta direct-select: arrastra handleIn y mantiene simetría en nodos suaves', () => {
     const stateManager = new StateManager();
     const commandManager = new CommandManager();
     const layerId = stateManager.getState().children[0].id;
@@ -797,10 +832,11 @@ describe('InputController & Hit-testing AABB', () => {
     // 2. Mouse move desplazando el handleIn a (60, 120) -> delta (-20, +20)
     canvas.dispatchSimulatedEvent('mousemove', { clientX: 60, clientY: 120 });
     let currentPath = stateManager.findNode('path-drag-handle') as Path;
-    // Exclusivamente handleIn cambia
+    // El handle opuesto se mantiene colineal y conserva su longitud en un nodo suave.
     assert.deepEqual(currentPath.points[0].handleIn, { x: 60, y: 120 });
     assert.equal(currentPath.points[0].x, 100, 'El vértice no debe cambiar al arrastrar el manejador');
-    assert.deepEqual(currentPath.points[0].handleOut, { x: 120, y: 100 });
+    assert.ok(Math.abs(currentPath.points[0].handleOut!.x - 117.88854381999832) < 1e-10);
+    assert.ok(Math.abs(currentPath.points[0].handleOut!.y - 91.05572809000084) < 1e-10);
 
     // 3. Mouse up -> consolida PointCommand
     canvas.dispatchSimulatedEvent('mouseup', { clientX: 60, clientY: 120 });
@@ -810,11 +846,14 @@ describe('InputController & Hit-testing AABB', () => {
     commandManager.undo();
     currentPath = stateManager.findNode('path-drag-handle') as Path;
     assert.deepEqual(currentPath.points[0].handleIn, { x: 80, y: 100 });
+    assert.deepEqual(currentPath.points[0].handleOut, { x: 120, y: 100 });
 
     // 5. Redo -> reaplica handleIn a (60, 120)
     commandManager.redo();
     currentPath = stateManager.findNode('path-drag-handle') as Path;
     assert.deepEqual(currentPath.points[0].handleIn, { x: 60, y: 120 });
+    assert.ok(Math.abs(currentPath.points[0].handleOut!.x - 117.88854381999832) < 1e-10);
+    assert.ok(Math.abs(currentPath.points[0].handleOut!.y - 91.05572809000084) < 1e-10);
 
     controller.destroy();
   });
@@ -1402,8 +1441,5 @@ describe('InputController & Hit-testing AABB', () => {
     controller.destroy();
   });
 });
-
-
-
 
 

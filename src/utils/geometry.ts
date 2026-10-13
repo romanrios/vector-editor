@@ -2339,6 +2339,8 @@ export interface PathHandleRef {
 
 /**
  * Determina los manejadores de control Bézier visibles según las anclas seleccionadas.
+ * Si no hay anclas seleccionadas, expone los manejadores de todos los puntos para permitir
+ * seleccionar un manejador en el primer clic.
  * Para cada índice válido i de `selected`: handleIn(i), handleOut(i), handleOut(i-1) y handleIn(i+1).
  * Si path.closed, i-1 e i+1 hacen wrap; si no, se omiten los que salen de rango.
  * Ignora manejadores undefined o coincidentes con su ancla. Sin duplicados. Ignora índices >= points.length.
@@ -2347,7 +2349,7 @@ export function getVisiblePathHandles(
   path: Path,
   selected: ReadonlySet<number>
 ): PathHandleRef[] {
-  if (!path.points || path.points.length === 0 || selected.size === 0) {
+  if (!path.points || path.points.length === 0) {
     return [];
   }
 
@@ -2355,6 +2357,9 @@ export function getVisiblePathHandles(
   const isClosed = Boolean(path.closed);
   const result: PathHandleRef[] = [];
   const seen = new Set<string>();
+  const anchorsToInspect: Iterable<number> = selected.size === 0
+    ? path.points.map((_, index) => index)
+    : selected;
 
   const checkAndAdd = (idx: number, type: 'handleIn' | 'handleOut') => {
     const key = `${idx}:${type}`;
@@ -2378,7 +2383,7 @@ export function getVisiblePathHandles(
     });
   };
 
-  for (const i of selected) {
+  for (const i of anchorsToInspect) {
     if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= n) {
       continue;
     }

@@ -56,10 +56,17 @@ export function parseHexColor(text: string | null | undefined): string | null {
 /**
  * Normaliza cualquier formato de color compatible (hexadecimal o rgb/rgba)
  * a un código hexadecimal '#rrggbb' de 7 caracteres en minúsculas.
- * Retorna null si el valor no se reconoce o es none/transparente.
+ * Mapea transparent a negro, y retorna null si el valor no se reconoce o es none.
  */
 export function normalizeColor(value: string | null | undefined): string | null {
-  if (!value || isNonePaint(value)) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.trim().toLowerCase() === 'transparent') {
+    return '#000000';
+  }
+  if (isNonePaint(value)) {
     return null;
   }
 
