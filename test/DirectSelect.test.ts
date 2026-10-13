@@ -223,8 +223,7 @@ describe('DirectSelect & translatePathAnchors', () => {
       assert.ok(handles0.some((h) => h.index === 1 && h.type === 'handleIn'));
 
       const handlesWithoutSelection = getVisiblePathHandles(path, new Set());
-      assert.equal(handlesWithoutSelection.length, 6);
-      assert.ok(handlesWithoutSelection.some((h) => h.index === 2 && h.type === 'handleOut'));
+      assert.deepEqual(handlesWithoutSelection, []);
     });
 
     it('trazado cerrado con wrap: conecta extremos inicial y final', () => {
@@ -393,7 +392,7 @@ describe('DirectSelect & translatePathAnchors', () => {
       controller.destroy();
     });
 
-    it('permite golpear manejadores antes de seleccionar un ancla', () => {
+    it('solo permite golpear manejadores después de seleccionar un ancla', () => {
       const stateManager = new StateManager();
       const commandManager = new CommandManager();
       const layerId = stateManager.getState().children[0].id;
@@ -417,16 +416,20 @@ describe('DirectSelect & translatePathAnchors', () => {
       controller.setTool('direct-select');
       stateManager.selectNode('path-invisible-handle');
 
-      // El primer clic puede seleccionar directamente un manejador.
+      // Sin anclas seleccionadas, los manejadores no son visibles ni golpeables.
       const hitBefore = controller.findPathPointHit(path, 130, 100);
-      assert.deepEqual(hitBefore, { index: 0, type: 'handleOut' });
+      assert.equal(hitBefore, null);
 
-      // Al seleccionar el ancla 0, el manejador pasa a ser visible y golpeable
+      // Al seleccionar explícitamente el ancla 0, el manejador pasa a ser visible y golpeable.
       canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, shiftKey: false });
       canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
 
       const hitAfter = controller.findPathPointHit(path, 130, 100);
       assert.deepEqual(hitAfter, { index: 0, type: 'handleOut' });
+
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 130, clientY: 100, shiftKey: false });
+      assert.equal(controller.dragTarget?.type, 'handleOut');
+      assert.equal(controller.draggedPointIndex, 0);
 
       controller.destroy();
     });

@@ -634,6 +634,10 @@ describe('InputController & Hit-testing AABB', () => {
     const controller = new InputController(canvas, stateManager);
     controller.setTool('direct-select');
 
+    // Seleccionar primero el ancla 1 para exponer sus manejadores.
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 200 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 200, clientY: 200 });
+
     // 1. Clic en handleIn del punto 1: (160, 190) en (162, 189)
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 162, clientY: 189 });
     assert.equal(controller.draggedPointIndex, 1);
@@ -823,6 +827,10 @@ describe('InputController & Hit-testing AABB', () => {
     };
     const controller = new InputController(canvas, stateManager, commandManager);
     controller.setTool('direct-select');
+
+    // Seleccionar primero el ancla para que sus manejadores sean visibles y golpeables.
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
 
     // 1. Mouse down en handleIn (80, 100)
     canvas.dispatchSimulatedEvent('mousedown', { clientX: 80, clientY: 100 });
@@ -1441,5 +1449,4 @@ describe('InputController & Hit-testing AABB', () => {
     controller.destroy();
   });
 });
-
 
