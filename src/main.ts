@@ -1737,6 +1737,12 @@ export function setupUIBindings(
         const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { fontFamily: before }, { fontFamily: after });
         commandManager.recordCommand(cmd);
       }
+      if (typeof document !== 'undefined' && 'fonts' in document && document.fonts && typeof document.fonts.load === 'function') {
+        const fontSpec = `${textNode.fontStyle ?? 'normal'} ${textNode.fontWeight ?? 400} ${textNode.fontSize ?? 16}px "${after}"`;
+        document.fonts.load(fontSpec).then(() => {
+          stateManager.markDirty();
+        }).catch(() => {});
+      }
       initialTextTypographySnapshot = null;
     }
   };
@@ -3370,6 +3376,27 @@ if (typeof document !== 'undefined') {
       activeGuidesProvider: () => inputController?.activeGuides ?? [],
     });
     renderEngine.start();
+
+    // Sincronizar el renderizado del Canvas con la carga asíncrona de fuentes web
+    if (typeof document !== 'undefined' && 'fonts' in document && document.fonts) {
+      if (typeof document.fonts.load === 'function') {
+        document.fonts.load('800 287px Montserrat').catch(() => {});
+        document.fonts.load('400 43px Inter').catch(() => {});
+        document.fonts.load('400 58px Inter').catch(() => {});
+      }
+
+      if (document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+        document.fonts.ready.then(() => {
+          stateManager.markDirty();
+        }).catch(() => {});
+      }
+
+      if (typeof document.fonts.addEventListener === 'function') {
+        document.fonts.addEventListener('loadingdone', () => {
+          stateManager.markDirty();
+        });
+      }
+    }
 
     // Sistema de observabilidad DOM <-> Estado
     uiBindings = setupUIBindings(inputController, commandManager, stateManager);

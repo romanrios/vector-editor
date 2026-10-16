@@ -22,6 +22,13 @@ export * from './render/RenderEngine.ts';
 
 // Controlador de Entrada e Interactividad
 export * from './input/InputController.ts';
+export * from './input/TextEditManager.ts';
+export * from './input/tools/ToolHandler.ts';
+export * from './input/tools/SelectToolHandler.ts';
+export * from './input/tools/PenToolHandler.ts';
+export * from './input/tools/DirectSelectToolHandler.ts';
+export * from './input/tools/CreationToolHandler.ts';
+export * from './input/tools/TextToolHandler.ts';
 
 // Patrón Command e Historial de Deshacer / Rehacer
 export * from './commands/Command.ts';

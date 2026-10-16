@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Montserrat:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Montserrat:wght@100..900&display=swap" rel="stylesheet" />
     <style>
       :root {
         --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1322,6 +1322,11 @@
     </style>
   </head>
   <body>
+    <!-- Warmup de fuentes web para inicialización y descarga inmediata en Canvas 2D -->
+    <div aria-hidden="true" style="position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; opacity: 0; z-index: -9999;">
+      <span style="font-family: 'Montserrat'; font-weight: 800;">Vectedit</span>
+      <span style="font-family: 'Inter'; font-weight: 400;">Inter</span>
+    </div>
     <!-- 1. Header con barra de menú y botones de acción rápida -->
     <header class="editor-header" role="region" aria-label="Barra de menú del editor">
       <div class="header-left">
