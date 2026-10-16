@@ -13,6 +13,8 @@ import { BatchCommand } from './commands/BatchCommand.ts';
 import { TransformShapesCommand } from './commands/TransformShapesCommand.ts';
 import { ResizeArtboardCommand } from './commands/ResizeArtboardCommand.ts';
 import { Serializer } from './state/Serializer.ts';
+import { exportDocumentToSvg, downloadSvg } from './utils/exportSvg.ts';
+import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } from './utils/exportRaster.ts';
 import { ViewportManager } from './utils/viewport.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
 import {
@@ -185,6 +187,10 @@ export function setupUIBindings(
   const menuDropdownHelp = document.querySelector<HTMLElement>('#menu-dropdown-help');
 
   const menuItemImport = document.querySelector<HTMLButtonElement>('#menu-item-import');
+  const menuItemExportModal = document.querySelector<HTMLButtonElement>('#menu-item-export-modal');
+  const menuItemExportSvg = document.querySelector<HTMLButtonElement>('#menu-item-export-svg');
+  const menuItemExportPng = document.querySelector<HTMLButtonElement>('#menu-item-export-png');
+  const menuItemExportWebp = document.querySelector<HTMLButtonElement>('#menu-item-export-webp');
   const menuItemExport = document.querySelector<HTMLButtonElement>('#menu-item-export');
   const menuItemUndo = document.querySelector<HTMLButtonElement>('#menu-item-undo');
   const menuItemRedo = document.querySelector<HTMLButtonElement>('#menu-item-redo');
@@ -225,6 +231,19 @@ export function setupUIBindings(
   const shortcutsDialogList = document.querySelector<HTMLElement>('#shortcuts-dialog-list');
   const aboutDialog = document.querySelector<HTMLDialogElement>('#about-dialog');
   const btnCloseAbout = document.querySelector<HTMLButtonElement>('#btn-close-about');
+
+  // Diálogo de Exportación (SVG, PNG, WebP, JSON)
+  const exportDialog = document.querySelector<HTMLDialogElement>('#export-dialog');
+  const btnCloseExport = document.querySelector<HTMLButtonElement>('#btn-close-export');
+  const btnCancelExport = document.querySelector<HTMLButtonElement>('#btn-cancel-export');
+  const btnConfirmExport = document.querySelector<HTMLButtonElement>('#btn-confirm-export');
+  const groupExportScale = document.querySelector<HTMLElement>('#group-export-scale');
+  const groupExportBackground = document.querySelector<HTMLElement>('#group-export-background');
+  const radioExportSelection = document.querySelector<HTMLInputElement>('#radio-export-selection');
+  const textExportScopeSelection = document.querySelector<HTMLElement>('#text-export-scope-selection');
+  const exportSummaryDim = document.querySelector<HTMLElement>('#export-summary-dim');
+  const exportSummaryFilename = document.querySelector<HTMLElement>('#export-summary-filename');
+  let exportRestoreFocus: HTMLElement | null = null;
 
   // 1. Sincronización de herramientas (InputController Event Emitter -> DOM)
   const syncToolButtons = (tool: ToolMode) => {
@@ -521,7 +540,7 @@ export function setupUIBindings(
   // Inicializar estado visual de botones de historial
   syncHistoryButtons();
 
-  // 3. Exportación y Descarga de JSON (Serializer -> DOM)
+  // 3. Exportación y Descarga (SVG, PNG, WebP, JSON)
   const onExportClick = () => {
     if (stateManager) {
       const jsonContent = Serializer.serializeDocument(stateManager.getState());
@@ -529,6 +548,193 @@ export function setupUIBindings(
       debug('💾 [Serializer] Documento serializado y descargado como vector-scene.json');
     }
   };
+
+  const getSelectedExportFormat = (): 'svg' | 'png' | 'webp' | 'json' => {
+    const radio = document.querySelector<HTMLInputElement>('input[name="export-format"]:checked');
+    return (radio?.value as 'svg' | 'png' | 'webp' | 'json') || 'svg';
+  };
+
+  const getSelectedExportScale = (): number => {
+    const radio = document.querySelector<HTMLInputElement>('input[name="export-scale"]:checked');
+    return radio ? parseInt(radio.value, 10) || 1 : 1;
+  };
+
+  const getSelectedExportScope = (): 'document' | 'selection' => {
+    const radio = document.querySelector<HTMLInputElement>('input[name="export-scope"]:checked');
+    return (radio?.value as 'document' | 'selection') || 'document';
+  };
+
+  const getSelectedExportBg = (): 'transparent' | 'white' => {
+    const radio = document.querySelector<HTMLInputElement>('input[name="export-bg"]:checked');
+    return (radio?.value as 'transparent' | 'white') || 'transparent';
+  };
+
+  const updateExportDialogUI = () => {
+    const format = getSelectedExportFormat();
+    const isRaster = format === 'png' || format === 'webp';
+    if (groupExportScale) {
+      groupExportScale.style.display = isRaster ? 'flex' : 'none';
+    }
+    if (groupExportBackground) {
+      groupExportBackground.style.display = format === 'json' ? 'none' : 'flex';
+    }
+
+    const scope = getSelectedExportScope();
+    const selection = stateManager.getSelection();
+    const hasSelection = selection.length > 0;
+    const onlySelected = scope === 'selection' && hasSelection;
+
+    const scale = isRaster ? getSelectedExportScale() : 1;
+    const doc = stateManager.getState();
+    const bounds = calculateExportBounds(doc, onlySelected, selection);
+
+    const w = Math.round(bounds.width * scale);
+    const h = Math.round(bounds.height * scale);
+
+    if (exportSummaryDim) {
+      exportSummaryDim.textContent = `Dimensiones: ${w} × ${h} px${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+    }
+
+    if (exportSummaryFilename) {
+      const scaleSuffix = isRaster && scale > 1 ? `@${scale}x` : '';
+      const baseName = onlySelected ? 'seleccion' : 'escena';
+      exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
+    }
+  };
+
+  const openExportDialog = (restoreTarget?: HTMLElement | null) => {
+    if (!exportDialog) return;
+    exportRestoreFocus = restoreTarget ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+
+    const selection = stateManager.getSelection();
+    const hasSelection = selection.length > 0;
+
+    if (radioExportSelection) {
+      radioExportSelection.disabled = !hasSelection;
+    }
+    if (textExportScopeSelection) {
+      textExportScopeSelection.textContent = hasSelection
+        ? `Solo selección (${selection.length} ${selection.length === 1 ? 'figura' : 'figuras'})`
+        : 'Solo selección (sin selección activa)';
+    }
+
+    if (!hasSelection) {
+      const docScopeRadio = document.querySelector<HTMLInputElement>('input[name="export-scope"][value="document"]');
+      if (docScopeRadio) docScopeRadio.checked = true;
+    }
+
+    updateExportDialogUI();
+
+    if (typeof exportDialog.showModal === 'function') {
+      exportDialog.showModal();
+    } else {
+      exportDialog.setAttribute('open', '');
+      if (exportDialog.style) {
+        exportDialog.style.display = 'block';
+      }
+    }
+  };
+
+  const closeExportDialog = () => {
+    if (!exportDialog) return;
+    if (typeof exportDialog.close === 'function') {
+      exportDialog.close();
+    } else {
+      exportDialog.removeAttribute('open');
+      if (exportDialog.style) {
+        exportDialog.style.display = 'none';
+      }
+    }
+    exportRestoreFocus?.focus?.();
+  };
+
+  const onExecuteExport = async () => {
+    const format = getSelectedExportFormat();
+    const scope = getSelectedExportScope();
+    const scale = getSelectedExportScale();
+    const bg = getSelectedExportBg();
+    const doc = stateManager.getState();
+    const selection = stateManager.getSelection();
+    const onlySelected = scope === 'selection' && selection.length > 0;
+    const baseName = onlySelected ? 'seleccion' : 'escena';
+
+    closeExportDialog();
+
+    try {
+      if (format === 'svg') {
+        const svgContent = exportDocumentToSvg(doc, {
+          onlySelected,
+          selectedIds: selection,
+          includeBackground: bg === 'white',
+          backgroundColor: '#ffffff',
+        });
+        downloadSvg(`${baseName}.svg`, svgContent);
+        debug('💾 [Export] SVG exportado correctamente');
+      } else if (format === 'png' || format === 'webp') {
+        const blob = await exportDocumentToRasterBlob(doc, {
+          format,
+          scale,
+          onlySelected,
+          selectedIds: selection,
+          backgroundColor: bg === 'white' ? '#ffffff' : null,
+        });
+        const scaleSuffix = scale > 1 ? `@${scale}x` : '';
+        downloadRaster(`${baseName}${scaleSuffix}.${format}`, blob);
+        debug(`💾 [Export] ${format.toUpperCase()} exportado correctamente`);
+      } else if (format === 'json') {
+        const jsonContent = Serializer.serializeDocument(doc);
+        Serializer.downloadJson(`${baseName}.json`, jsonContent);
+        debug('💾 [Export] JSON exportado correctamente');
+      }
+    } catch (err) {
+      console.error('❌ Error al exportar archivo:', err);
+      if (typeof alert !== 'undefined') {
+        alert(`Error al exportar: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  };
+
+  const onMenuExportModalClick = () => {
+    closeAllMenus();
+    openExportDialog(menuBtnFile);
+  };
+
+  const onMenuExportSvgClick = () => {
+    closeAllMenus();
+    const svgContent = exportDocumentToSvg(stateManager.getState());
+    downloadSvg('escena.svg', svgContent);
+  };
+
+  const onMenuExportPngClick = async () => {
+    closeAllMenus();
+    const blob = await exportDocumentToRasterBlob(stateManager.getState(), { format: 'png', scale: 1 });
+    downloadRaster('escena.png', blob);
+  };
+
+  const onMenuExportWebpClick = async () => {
+    closeAllMenus();
+    const blob = await exportDocumentToRasterBlob(stateManager.getState(), { format: 'webp', scale: 1 });
+    downloadRaster('escena.webp', blob);
+  };
+
+  const onExportRadioChange = () => {
+    updateExportDialogUI();
+  };
+
+  const exportRadioInputs = typeof document.querySelectorAll === 'function'
+    ? Array.from(document.querySelectorAll<HTMLInputElement>('input[name="export-format"], input[name="export-scale"], input[name="export-scope"], input[name="export-bg"]'))
+    : [];
+  exportRadioInputs.forEach((input) => {
+    input.addEventListener('change', onExportRadioChange);
+  });
+
+  btnCloseExport?.addEventListener('click', closeExportDialog);
+  btnCancelExport?.addEventListener('click', closeExportDialog);
+  btnConfirmExport?.addEventListener('click', onExecuteExport);
+
+  const unsubscribeExportRequest = inputController.on('exportRequest', () => {
+    openExportDialog(menuBtnFile);
+  });
 
   btnExport?.addEventListener('click', onExportClick);
 
@@ -2256,7 +2462,14 @@ export function setupUIBindings(
     {
       trigger: menuBtnFile,
       dropdown: menuDropdownFile,
-      items: [menuItemImport, menuItemExport],
+      items: [
+        menuItemImport,
+        menuItemExportModal,
+        menuItemExportSvg,
+        menuItemExportPng,
+        menuItemExportWebp,
+        menuItemExport,
+      ],
     },
     {
       trigger: menuBtnEdit,
@@ -2631,6 +2844,19 @@ export function setupUIBindings(
   };
 
   const onDocumentKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && exportDialog && (exportDialog.open || exportDialog.hasAttribute('open'))) {
+      e.preventDefault?.();
+      closeExportDialog();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key && e.key.toLowerCase() === 'e') {
+      e.preventDefault?.();
+      closeAllMenus();
+      openExportDialog(menuBtnFile);
+      return;
+    }
+
     if (e.key === 'Escape' && isZoomMenuOpen) {
       e.preventDefault?.();
       closeZoomMenu();
@@ -2930,6 +3156,10 @@ export function setupUIBindings(
   };
 
   menuItemImport?.addEventListener('click', onMenuImportClick);
+  menuItemExportModal?.addEventListener('click', onMenuExportModalClick);
+  menuItemExportSvg?.addEventListener('click', onMenuExportSvgClick);
+  menuItemExportPng?.addEventListener('click', onMenuExportPngClick);
+  menuItemExportWebp?.addEventListener('click', onMenuExportWebpClick);
   menuItemExport?.addEventListener('click', onMenuExportClick);
   menuItemUndo?.addEventListener('click', onMenuUndoClick);
   menuItemRedo?.addEventListener('click', onMenuRedoClick);
@@ -3278,6 +3508,10 @@ export function setupUIBindings(
       });
 
       menuItemImport?.removeEventListener('click', onMenuImportClick);
+      menuItemExportModal?.removeEventListener('click', onMenuExportModalClick);
+      menuItemExportSvg?.removeEventListener('click', onMenuExportSvgClick);
+      menuItemExportPng?.removeEventListener('click', onMenuExportPngClick);
+      menuItemExportWebp?.removeEventListener('click', onMenuExportWebpClick);
       menuItemExport?.removeEventListener('click', onMenuExportClick);
       menuItemUndo?.removeEventListener('click', onMenuUndoClick);
       menuItemRedo?.removeEventListener('click', onMenuRedoClick);
@@ -3334,6 +3568,14 @@ export function setupUIBindings(
       menuItemAbout?.removeEventListener('click', onMenuAboutClick);
       btnAboutBrand?.removeEventListener('click', onBrandAboutClick);
       btnCloseAbout?.removeEventListener('click', closeAboutDialog);
+
+      btnCloseExport?.removeEventListener('click', closeExportDialog);
+      btnCancelExport?.removeEventListener('click', closeExportDialog);
+      btnConfirmExport?.removeEventListener('click', onExecuteExport);
+      exportRadioInputs.forEach((input) => {
+        input.removeEventListener('change', onExportRadioChange);
+      });
+      unsubscribeExportRequest?.();
 
       statusZoomBtn?.removeEventListener('click', onZoomBtnClick);
       statusZoomBtn?.removeEventListener('keydown', onZoomBtnKeyDown);

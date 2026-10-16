@@ -376,6 +376,194 @@
         white-space: nowrap;
       }
 
+      /* Diálogo de Exportación */
+      .export-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 20px 22px;
+        max-width: 480px;
+        width: 90vw;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+        margin: auto;
+      }
+
+      .export-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .export-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .export-dialog-title {
+        font-size: 15px;
+        font-weight: 600;
+        font-family: var(--font-heading);
+        color: var(--text-primary);
+      }
+
+      .export-dialog-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .export-field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .export-field-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+      }
+
+      .export-format-options {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .export-radio-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 10px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .export-radio-card:hover {
+        background: var(--bg-control-hover);
+        border-color: var(--border-hover);
+      }
+
+      .export-radio-card:has(input:checked) {
+        border-color: var(--accent);
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      .export-radio-card input[type="radio"] {
+        margin-top: 2px;
+        accent-color: var(--accent);
+      }
+
+      .radio-card-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .radio-card-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .radio-card-desc {
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .export-scale-options,
+      .export-scope-options,
+      .export-bg-options {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .scale-btn-label,
+      .scope-radio-label,
+      .bg-radio-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .scale-btn-label:hover,
+      .scope-radio-label:hover,
+      .bg-radio-label:hover {
+        color: var(--text-primary);
+      }
+
+      .scale-btn-label input[type="radio"],
+      .scope-radio-label input[type="radio"],
+      .bg-radio-label input[type="radio"] {
+        accent-color: var(--accent);
+      }
+
+      .export-summary-box {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+        background: var(--bg-app);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .export-dialog-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 18px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      .dialog-btn {
+        height: 28px;
+        padding: 0 14px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .dialog-btn.secondary {
+        background: transparent;
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+      }
+
+      .dialog-btn.secondary:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .dialog-btn.primary {
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        color: #0f172a;
+        font-weight: 600;
+      }
+
+      .dialog-btn.primary:hover {
+        background: var(--accent-hover);
+      }
+
       /* Diálogo Acerca de */
       .about-dialog {
         border: 1px solid var(--border-default);
@@ -1350,6 +1538,21 @@
               <button id="menu-item-import" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Importar JSON…</span>
               </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-export-modal" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Exportar…</span>
+                <span class="menu-shortcut">Ctrl+E</span>
+              </button>
+              <button id="menu-item-export-svg" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Exportar como SVG</span>
+              </button>
+              <button id="menu-item-export-png" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Exportar como PNG</span>
+              </button>
+              <button id="menu-item-export-webp" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Exportar como WebP</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
               <button id="menu-item-export" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Exportar JSON</span>
               </button>
@@ -2090,6 +2293,104 @@
         </div>
       </dl>
       <p class="about-dialog-copy">© 2026 Román Ríos</p>
+    </dialog>
+
+    <!-- Diálogo modal de Exportación -->
+    <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
+      <div class="export-dialog-header">
+        <h3 id="export-dialog-title" class="export-dialog-title">Exportar gráfico</h3>
+        <button id="btn-close-export" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <div class="export-dialog-body">
+        <div class="export-field-group">
+          <label class="export-field-label">Formato</label>
+          <div class="export-format-options">
+            <label class="export-radio-card">
+              <input type="radio" name="export-format" value="svg" checked />
+              <div class="radio-card-content">
+                <span class="radio-card-title">SVG</span>
+                <span class="radio-card-desc">Vectorial escalable</span>
+              </div>
+            </label>
+            <label class="export-radio-card">
+              <input type="radio" name="export-format" value="png" />
+              <div class="radio-card-content">
+                <span class="radio-card-title">PNG</span>
+                <span class="radio-card-desc">Ráster con transparencia</span>
+              </div>
+            </label>
+            <label class="export-radio-card">
+              <input type="radio" name="export-format" value="webp" />
+              <div class="radio-card-content">
+                <span class="radio-card-title">WebP</span>
+                <span class="radio-card-desc">Ráster optimizado para web</span>
+              </div>
+            </label>
+            <label class="export-radio-card">
+              <input type="radio" name="export-format" value="json" />
+              <div class="radio-card-content">
+                <span class="radio-card-title">JSON</span>
+                <span class="radio-card-desc">Proyecto Vectedit nativo</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="export-field-group" id="group-export-scale" style="display: none;">
+          <label class="export-field-label">Resolución / Escala</label>
+          <div class="export-scale-options">
+            <label class="scale-btn-label">
+              <input type="radio" name="export-scale" value="1" checked />
+              <span>1x</span>
+            </label>
+            <label class="scale-btn-label">
+              <input type="radio" name="export-scale" value="2" />
+              <span>2x (@2x)</span>
+            </label>
+            <label class="scale-btn-label">
+              <input type="radio" name="export-scale" value="3" />
+              <span>3x (@3x)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="export-field-group">
+          <label class="export-field-label">Alcance</label>
+          <div class="export-scope-options">
+            <label class="scope-radio-label">
+              <input type="radio" name="export-scope" value="document" checked />
+              <span>Todo el documento</span>
+            </label>
+            <label class="scope-radio-label" id="label-export-scope-selection">
+              <input type="radio" name="export-scope" value="selection" id="radio-export-selection" />
+              <span id="text-export-scope-selection">Solo selección</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="export-field-group" id="group-export-background">
+          <label class="export-field-label">Fondo</label>
+          <div class="export-bg-options">
+            <label class="bg-radio-label">
+              <input type="radio" name="export-bg" value="transparent" checked />
+              <span>Transparente</span>
+            </label>
+            <label class="bg-radio-label">
+              <input type="radio" name="export-bg" value="white" />
+              <span>Blanco (#ffffff)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="export-summary-box">
+          <span id="export-summary-dim">Dimensiones: 800 × 600 px</span>
+          <span id="export-summary-filename">Archivo: escena.svg</span>
+        </div>
+      </div>
+      <div class="export-dialog-footer">
+        <button id="btn-cancel-export" class="dialog-btn secondary">Cancelar</button>
+        <button id="btn-confirm-export" class="dialog-btn primary">Exportar</button>
+      </div>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>

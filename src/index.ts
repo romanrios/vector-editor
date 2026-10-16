@@ -52,3 +52,5 @@ export * from './commands/UpdateTextTypographyCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';
+export * from './utils/exportSvg.ts';
+export * from './utils/exportRaster.ts';

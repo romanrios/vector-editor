@@ -59,6 +59,10 @@ El núcleo del editor se apoya en cuatro pilares fundamentales:
 ### Interfaz de Usuario y Persistencia
 - **Panel de Propiedades Reactivo**: Edición sincronizada de color de relleno, trazo y grosor para una o múltiples figuras seleccionadas simultáneamente.
 - **Barra de Menús y Estado**: Menús desplegables accesibles vinculados al estado del documento, e indicadores en vivo de zoom, herramienta activa y conteo de selección.
+- **Exportación Multiformato (SVG, PNG, WebP y JSON)**:
+  - Generador SVG estándar con curvas Bézier, estilos, rotación centrada y texto estructurado con `<tspan>`.
+  - Exportador ráster (PNG / WebP) sobre canvas off-screen con selector de escala (`1x`, `2x`, `3x`), fondo configurable (transparente o sólido) y exportación acotada a la selección.
+  - Diálogo modal interactivo (`Ctrl + E`) con previsualización de dimensiones y nombre de archivo.
 - **Serialización JSON Robusta**: Validación estructural estricta con reporte detallado de rutas en caso de error (`DocumentParseError`), y descarga/importación de archivos de proyecto `.json`.
 
 ---
@@ -137,6 +141,7 @@ vector-editor/
 | | `Ctrl + V` | Pegar figuras del portapapeles |
 | | `Ctrl + D` | Duplicar figuras seleccionadas |
 | | `Supr` / `Backspace` | Eliminar figuras seleccionadas |
+| **Archivo** | `Ctrl + E` | Abrir diálogo de exportación (SVG, PNG, WebP, JSON) |
 | **Disposición** | `Ctrl + Shift + ]` | Traer figuras al frente |
 | | `Ctrl + Shift + [` | Enviar figuras al fondo |
 | **Navegación** | `Ctrl + +` / `Ctrl + -` | Aumentar / Reducir zoom |
@@ -150,10 +155,11 @@ vector-editor/
 
 ## Cobertura y Calidad de Pruebas
 
-El repositorio mantiene una suite de pruebas automatizadas con más de 275 tests unitarios que cubren:
+El repositorio mantiene una suite de pruebas automatizadas con más de 640 tests unitarios que cubren:
 
 - **Integridad del Scene Graph**: Garantía de inmutabilidad (`Object.freeze`), persistencia estructural y aislamiento de la selección fuera del árbol del documento.
 - **Historial y Comandos**: Validación de operaciones unitarias y lotes compuestos (`BatchCommand`) con 1, 2 y 3 figuras en ciclos de Undo/Redo.
+- **Exportación Vectorial y Ráster**: Verificación matemática de etiquetas SVG, curvas Bézier, estilos, rotación y resolución en canvas off-screen (1x, 2x, 3x).
 - **Precisión Matemática**: Cálculos de cajas OBB, proyección de deltas rotados y curvas de Bézier cúbicas.
 - **Sincronización de UI**: Integración y reactividad del panel de propiedades, la barra de estado y los menús ante variaciones de selección y carga de archivos.
 

@@ -52,8 +52,9 @@ import { CreationToolHandler } from './tools/CreationToolHandler.ts';
 import { TextToolHandler } from './tools/TextToolHandler.ts';
 
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'hand' | 'text';
-export type InputControllerEvent = 'toolChange';
+export type InputControllerEvent = 'toolChange' | 'exportRequest';
 export type ToolChangeCallback = (tool: ToolMode) => void;
+export type ExportRequestCallback = () => void;
 export type SmartGuidesChangeCallback = (enabled: boolean) => void;
 
 /**
@@ -69,6 +70,7 @@ export interface KeyboardShortcut {
  * Lista maestra de atajos de teclado reales implementados en InputController
  */
 export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
+  { key: 'Ctrl+E / Cmd+E', description: 'Abrir diálogo de exportación', category: 'Archivo' },
   { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
   { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
   { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
@@ -365,7 +367,9 @@ export class InputController {
     this.restoreToolCursor();
   }
 
-  public on(event: 'toolChange', listener: ToolChangeCallback): () => void {
+  public on(event: 'toolChange', listener: ToolChangeCallback): () => void;
+  public on(event: 'exportRequest', listener: ExportRequestCallback): () => void;
+  public on(event: InputControllerEvent, listener: (...args: any[]) => void): () => void {
     let listeners = this.eventListeners.get(event);
     if (!listeners) {
       listeners = new Set();
@@ -374,11 +378,13 @@ export class InputController {
     listeners.add(listener);
 
     return () => {
-      this.off(event, listener);
+      (this.off as (e: InputControllerEvent, l: any) => void)(event, listener);
     };
   }
 
-  public off(event: 'toolChange', listener: ToolChangeCallback): void {
+  public off(event: 'toolChange', listener: ToolChangeCallback): void;
+  public off(event: 'exportRequest', listener: ExportRequestCallback): void;
+  public off(event: InputControllerEvent, listener: (...args: any[]) => void): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       listeners.delete(listener);
@@ -388,11 +394,13 @@ export class InputController {
     }
   }
 
-  public emit(event: 'toolChange', tool: ToolMode): void {
+  public emit(event: 'toolChange', tool: ToolMode): void;
+  public emit(event: 'exportRequest'): void;
+  public emit(event: InputControllerEvent, arg?: ToolMode): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       for (const listener of listeners) {
-        listener(tool);
+        listener(arg);
       }
     }
   }
@@ -1131,6 +1139,12 @@ export class InputController {
       if (keyLower === 'a') {
         event.preventDefault?.();
         this.stateManager.selectAll();
+        return;
+      }
+
+      if (keyLower === 'e') {
+        event.preventDefault?.();
+        this.emit('exportRequest');
         return;
       }
 
