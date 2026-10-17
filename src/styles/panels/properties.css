@@ -1,0 +1,146 @@
+/* 4. Panel Lateral Derecho (Propiedades y Capas) */
+      .properties-sidebar {
+        grid-column: 3;
+        grid-row: 2;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-panel);
+        border-left: 1px solid var(--border-subtle);
+        padding: 0;
+        gap: 0;
+        overflow: hidden;
+        z-index: 5;
+      }
+
+      /* Sistema de Pestañas del Panel Lateral (Propiedades / Capas) */
+      .panel-tabs-header {
+        background: var(--bg-bar);
+        border-bottom: 1px solid var(--border-subtle);
+        flex-shrink: 0;
+      }
+
+      .panel-tabs {
+        display: flex;
+        align-items: stretch;
+      }
+
+      .panel-tab-btn {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 10px;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        font-family: var(--font-sans);
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+        user-select: none;
+      }
+
+      .panel-tab-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-control-hover);
+      }
+
+      .panel-tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+        font-weight: 600;
+      }
+
+      .panel-tab-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 12px;
+        gap: 10px;
+      }
+
+      #panel-tab-layers {
+        padding: 0;
+        gap: 0;
+      }
+
+.panel-btn {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-default);
+        background: var(--bg-control);
+        color: var(--text-secondary);
+        font-family: var(--font-sans);
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+      }
+
+      .panel-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-hover);
+      }
+
+      .panel-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .panel-btn-danger:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border-color: rgba(239, 68, 68, 0.4);
+      }
+
+      /* Cuadrícula de iconos en el panel de propiedades */
+      .panel-icon-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+
+      .panel-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+        padding: 0;
+      }
+
+      .panel-icon-btn:hover:not(:disabled) {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-hover);
+      }
+
+      .panel-icon-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .panel-icon-btn:disabled,
+      .panel-icon-btn[aria-disabled="true"] {
+        color: var(--text-muted);
+        opacity: 0.4;
+        cursor: not-allowed;
+      }

@@ -1,0 +1,427 @@
+/* Diálogo de Atajos de Teclado */
+      .shortcuts-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 18px 20px;
+        max-width: 520px;
+        width: 90vw;
+        max-height: 80vh;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+        margin: auto;
+      }
+
+      .shortcuts-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .shortcuts-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .shortcuts-dialog-title {
+        font-size: 15px;
+        font-weight: 600;
+        font-family: var(--font-heading);
+        color: var(--text-primary);
+      }
+
+      .dialog-close-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: var(--radius-xs);
+        transition: all var(--transition);
+      }
+
+      .dialog-close-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-subtle);
+      }
+
+      .dialog-close-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .shortcuts-dialog-body {
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+
+      .shortcuts-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .shortcuts-table tr {
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .shortcuts-table td {
+        padding: 7px 8px;
+      }
+
+      .shortcuts-table .shortcut-category {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        width: 110px;
+      }
+
+      .shortcuts-table .shortcut-desc {
+        color: var(--text-secondary);
+      }
+
+      .shortcuts-table .shortcut-key {
+        text-align: right;
+        font-family: monospace;
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      /* Diálogo de Exportación */
+      .export-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 20px 22px;
+        max-width: 480px;
+        width: 90vw;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+        margin: auto;
+      }
+
+      .export-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .export-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .export-dialog-title {
+        font-size: 15px;
+        font-weight: 600;
+        font-family: var(--font-heading);
+        color: var(--text-primary);
+      }
+
+      .export-dialog-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .export-field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .export-field-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+      }
+
+      .export-format-options {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .export-radio-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 10px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .export-radio-card:hover {
+        background: var(--bg-control-hover);
+        border-color: var(--border-hover);
+      }
+
+      .export-radio-card:has(input:checked) {
+        border-color: var(--accent);
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      .export-radio-card input[type="radio"] {
+        margin-top: 2px;
+        accent-color: var(--accent);
+      }
+
+      .radio-card-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .radio-card-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .radio-card-desc {
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .export-scale-options,
+      .export-scope-options,
+      .export-bg-options {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .scale-btn-label,
+      .scope-radio-label,
+      .bg-radio-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+
+      .scale-btn-label:hover,
+      .scope-radio-label:hover,
+      .bg-radio-label:hover {
+        color: var(--text-primary);
+      }
+
+      .scale-btn-label input[type="radio"],
+      .scope-radio-label input[type="radio"],
+      .bg-radio-label input[type="radio"] {
+        accent-color: var(--accent);
+      }
+
+      .export-summary-box {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+        background: var(--bg-app);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .export-dialog-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 18px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      .dialog-btn {
+        height: 28px;
+        padding: 0 14px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .dialog-btn.secondary {
+        background: transparent;
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+      }
+
+      .dialog-btn.secondary:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .dialog-btn.primary {
+        background: var(--accent);
+        border: 1px solid var(--accent);
+        color: #0f172a;
+        font-weight: 600;
+      }
+
+      .dialog-btn.primary:hover {
+        background: var(--accent-hover);
+      }
+
+      /* Diálogo Acerca de */
+      .about-dialog {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        padding: 22px 24px 20px;
+        max-width: 360px;
+        width: 90vw;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+        margin: auto;
+        position: relative;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .about-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .about-dialog-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+      }
+
+      .about-dialog-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        margin-bottom: 18px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .about-dialog-icon {
+        width: 36px;
+        height: 36px;
+      }
+
+      .about-dialog-title {
+        font-size: 18px;
+        font-weight: 700;
+        font-family: var(--font-heading);
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+      }
+
+      .about-dialog-tagline {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.4;
+      }
+
+      .about-dialog-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+      }
+
+      .about-dialog-meta div {
+        display: grid;
+        grid-template-columns: 108px 1fr;
+        gap: 8px;
+        align-items: baseline;
+        font-size: 12px;
+      }
+
+      .about-dialog-meta dt {
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .about-dialog-meta dd {
+        margin: 0;
+        color: var(--text-primary);
+      }
+
+      .about-dialog-meta a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .about-dialog-meta a:hover {
+        text-decoration: underline;
+        color: var(--accent-hover);
+      }
+
+      .about-dialog-copy {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .header-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border-radius: var(--radius-xs);
+        border: 1px solid var(--border-subtle);
+        background: var(--bg-control);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .header-btn:hover:not(:disabled):not(.disabled) {
+        background: var(--bg-control-hover);
+        border-color: var(--border-default);
+        color: var(--text-primary);
+      }
+
+      .header-btn:disabled,
+      .header-btn.disabled,
+      .header-btn.is-disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .header-separator {
+        width: 1px;
+        height: 16px;
+        background: var(--border-subtle);
+        margin: 0 2px;
+      }
+
+      /* 2. Barra de Herramientas Izquierda (Vertical, solo iconos) */

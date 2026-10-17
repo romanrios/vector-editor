@@ -1,0 +1,49 @@
+.tools-sidebar {
+        grid-column: 1;
+        grid-row: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 8px 0;
+        gap: 4px;
+        background: var(--bg-bar);
+        border-right: 1px solid var(--border-subtle);
+        z-index: 5;
+      }
+
+      .tool-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+        outline: none;
+      }
+
+      .tool-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .tool-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .tool-btn.active {
+        background: var(--accent-muted);
+        border-color: rgba(56, 189, 248, 0.4);
+        color: var(--accent);
+      }
+
+      .tool-separator {
+        width: 24px;
+        height: 1px;
+        background: var(--border-subtle);
+        margin: 4px 0;
+      }

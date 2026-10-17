@@ -1,0 +1,386 @@
+/* Barra de herramientas del Panel de Capas */
+      .layers-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        background: var(--bg-bar);
+        border-bottom: 1px solid var(--border-subtle);
+        flex-shrink: 0;
+      }
+
+      .layers-toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .layers-tool-btn {
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .layers-tool-btn:hover:not(:disabled) {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-default);
+      }
+
+      .layers-tool-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .layers-tool-btn.layers-btn-danger:hover:not(:disabled) {
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+
+      .layers-tool-separator {
+        width: 1px;
+        height: 14px;
+        background: var(--border-subtle);
+        margin: 0 2px;
+      }
+
+      .layers-count-badge {
+        font-size: 10.5px;
+        color: var(--text-muted);
+      }
+
+      /* Árbol Jerárquico de Capas y Objetos */
+      .layers-tree-container {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 4px 0;
+      }
+
+      .layers-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .tree-row {
+        display: flex;
+        align-items: center;
+        height: 28px;
+        min-height: 28px;
+        padding-right: 8px;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-left: 2px solid transparent;
+        transition: background var(--transition), color var(--transition), border-color var(--transition);
+        user-select: none;
+      }
+
+      .tree-row:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+      }
+
+      .tree-row.is-selected {
+        background: var(--accent-muted);
+        color: var(--text-primary);
+        border-left-color: var(--accent);
+        font-weight: 500;
+      }
+
+      .tree-row.is-hidden {
+        opacity: 0.45;
+      }
+
+      .tree-row.is-locked {
+        opacity: 0.7;
+      }
+
+      .tree-row.is-active-layer {
+        border-left-color: var(--accent);
+      }
+
+      .tree-row.is-active-layer:not(.is-selected) {
+        background: rgba(56, 189, 248, 0.06);
+      }
+
+      .tree-row[draggable="true"] {
+        cursor: grab;
+      }
+
+      .tree-row.is-dragging {
+        opacity: 0.4;
+        background: var(--bg-control-active);
+        cursor: grabbing;
+      }
+
+      .tree-row.drop-indicator-top {
+        box-shadow: inset 0 2px 0 0 var(--accent);
+      }
+
+      .tree-row.drop-indicator-bottom {
+        box-shadow: inset 0 -2px 0 0 var(--accent);
+      }
+
+      .tree-row.drop-indicator-inside {
+        outline: 1.5px dashed var(--accent);
+        outline-offset: -2px;
+        background: rgba(56, 189, 248, 0.12);
+      }
+
+      .tree-drag-handle {
+        width: 10px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        opacity: 0.35;
+        cursor: grab;
+        flex-shrink: 0;
+        transition: opacity var(--transition), color var(--transition);
+      }
+
+      .tree-row:hover .tree-drag-handle {
+        opacity: 0.85;
+        color: var(--text-secondary);
+      }
+
+      .tree-drag-handle:hover {
+        opacity: 1;
+        color: var(--accent);
+      }
+
+      .tree-layer-badge {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--accent);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-left: auto;
+        margin-right: 4px;
+        flex-shrink: 0;
+      }
+
+      .tree-label-input {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--accent);
+        border-radius: 3px;
+        color: var(--text-primary);
+        font-family: inherit;
+        font-size: 12px;
+        padding: 1px 4px;
+        outline: none;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .tree-chevron {
+        width: 16px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0;
+        transition: transform 0.15s ease;
+      }
+
+      .tree-chevron.is-collapsed {
+        transform: rotate(-90deg);
+      }
+
+      .tree-chevron-placeholder {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      .tree-type-icon {
+        width: 16px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      .tree-row.is-selected .tree-type-icon {
+        color: var(--accent);
+      }
+
+      .tree-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1;
+      }
+
+      .tree-row-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+
+      .tree-action-btn {
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: var(--radius-xs);
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0;
+        opacity: 0.35;
+        transition: opacity var(--transition), color var(--transition), background var(--transition);
+      }
+
+      .tree-row:hover .tree-action-btn,
+      .tree-row.is-selected .tree-action-btn,
+      .tree-action-btn.is-active {
+        opacity: 1;
+      }
+
+      .tree-action-btn:hover {
+        background: var(--bg-control);
+        color: var(--text-primary);
+      }
+
+      .tree-action-btn.is-active.btn-locked {
+        color: #f59e0b;
+        opacity: 1;
+      }
+
+      .tree-action-btn.is-active.btn-hidden {
+        color: var(--text-muted);
+        opacity: 0.9;
+      }
+
+      .layers-empty-state {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 36px 16px;
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .panel-title {
+        font-family: var(--font-heading);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+      }
+
+      #no-selection-state {
+        color: var(--text-muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 24px 8px;
+        line-height: 1.5;
+        border: 1px dashed var(--border-subtle);
+        border-radius: var(--radius-sm);
+        margin: 8px 0;
+        background: rgba(255, 255, 255, 0.015);
+      }
+
+      #selection-state {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .collapsible-section {
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 8px;
+      }
+
+      .collapsible-section:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        padding: 4px 0;
+        user-select: none;
+        list-style: none;
+        outline: none;
+      }
+
+      .section-header::-webkit-details-marker {
+        display: none;
+      }
+
+      .section-header:focus-visible {
+        outline: 1px solid var(--border-focus);
+        border-radius: var(--radius-xs);
+      }
+
+      .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        transition: color var(--transition);
+      }
+
+      .section-header:hover .section-title {
+        color: var(--text-primary);
+      }
+
+      .chevron-icon {
+        color: var(--text-muted);
+        transition: transform 0.15s ease, color var(--transition);
+      }
+
+      .section-header:hover .chevron-icon {
+        color: var(--text-primary);
+      }
+
+      .collapsible-section[open] .chevron-icon {
+        transform: rotate(0deg);
+      }
+
+      .collapsible-section:not([open]) .chevron-icon {
+        transform: rotate(-90deg);
+      }

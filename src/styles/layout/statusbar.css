@@ -1,0 +1,150 @@
+/* 5. Barra de Estado Inferior */
+      .editor-footer {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        background: var(--bg-bar);
+        border-top: 1px solid var(--border-subtle);
+        font-size: 11px;
+        color: var(--text-muted);
+        z-index: 10;
+      }
+
+      .status-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #10b981;
+      }
+
+      .status-shapes-count {
+        color: var(--text-secondary);
+      }
+
+      .status-selection-info {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      .status-hints {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+      }
+
+      .separator {
+        opacity: 0.35;
+      }
+
+      .status-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .zoom-control-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .status-zoom-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 6px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius-xs);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition);
+      }
+
+      .status-zoom-btn:hover {
+        background: var(--bg-control-hover);
+        color: var(--text-primary);
+        border-color: var(--border-subtle);
+      }
+
+      .status-zoom-btn.is-open {
+        background: var(--bg-control-hover);
+        color: var(--accent);
+        border-color: var(--border-default);
+      }
+
+      .status-zoom-btn:focus-visible {
+        outline: 1px solid var(--border-focus);
+      }
+
+      .zoom-chevron {
+        transition: transform var(--transition);
+      }
+
+      .status-zoom-btn.is-open .zoom-chevron {
+        transform: rotate(180deg);
+      }
+
+      .zoom-dropdown {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        right: 0;
+        min-width: 105px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        padding: 4px 0;
+        display: flex;
+        flex-direction: column;
+        z-index: 1000;
+        box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
+      }
+
+      .zoom-dropdown[hidden] {
+        display: none !important;
+      }
+
+      .zoom-dropdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 5px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-size: 11px;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        text-align: left;
+        outline: none;
+        transition: background var(--transition), color var(--transition);
+      }
+
+      .zoom-dropdown-item:hover,
+      .zoom-dropdown-item:focus-visible,
+      .zoom-dropdown-item.is-focused {
+        background: var(--bg-control-hover);
+        color: var(--accent);
+      }

@@ -1,0 +1,12 @@
+/* Punto de entrada central de estilos - Vectedit */
+@import './base/variables.css';
+@import './base/reset.css';
+@import './layout/app-layout.css';
+@import './layout/header.css';
+@import './layout/toolbar.css';
+@import './layout/statusbar.css';
+@import './components/controls.css';
+@import './components/gradient.css';
+@import './components/dialogs.css';
+@import './panels/properties.css';
+@import './panels/layers.css';
