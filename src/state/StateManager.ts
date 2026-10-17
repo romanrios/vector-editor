@@ -600,6 +600,36 @@ export class StateManager {
   }
 
   /**
+   * Mueve un nodo (Layer, Group o Shape) a un nuevo contenedor padre o posición.
+   *
+   * @param nodeId ID del nodo a mover
+   * @param targetParentId ID del nuevo contenedor padre
+   * @param targetIndex Índice opcional donde insertar el nodo
+   */
+  public moveNode(nodeId: string, targetParentId: string, targetIndex?: number): void {
+    const parent = this.findParent(nodeId);
+    if (!parent) {
+      throw new Error(`[StateManager] Nodo con id "${nodeId}" no tiene contenedor padre.`);
+    }
+
+    if (parent.id === targetParentId) {
+      const fromIndex = (parent.children as readonly SceneNode[]).findIndex((c) => c.id === nodeId);
+      if (fromIndex !== -1 && targetIndex !== undefined) {
+        this.reorderNodes(parent.id, fromIndex, targetIndex);
+      }
+      return;
+    }
+
+    const node = this.findNode(nodeId);
+    if (!node || node.type === 'document') {
+      throw new Error(`[StateManager] Nodo "${nodeId}" no es válido para mover.`);
+    }
+
+    this.removeNode(nodeId);
+    this.addNode(targetParentId, node as Layer | LayerChildNode, targetIndex);
+  }
+
+  /**
    * Determina la lista de grupos que quedarían completamente vacíos al retirar los IDs especificados.
    * Retorna los grupos en orden ascendente (de abajo hacia arriba en la jerarquía).
    * No muta el estado del Scene Graph.

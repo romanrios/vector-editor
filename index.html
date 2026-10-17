@@ -968,6 +968,53 @@
         background: rgba(56, 189, 248, 0.06);
       }
 
+      .tree-row[draggable="true"] {
+        cursor: grab;
+      }
+
+      .tree-row.is-dragging {
+        opacity: 0.4;
+        background: var(--bg-control-active);
+        cursor: grabbing;
+      }
+
+      .tree-row.drop-indicator-top {
+        box-shadow: inset 0 2px 0 0 var(--accent);
+      }
+
+      .tree-row.drop-indicator-bottom {
+        box-shadow: inset 0 -2px 0 0 var(--accent);
+      }
+
+      .tree-row.drop-indicator-inside {
+        outline: 1.5px dashed var(--accent);
+        outline-offset: -2px;
+        background: rgba(56, 189, 248, 0.12);
+      }
+
+      .tree-drag-handle {
+        width: 10px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        opacity: 0.35;
+        cursor: grab;
+        flex-shrink: 0;
+        transition: opacity var(--transition), color var(--transition);
+      }
+
+      .tree-row:hover .tree-drag-handle {
+        opacity: 0.85;
+        color: var(--text-secondary);
+      }
+
+      .tree-drag-handle:hover {
+        opacity: 1;
+        color: var(--accent);
+      }
+
       .tree-layer-badge {
         font-size: 9px;
         font-weight: 700;

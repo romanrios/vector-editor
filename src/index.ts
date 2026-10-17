@@ -52,6 +52,7 @@ export * from './commands/UpdateTextTypographyCommand.ts';
 export * from './commands/SetVisibilityCommand.ts';
 export * from './commands/SetLockedCommand.ts';
 export * from './commands/MoveStepCommand.ts';
+export * from './commands/MoveNodeCommand.ts';
 export * from './commands/AddLayerCommand.ts';
 export * from './commands/DeleteLayerCommand.ts';
 export * from './commands/RenameNodeCommand.ts';

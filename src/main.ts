@@ -18,6 +18,7 @@ import { MoveStepCommand } from './commands/MoveStepCommand.ts';
 import { AddLayerCommand } from './commands/AddLayerCommand.ts';
 import { DeleteLayerCommand } from './commands/DeleteLayerCommand.ts';
 import { RenameNodeCommand } from './commands/RenameNodeCommand.ts';
+import { MoveNodeCommand } from './commands/MoveNodeCommand.ts';
 import { Serializer } from './state/Serializer.ts';
 import { exportDocumentToSvg, downloadSvg } from './utils/exportSvg.ts';
 import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } from './utils/exportRaster.ts';
@@ -154,6 +155,7 @@ export function setupUIBindings(
   const layersTree = document.querySelector<HTMLElement>('#layers-tree');
   const layersEmptyState = document.querySelector<HTMLElement>('#layers-empty-state');
   const collapsedNodeIds = new Set<string>();
+  let draggedNodeId: string | null = null;
 
   // Sección Tipografía (para nodo Text individual)
   const sectionTypography = document.querySelector<HTMLDetailsElement>('#section-typography');
@@ -2635,6 +2637,42 @@ export function setupUIBindings(
   btnLayerMoveDown?.addEventListener('click', onLayerMoveDownClick);
   btnLayerDelete?.addEventListener('click', onLayerDeleteClick);
 
+  const onLayersTreeDragOver = (e: any) => {
+    if (!draggedNodeId) return;
+    e.preventDefault?.();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  };
+
+  const onLayersTreeDrop = (e: any) => {
+    if ((e as any)._rowHandled) return;
+    e.preventDefault?.();
+    const sourceId = draggedNodeId || e.dataTransfer?.getData?.('text/plain');
+    if (!sourceId) return;
+    const sourceNode = stateManager.findNode(sourceId);
+    if (!sourceNode) return;
+
+    const doc = stateManager.getState();
+    if (isLayer(sourceNode)) {
+      const cmd = new MoveNodeCommand(stateManager, sourceId, doc.id, 0);
+      if (!cmd.isAlreadyAtTarget) {
+        commandManager.executeCommand(cmd);
+      }
+    } else if (isSelectable(sourceNode)) {
+      const targetLayerId = stateManager.getActiveLayerId() || doc.children[0]?.id;
+      if (targetLayerId) {
+        const cmd = new MoveNodeCommand(stateManager, sourceId, targetLayerId, 0);
+        if (!cmd.isAlreadyAtTarget) {
+          commandManager.executeCommand(cmd);
+        }
+      }
+    }
+  };
+
+  layersTree?.addEventListener('dragover', onLayersTreeDragOver);
+  layersTree?.addEventListener('drop', onLayersTreeDrop);
+
   function renderLayersTree(): void {
     if (!layersTree) return;
 
@@ -2673,6 +2711,105 @@ export function setupUIBindings(
 
     layersTree.innerHTML = '';
 
+    const handleDropOnNode = (
+      sourceId: string,
+      targetNode: SceneNode,
+      dropPosition: 'top' | 'bottom' | 'inside'
+    ) => {
+      const sourceNode = stateManager.findNode(sourceId);
+      const sourceParent = stateManager.findParent(sourceId);
+      if (!sourceNode || !sourceParent) return;
+
+      const doc = stateManager.getState();
+
+      // Caso 1: El elemento arrastrado es una Capa
+      if (isLayer(sourceNode)) {
+        if (!isLayer(targetNode)) return;
+        const fromIndex = doc.children.findIndex((c) => c.id === sourceId);
+        const targetIndex = doc.children.findIndex((c) => c.id === targetNode.id);
+        if (fromIndex === -1 || targetIndex === -1 || fromIndex === targetIndex) return;
+
+        let toIndex: number;
+        if (fromIndex < targetIndex) {
+          toIndex = dropPosition === 'top' ? targetIndex : targetIndex - 1;
+        } else {
+          toIndex = dropPosition === 'top' ? targetIndex + 1 : targetIndex;
+        }
+        toIndex = Math.max(0, Math.min(doc.children.length - 1, toIndex));
+        if (toIndex !== fromIndex) {
+          const cmd = new MoveNodeCommand(stateManager, sourceId, doc.id, toIndex);
+          if (!cmd.isAlreadyAtTarget) {
+            commandManager.executeCommand(cmd);
+          }
+        }
+        return;
+      }
+
+      // Caso 2: El elemento arrastrado es una Figura o Grupo
+      if (!isSelectable(sourceNode)) return;
+
+      // Subcaso 2A: Soltado directamente sobre una Capa
+      if (isLayer(targetNode)) {
+        const targetIndex = dropPosition === 'bottom' ? 0 : targetNode.children.length;
+        const cmd = new MoveNodeCommand(stateManager, sourceId, targetNode.id, targetIndex);
+        if (!cmd.isAlreadyAtTarget) {
+          commandManager.executeCommand(cmd);
+          stateManager.setActiveLayerId(targetNode.id);
+        }
+        return;
+      }
+
+      // Subcaso 2B: Soltado dentro de un Grupo
+      if (isGroup(targetNode) && dropPosition === 'inside') {
+        const targetIndex = targetNode.children.length;
+        const cmd = new MoveNodeCommand(stateManager, sourceId, targetNode.id, targetIndex);
+        if (!cmd.isAlreadyAtTarget) {
+          commandManager.executeCommand(cmd);
+        }
+        return;
+      }
+
+      // Subcaso 2C: Soltado arriba o abajo de una Figura o Grupo
+      const targetParent = stateManager.findParent(targetNode.id);
+      if (!targetParent || (!isLayer(targetParent) && !isGroup(targetParent))) return;
+
+      const targetChildren = targetParent.children as readonly SceneNode[];
+      const targetIndexInParent = targetChildren.findIndex((c) => c.id === targetNode.id);
+      if (targetIndexInParent === -1) return;
+
+      if (targetParent.id === sourceParent.id) {
+        // Mismo contenedor padre
+        const fromIndex = targetChildren.findIndex((c) => c.id === sourceId);
+        if (fromIndex === -1 || fromIndex === targetIndexInParent) return;
+
+        let toIndex: number;
+        if (fromIndex < targetIndexInParent) {
+          toIndex = dropPosition === 'top' ? targetIndexInParent : targetIndexInParent - 1;
+        } else {
+          toIndex = dropPosition === 'top' ? targetIndexInParent + 1 : targetIndexInParent;
+        }
+        toIndex = Math.max(0, Math.min(targetChildren.length - 1, toIndex));
+        if (toIndex !== fromIndex) {
+          const cmd = new MoveNodeCommand(stateManager, sourceId, targetParent.id, toIndex);
+          if (!cmd.isAlreadyAtTarget) {
+            commandManager.executeCommand(cmd);
+          }
+        }
+      } else {
+        // Distinto contenedor padre
+        const toIndex = dropPosition === 'top' ? targetIndexInParent + 1 : targetIndexInParent;
+        const clampedIndex = Math.max(0, Math.min(targetChildren.length, toIndex));
+        const cmd = new MoveNodeCommand(stateManager, sourceId, targetParent.id, clampedIndex);
+        if (!cmd.isAlreadyAtTarget) {
+          commandManager.executeCommand(cmd);
+          const newLayer = stateManager.findLayerOfNode(sourceId);
+          if (newLayer) {
+            stateManager.setActiveLayerId(newLayer.id);
+          }
+        }
+      }
+    };
+
     const createRow = (node: SceneNode, level: number): HTMLElement => {
       const isSelected = selectedIds.has(node.id);
       const isHidden = !stateManager.isEffectivelyVisible(node.id);
@@ -2689,7 +2826,15 @@ export function setupUIBindings(
       row.setAttribute('data-node-type', node.type);
       row.setAttribute('role', 'treeitem');
       row.setAttribute('aria-selected', String(isSelected));
+      row.setAttribute('draggable', 'true');
       row.style.paddingLeft = `${level * 16 + 6}px`;
+
+      const dragHandle = document.createElement('span');
+      dragHandle.className = 'tree-drag-handle';
+      dragHandle.setAttribute('aria-hidden', 'true');
+      dragHandle.setAttribute('title', 'Arrastrar para reordenar');
+      dragHandle.innerHTML = `<svg width="8" height="12" viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></svg>`;
+      row.appendChild(dragHandle);
 
       if (isContainer) {
         const chevronBtn = document.createElement('button');
@@ -2843,6 +2988,155 @@ export function setupUIBindings(
       }
 
       row.appendChild(actions);
+
+      row.addEventListener('dragstart', (e: any) => {
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'BUTTON' ||
+            target.closest?.('button') ||
+            target.closest?.('input'))
+        ) {
+          e.preventDefault?.();
+          return;
+        }
+        draggedNodeId = node.id;
+        row.classList.add('is-dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.setData?.('text/plain', node.id);
+          e.dataTransfer.effectAllowed = 'move';
+        }
+      });
+
+      row.addEventListener('dragover', (e: any) => {
+        if (!draggedNodeId || draggedNodeId === node.id) return;
+        const sourceNode = stateManager.findNode(draggedNodeId);
+        if (!sourceNode) return;
+
+        // Una capa solo puede soltarse sobre otra capa
+        if (isLayer(sourceNode) && !isLayer(node)) {
+          return;
+        }
+
+        // Un grupo no puede soltarse dentro de sí mismo ni de sus descendientes
+        if (isGroup(sourceNode)) {
+          let curr = stateManager.findParent(node.id);
+          let isDescendant = false;
+          while (curr) {
+            if (curr.id === sourceNode.id) {
+              isDescendant = true;
+              break;
+            }
+            curr = stateManager.findParent(curr.id);
+          }
+          if (isDescendant) return;
+        }
+
+        e.preventDefault?.();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'move';
+        }
+
+        const rect = typeof (row as any).getBoundingClientRect === 'function'
+          ? (row as any).getBoundingClientRect()
+          : { top: 0, height: 28 };
+        const clientY = typeof e.clientY === 'number' ? e.clientY : rect.top + 14;
+        const offsetY = clientY - rect.top;
+        const height = rect.height || 28;
+
+        row.classList.remove('drop-indicator-top');
+        row.classList.remove('drop-indicator-bottom');
+        row.classList.remove('drop-indicator-inside');
+
+        if (isLayer(sourceNode)) {
+          if (offsetY < height * 0.5) {
+            row.classList.add('drop-indicator-top');
+          } else {
+            row.classList.add('drop-indicator-bottom');
+          }
+        } else {
+          if (isLayer(node)) {
+            if (offsetY < height * 0.25) {
+              row.classList.add('drop-indicator-top');
+            } else if (offsetY > height * 0.75) {
+              row.classList.add('drop-indicator-bottom');
+            } else {
+              row.classList.add('drop-indicator-inside');
+            }
+          } else if (isGroup(node)) {
+            if (offsetY >= height * 0.25 && offsetY <= height * 0.75) {
+              row.classList.add('drop-indicator-inside');
+            } else if (offsetY < height * 0.5) {
+              row.classList.add('drop-indicator-top');
+            } else {
+              row.classList.add('drop-indicator-bottom');
+            }
+          } else {
+            if (offsetY < height * 0.5) {
+              row.classList.add('drop-indicator-top');
+            } else {
+              row.classList.add('drop-indicator-bottom');
+            }
+          }
+        }
+      });
+
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('drop-indicator-top');
+        row.classList.remove('drop-indicator-bottom');
+        row.classList.remove('drop-indicator-inside');
+      });
+
+      row.addEventListener('drop', (e: any) => {
+        e.preventDefault?.();
+        (e as any)._rowHandled = true;
+
+        const isInside = row.classList.contains('drop-indicator-inside');
+        const isTop = row.classList.contains('drop-indicator-top');
+        const isBottom = row.classList.contains('drop-indicator-bottom');
+
+        row.classList.remove('drop-indicator-top');
+        row.classList.remove('drop-indicator-bottom');
+        row.classList.remove('drop-indicator-inside');
+
+        const rect = typeof (row as any).getBoundingClientRect === 'function'
+          ? (row as any).getBoundingClientRect()
+          : { top: 0, height: 28 };
+        const clientY = typeof e.clientY === 'number' ? e.clientY : rect.top + 14;
+        const offsetY = clientY - rect.top;
+        const height = rect.height || 28;
+
+        const dropPosition: 'top' | 'bottom' | 'inside' = isInside
+          ? 'inside'
+          : isTop
+            ? 'top'
+            : isBottom
+              ? 'bottom'
+              : offsetY < height * 0.5
+                ? 'top'
+                : 'bottom';
+
+        const sourceId = draggedNodeId || e.dataTransfer?.getData?.('text/plain');
+        if (!sourceId || sourceId === node.id) return;
+
+        handleDropOnNode(sourceId, node, dropPosition);
+      });
+
+      row.addEventListener('dragend', () => {
+        draggedNodeId = null;
+        if (layersTree) {
+          const allRows = typeof layersTree.querySelectorAll === 'function'
+            ? layersTree.querySelectorAll('.tree-row')
+            : [];
+          allRows.forEach?.((r: any) => {
+            r.classList?.remove?.('is-dragging');
+            r.classList?.remove?.('drop-indicator-top');
+            r.classList?.remove?.('drop-indicator-bottom');
+            r.classList?.remove?.('drop-indicator-inside');
+          });
+        }
+      });
 
       row.addEventListener('click', (e) => {
         const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -3973,6 +4267,8 @@ export function setupUIBindings(
       btnLayerMoveDown?.removeEventListener('click', onLayerMoveDownClick);
       btnLayerDelete?.removeEventListener('click', onLayerDeleteClick);
       btnAddLayer?.removeEventListener('click', onAddLayerClick);
+      layersTree?.removeEventListener('dragover', onLayersTreeDragOver);
+      layersTree?.removeEventListener('drop', onLayersTreeDrop);
 
       for (const { element, handler } of sectionToggleHandlers) {
         element.removeEventListener('toggle', handler);
@@ -4148,6 +4444,7 @@ const globals = {
   SetVisibilityCommand,
   SetLockedCommand,
   MoveStepCommand,
+  MoveNodeCommand,
   AddLayerCommand,
   DeleteLayerCommand,
   RenameNodeCommand,
