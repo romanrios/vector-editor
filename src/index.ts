@@ -30,6 +30,8 @@ export * from './input/tools/DirectSelectToolHandler.ts';
 export * from './input/tools/CreationToolHandler.ts';
 export * from './input/tools/TextToolHandler.ts';
 
+export * from './utils/booleanOperations.ts';
+
 // Patrón Command e Historial de Deshacer / Rehacer
 export * from './commands/Command.ts';
 export * from './commands/CommandManager.ts';
@@ -59,6 +61,7 @@ export * from './commands/RenameNodeCommand.ts';
 export * from './commands/InsertPathPointCommand.ts';
 export * from './commands/DeletePathPointCommand.ts';
 export * from './commands/UpdatePathPointTypeCommand.ts';
+export * from './commands/BooleanOperationCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

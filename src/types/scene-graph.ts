@@ -56,6 +56,7 @@ export interface BaseNode {
   readonly visible?: boolean;
   readonly locked?: boolean;
   readonly zIndex?: number;
+  readonly strokeDashArray?: readonly number[];
 }
 
 /**

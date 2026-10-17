@@ -26,6 +26,8 @@ import { ReorderCommand } from '../commands/ReorderCommand.ts';
 import { GroupCommand } from '../commands/GroupCommand.ts';
 import { UngroupCommand } from '../commands/UngroupCommand.ts';
 import { StyleCommand } from '../commands/StyleCommand.ts';
+import { BooleanOperationCommand } from '../commands/BooleanOperationCommand.ts';
+import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
 
 /**
  * Portapapeles que almacena una lista de nodos seleccionables preservando compatibilidad con .id
@@ -821,6 +823,25 @@ export class SelectionOperations {
     }
 
     const command = new UngroupCommand(this.stateManager, selectedGroups);
+    this.commandManager.executeCommand(command);
+    return true;
+  }
+
+  /**
+   * Ejecuta una operación booleana (Unión, Sustracción, Intersección o Exclusión)
+   * sobre las figuras cerradas seleccionadas en el Scene Graph.
+   */
+  public applyBooleanOperation(op: BooleanOp): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes().filter(
+      (n) => !this.stateManager.isEffectivelyLocked(n.id)
+    );
+    const leafShapes = getLeafShapes(selectedNodes);
+    const closedShapes = leafShapes.filter(isClosedShape);
+    if (closedShapes.length < 2) {
+      return false;
+    }
+
+    const command = new BooleanOperationCommand(this.stateManager, op, selectedNodes);
     this.commandManager.executeCommand(command);
     return true;
   }

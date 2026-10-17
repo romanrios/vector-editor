@@ -2017,6 +2017,30 @@
                   </button>
                 </div>
               </div>
+
+              <!-- Submenú Pathfinder -->
+              <div class="menu-submenu-container">
+                <button id="menu-item-pathfinder" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                  <span class="menu-item-label">Pathfinder</span>
+                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+                <div id="menu-dropdown-pathfinder" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-pathfinder" hidden>
+                  <button id="menu-item-pathfinder-union" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Unir</span>
+                  </button>
+                  <button id="menu-item-pathfinder-subtract" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Sustraer</span>
+                  </button>
+                  <button id="menu-item-pathfinder-intersect" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Intersecar</span>
+                  </button>
+                  <button id="menu-item-pathfinder-exclude" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                    <span class="menu-item-label">Excluir</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2562,6 +2586,50 @@
                   <line x1="3" y1="3" x2="21" y2="3"></line>
                   <line x1="3" y1="21" x2="21" y2="21"></line>
                   <rect x="6" y="8.5" width="12" height="7" rx="1"></rect>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <!-- Sección: Pathfinder / Operaciones Booleanas (visible con 2 o más figuras cerradas seleccionadas) -->
+        <details class="collapsible-section" id="section-pathfinder" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Pathfinder</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="panel-icon-grid" role="group" aria-label="Operaciones booleanas de trazado">
+              <button id="btn-pathfinder-union" class="panel-icon-btn" title="Unir (Fusionar figuras)" aria-label="Unir">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z" fill="currentColor" fill-opacity="0.25"/>
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z"/>
+                </svg>
+              </button>
+              <button id="btn-pathfinder-subtract" class="panel-icon-btn" title="Sustraer (Resta figuras superiores de la inferior)" aria-label="Sustraer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z" fill="currentColor" fill-opacity="0.25"/>
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z"/>
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
+                </svg>
+              </button>
+              <button id="btn-pathfinder-intersect" class="panel-icon-btn" title="Intersecar (Conservar solape común)" aria-label="Intersecar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="2" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
+                  <rect x="9" y="9" width="6" height="6" fill="currentColor" fill-opacity="0.35"/>
+                  <rect x="9" y="9" width="6" height="6"/>
+                </svg>
+              </button>
+              <button id="btn-pathfinder-exclude" class="panel-icon-btn" title="Excluir (Diferencia simétrica / XOR)" aria-label="Excluir">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="2" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25"/>
+                  <rect x="9" y="9" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25"/>
+                  <rect x="9" y="9" width="6" height="6" fill="#1b1b1f"/>
+                  <rect x="2" y="2" width="13" height="13" rx="2"/>
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
                 </svg>
               </button>
             </div>

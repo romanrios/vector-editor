@@ -34,6 +34,7 @@ import {
   createClipboardList,
   asShapeArray,
 } from './SelectionOperations.ts';
+import type { BooleanOp } from '../utils/booleanOperations.ts';
 import {
   TextEditManager,
   type TextEditingState,
@@ -1408,6 +1409,10 @@ export class InputController {
 
   public distributeSelection(axis: DistributionAxis): boolean {
     return this._selectionOperations.distributeSelection(axis);
+  }
+
+  public applyBooleanOperation(op: BooleanOp): boolean {
+    return this._selectionOperations.applyBooleanOperation(op);
   }
 
   public cancelCreation(): void {

@@ -42,6 +42,7 @@ import {
 } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 import { getSelectionBounds, normalizeAngle, getPointType } from './utils/geometry.ts';
+import { isClosedShape, type BooleanOp } from './utils/booleanOperations.ts';
 import { getShapeDimensions, rotateShapesAboutPivot } from './utils/transform.ts';
 import { getPresetById, findPresetForSize } from './utils/artboardPresets.ts';
 import type { ShapeDimensions } from './commands/ResizeCommand.ts';
@@ -201,6 +202,13 @@ export function setupUIBindings(
   const btnPointSymmetric = document.querySelector<HTMLButtonElement>('#btn-point-symmetric');
   const btnDeleteAnchor = document.querySelector<HTMLButtonElement>('#btn-delete-anchor');
 
+  // Sección Pathfinder en Panel de Propiedades
+  const sectionPathfinder = document.querySelector<HTMLDetailsElement>('#section-pathfinder');
+  const btnPathfinderUnion = document.querySelector<HTMLButtonElement>('#btn-pathfinder-union');
+  const btnPathfinderSubtract = document.querySelector<HTMLButtonElement>('#btn-pathfinder-subtract');
+  const btnPathfinderIntersect = document.querySelector<HTMLButtonElement>('#btn-pathfinder-intersect');
+  const btnPathfinderExclude = document.querySelector<HTMLButtonElement>('#btn-pathfinder-exclude');
+
   // Botón responsive para alternar panel lateral
   const btnTogglePanel = document.querySelector<HTMLButtonElement>('#btn-toggle-panel');
 
@@ -250,6 +258,14 @@ export function setupUIBindings(
   const menuDropdownDistribute = document.querySelector<HTMLElement>('#menu-dropdown-distribute');
   const menuItemDistributeH = document.querySelector<HTMLButtonElement>('#menu-item-distribute-h');
   const menuItemDistributeV = document.querySelector<HTMLButtonElement>('#menu-item-distribute-v');
+
+  // Submenú Pathfinder en Menú Objeto
+  const menuItemPathfinder = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder');
+  const menuDropdownPathfinder = document.querySelector<HTMLElement>('#menu-dropdown-pathfinder');
+  const menuItemPathfinderUnion = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder-union');
+  const menuItemPathfinderSubtract = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder-subtract');
+  const menuItemPathfinderIntersect = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder-intersect');
+  const menuItemPathfinderExclude = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder-exclude');
   const menuItemZoomIn = document.querySelector<HTMLButtonElement>('#menu-item-zoom-in');
   const menuItemZoomOut = document.querySelector<HTMLButtonElement>('#menu-item-zoom-out');
   const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
@@ -514,6 +530,29 @@ export function setupUIBindings(
       if (it) {
         it.disabled = !canDistribute;
         it.setAttribute('aria-disabled', String(!canDistribute));
+      }
+    }
+
+    const leafShapes = getLeafShapes(selectedNodes);
+    const closedShapes = leafShapes.filter(isClosedShape);
+    const canPathfinder = closedShapes.length >= 2;
+
+    if (menuItemPathfinder) {
+      menuItemPathfinder.disabled = !canPathfinder;
+      menuItemPathfinder.setAttribute('aria-disabled', String(!canPathfinder));
+    }
+
+    const pathfinderSubmenuItems = [
+      menuItemPathfinderUnion,
+      menuItemPathfinderSubtract,
+      menuItemPathfinderIntersect,
+      menuItemPathfinderExclude,
+    ];
+    for (let i = 0; i < pathfinderSubmenuItems.length; i++) {
+      const it = pathfinderSubmenuItems[i];
+      if (it) {
+        it.disabled = !canPathfinder;
+        it.setAttribute('aria-disabled', String(!canPathfinder));
       }
     }
 
@@ -1013,6 +1052,9 @@ export function setupUIBindings(
       if (sectionPathPoint) {
         sectionPathPoint.style.display = 'none';
       }
+      if (sectionPathfinder) {
+        sectionPathfinder.style.display = 'none';
+      }
       if (sectionAppearance) {
         sectionAppearance.style.display = 'block';
       }
@@ -1221,6 +1263,26 @@ export function setupUIBindings(
 
       if (sectionAlign) {
         sectionAlign.style.display = canAlign ? 'block' : 'none';
+      }
+
+      const closedShapes = leafShapes.filter(isClosedShape);
+      const canPathfinder = closedShapes.length >= 2;
+      if (sectionPathfinder) {
+        sectionPathfinder.style.display = canPathfinder ? 'block' : 'none';
+      }
+
+      const pathfinderPanelButtons = [
+        btnPathfinderUnion,
+        btnPathfinderSubtract,
+        btnPathfinderIntersect,
+        btnPathfinderExclude,
+      ];
+      for (let i = 0; i < pathfinderPanelButtons.length; i++) {
+        const btn = pathfinderPanelButtons[i];
+        if (btn) {
+          btn.disabled = !canPathfinder;
+          btn.setAttribute('aria-disabled', String(!canPathfinder));
+        }
       }
 
       const alignPanelButtons = [
@@ -3362,6 +3424,16 @@ export function setupUIBindings(
       dropdown: menuDropdownDistribute,
       items: [menuItemDistributeH, menuItemDistributeV],
     },
+    {
+      trigger: menuItemPathfinder,
+      dropdown: menuDropdownPathfinder,
+      items: [
+        menuItemPathfinderUnion,
+        menuItemPathfinderSubtract,
+        menuItemPathfinderIntersect,
+        menuItemPathfinderExclude,
+      ],
+    },
   ];
 
   const closeAllSubmenus = () => {
@@ -3848,6 +3920,30 @@ export function setupUIBindings(
 
   btnDistributeH?.addEventListener('click', onDistributeH);
   btnDistributeV?.addEventListener('click', onDistributeV);
+
+  // Acciones de Pathfinder / Operaciones Booleanas (Menú y Panel)
+  const createPathfinderHandler = (op: BooleanOp) => () => {
+    closeAllMenus();
+    inputController.applyBooleanOperation(op);
+    syncPropertiesPanel();
+    syncMenuItems();
+    canvas?.focus?.();
+  };
+
+  const onPathfinderUnion = createPathfinderHandler('union');
+  const onPathfinderSubtract = createPathfinderHandler('subtract');
+  const onPathfinderIntersect = createPathfinderHandler('intersect');
+  const onPathfinderExclude = createPathfinderHandler('exclude');
+
+  menuItemPathfinderUnion?.addEventListener('click', onPathfinderUnion);
+  menuItemPathfinderSubtract?.addEventListener('click', onPathfinderSubtract);
+  menuItemPathfinderIntersect?.addEventListener('click', onPathfinderIntersect);
+  menuItemPathfinderExclude?.addEventListener('click', onPathfinderExclude);
+
+  btnPathfinderUnion?.addEventListener('click', onPathfinderUnion);
+  btnPathfinderSubtract?.addEventListener('click', onPathfinderSubtract);
+  btnPathfinderIntersect?.addEventListener('click', onPathfinderIntersect);
+  btnPathfinderExclude?.addEventListener('click', onPathfinderExclude);
 
   const onMenuZoomInClick = () => {
     closeAllMenus();
@@ -4382,6 +4478,16 @@ export function setupUIBindings(
 
       btnDistributeH?.removeEventListener('click', onDistributeH);
       btnDistributeV?.removeEventListener('click', onDistributeV);
+
+      menuItemPathfinderUnion?.removeEventListener('click', onPathfinderUnion);
+      menuItemPathfinderSubtract?.removeEventListener('click', onPathfinderSubtract);
+      menuItemPathfinderIntersect?.removeEventListener('click', onPathfinderIntersect);
+      menuItemPathfinderExclude?.removeEventListener('click', onPathfinderExclude);
+
+      btnPathfinderUnion?.removeEventListener('click', onPathfinderUnion);
+      btnPathfinderSubtract?.removeEventListener('click', onPathfinderSubtract);
+      btnPathfinderIntersect?.removeEventListener('click', onPathfinderIntersect);
+      btnPathfinderExclude?.removeEventListener('click', onPathfinderExclude);
 
       submenuEntries.forEach((sub, i) => {
         sub.dropdown?.removeEventListener('keydown', submenuKeyDownHandlers[i]);
