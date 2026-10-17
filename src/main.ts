@@ -25,12 +25,19 @@ import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } fro
 import { ViewportManager } from './utils/viewport.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from './utils/color.ts';
 import {
+  createDefaultLinearGradient,
+  createDefaultRadialGradient,
+  interpolateGradientColor,
+  colorWithOpacity,
+} from './utils/gradient.ts';
+import {
   isDocument,
   isGroup,
   isLayer,
   isSelectable,
   isShape,
   isText,
+  isGradient,
   type SceneNode,
   type SelectableNode,
   type Shape,
@@ -39,6 +46,9 @@ import {
   type FontStyle,
   type FontWeight,
   type TextAlign,
+  type Gradient,
+  type GradientStop,
+  type FillType,
 } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 import { getSelectionBounds, normalizeAngle, getPointType } from './utils/geometry.ts';
@@ -67,7 +77,10 @@ debug('✅ Documento predeterminado cargado con zoom inicial al 50%.');
  * Convierte cualquier formato de color (hexadecimal corto/largo, rgb/rgba o nombres/nulos/transparentes)
  * en un código hexadecimal válido de 7 caracteres (#rrggbb) aceptado por <input type="color">.
  */
-export function toValidHexColor(color: string | undefined | null, fallback: string = '#000000'): string {
+export function toValidHexColor(color: FillType | undefined | null, fallback: string = '#000000'): string {
+  if (isGradient(color)) {
+    return normalizeColor(color.stops[0]?.color) ?? fallback;
+  }
   return normalizeColor(color) ?? fallback;
 }
 
@@ -134,6 +147,23 @@ export function setupUIBindings(
   const inputFillHex = document.querySelector<HTMLInputElement>('#input-fill-hex');
   const btnFillNone = document.querySelector<HTMLButtonElement>('#btn-fill-none');
   const swatchFillPreview = document.querySelector<HTMLElement>('#swatch-fill-preview');
+
+  const selectFillMode = document.querySelector<HTMLSelectElement>('#select-fill-mode');
+  const fillSolidControls = document.querySelector<HTMLElement>('#fill-solid-controls');
+  const fillGradientControls = document.querySelector<HTMLElement>('#fill-gradient-controls');
+  const gradientTrack = document.querySelector<HTMLElement>('#gradient-track');
+  const gradientTrackFill = document.querySelector<HTMLElement>('#gradient-track-fill');
+  const gradientStopsContainer = document.querySelector<HTMLElement>('#gradient-stops-container');
+  const swatchStopPreview = document.querySelector<HTMLElement>('#swatch-stop-preview');
+  const inputStopColor = document.querySelector<HTMLInputElement>('#input-stop-color');
+  const inputStopHex = document.querySelector<HTMLInputElement>('#input-stop-hex');
+  const inputStopOffset = document.querySelector<HTMLInputElement>('#input-stop-offset');
+  const inputStopOpacity = document.querySelector<HTMLInputElement>('#input-stop-opacity');
+  const btnGradientFlip = document.querySelector<HTMLButtonElement>('#btn-gradient-flip');
+  const btnDeleteStop = document.querySelector<HTMLButtonElement>('#btn-delete-stop');
+
+  let activeStopId: string | null = null;
+  let isDraggingStopMarker = false;
 
   const inputStroke = document.querySelector<HTMLInputElement>('#input-stroke');
   const inputStrokeHex = document.querySelector<HTMLInputElement>('#input-stroke-hex');
@@ -884,8 +914,8 @@ export function setupUIBindings(
 
   // 5. Panel de Propiedades de Figuras (Observabilidad de Selección & Edición Reactiva)
   interface StyleSnapshot {
-    readonly fill?: string;
-    readonly stroke?: string;
+    readonly fill?: FillType;
+    readonly stroke?: FillType;
     readonly strokeWidth?: number;
     readonly opacity?: number;
   }
@@ -900,7 +930,7 @@ export function setupUIBindings(
     readonly fontWeight?: FontWeight;
     readonly fontStyle?: FontStyle;
     readonly textAlign?: TextAlign;
-    readonly fill?: string;
+    readonly fill?: FillType;
   }
   let initialTextTypographySnapshot: TextTypographySnapshot | null = null;
   let lastRememberedTextColor = '#000000';
@@ -931,7 +961,7 @@ export function setupUIBindings(
       for (const shape of leafShapes) {
         initialStyleSnapshots.set(shape.id, {
           fill: shape.fill ?? (isText(shape) ? '#000000' : 'none'),
-          stroke: ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined) ?? 'none',
+          stroke: ('stroke' in shape ? (shape as { stroke?: FillType }).stroke : undefined) ?? 'none',
           strokeWidth: ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1,
           opacity: shape.opacity ?? 1,
         });
@@ -947,7 +977,10 @@ export function setupUIBindings(
     if (isNonePaint(val)) {
       return { kind: 'none' };
     }
-    const hex = normalizeColor(val);
+    if (isGradient(val)) {
+      return { kind: 'gradient', gradient: val };
+    }
+    const hex = normalizeColor(val as string);
     return hex ? { kind: 'color', hex } : { kind: 'none' };
   };
 
@@ -1148,17 +1181,97 @@ export function setupUIBindings(
       lastRememberedStroke = strokeState.hex;
     }
 
-    // 1. Relleno: Muestra, input nativo, hex input y botón none
+    // 1. Relleno: Modo, sólidos, degradados, muestra y botón none
+    if (selectFillMode) {
+      if (fillState.kind === 'none') {
+        selectFillMode.value = 'none';
+      } else if (fillState.kind === 'gradient') {
+        selectFillMode.value = fillState.gradient.type;
+      } else {
+        selectFillMode.value = 'solid';
+      }
+    }
+
+    if (fillSolidControls && fillGradientControls) {
+      if (fillState.kind === 'gradient') {
+        fillSolidControls.style.display = 'none';
+        fillGradientControls.style.display = 'flex';
+
+        const grad = fillState.gradient;
+        if (!activeStopId || !grad.stops.some((s) => s.id === activeStopId)) {
+          activeStopId = grad.stops[0]?.id ?? null;
+        }
+
+        if (gradientTrackFill) {
+          const sortedStops = [...grad.stops].sort((a, b) => a.offset - b.offset);
+          const cssStops = sortedStops
+            .map((s) => `${colorWithOpacity(s.color, s.opacity ?? 1)} ${Math.round(s.offset * 100)}%`)
+            .join(', ');
+          gradientTrackFill.style.background = `linear-gradient(to right, ${cssStops})`;
+        }
+
+        if (gradientStopsContainer) {
+          gradientStopsContainer.innerHTML = '';
+          for (const stop of grad.stops) {
+            const marker = document.createElement('div');
+            marker.className = `gradient-stop-marker${stop.id === activeStopId ? ' selected' : ''}`;
+            marker.style.left = `${stop.offset * 100}%`;
+            marker.style.backgroundColor = colorWithOpacity(stop.color, stop.opacity ?? 1);
+            marker.dataset.stopId = stop.id;
+            gradientStopsContainer.appendChild(marker);
+          }
+        }
+
+        const activeStop = grad.stops.find((s) => s.id === activeStopId) ?? grad.stops[0];
+        if (activeStop) {
+          if (inputStopColor) {
+            inputStopColor.value = toValidHexColor(activeStop.color, '#000000');
+          }
+          if (swatchStopPreview) {
+            swatchStopPreview.style.backgroundColor = colorWithOpacity(activeStop.color, activeStop.opacity ?? 1);
+          }
+          if (inputStopHex && (typeof document === 'undefined' || document.activeElement !== inputStopHex)) {
+            inputStopHex.value = toValidHexColor(activeStop.color, '#000000');
+          }
+          if (inputStopOffset && (typeof document === 'undefined' || document.activeElement !== inputStopOffset)) {
+            inputStopOffset.value = String(Math.round(activeStop.offset * 100));
+          }
+          if (inputStopOpacity && (typeof document === 'undefined' || document.activeElement !== inputStopOpacity)) {
+            inputStopOpacity.value = String(Math.round((activeStop.opacity ?? 1) * 100));
+          }
+        }
+
+        if (btnDeleteStop) {
+          btnDeleteStop.disabled = grad.stops.length <= 2;
+          btnDeleteStop.style.opacity = grad.stops.length <= 2 ? '0.35' : '1';
+        }
+      } else {
+        fillSolidControls.style.display = 'flex';
+        fillGradientControls.style.display = 'none';
+      }
+    }
+
     if (swatchFillPreview) {
       if (fillState.kind === 'none') {
         swatchFillPreview.className = 'color-swatch-preview state-none';
         swatchFillPreview.style.backgroundColor = 'transparent';
+        swatchFillPreview.style.backgroundImage = 'none';
       } else if (fillState.kind === 'mixed') {
         swatchFillPreview.className = 'color-swatch-preview state-mixed';
+        swatchFillPreview.style.backgroundColor = 'transparent';
+        swatchFillPreview.style.backgroundImage = 'none';
+      } else if (fillState.kind === 'gradient') {
+        swatchFillPreview.className = 'color-swatch-preview';
+        const sortedStops = [...fillState.gradient.stops].sort((a, b) => a.offset - b.offset);
+        const cssStops = sortedStops
+          .map((s) => `${colorWithOpacity(s.color, s.opacity ?? 1)} ${Math.round(s.offset * 100)}%`)
+          .join(', ');
+        swatchFillPreview.style.backgroundImage = `linear-gradient(to right, ${cssStops})`;
         swatchFillPreview.style.backgroundColor = 'transparent';
       } else {
         swatchFillPreview.className = 'color-swatch-preview';
         swatchFillPreview.style.backgroundColor = fillState.hex;
+        swatchFillPreview.style.backgroundImage = 'none';
       }
     }
 
@@ -1176,6 +1289,9 @@ export function setupUIBindings(
       } else if (fillState.kind === 'mixed') {
         inputFillHex.value = '';
         inputFillHex.placeholder = 'Mixto';
+      } else if (fillState.kind === 'gradient') {
+        inputFillHex.value = '';
+        inputFillHex.placeholder = fillState.gradient.type === 'linear' ? 'Gradiente lineal' : 'Gradiente radial';
       } else {
         inputFillHex.value = fillState.hex;
         inputFillHex.placeholder = fillState.hex;
@@ -1194,6 +1310,9 @@ export function setupUIBindings(
       } else if (strokeState.kind === 'mixed') {
         swatchStrokePreview.className = 'color-swatch-preview state-mixed';
         swatchStrokePreview.style.backgroundColor = 'transparent';
+      } else if (strokeState.kind === 'gradient') {
+        swatchStrokePreview.className = 'color-swatch-preview';
+        swatchStrokePreview.style.backgroundColor = toValidHexColor(strokeState.gradient);
       } else {
         swatchStrokePreview.className = 'color-swatch-preview';
         swatchStrokePreview.style.backgroundColor = strokeState.hex;
@@ -1201,7 +1320,7 @@ export function setupUIBindings(
     }
 
     const firstShapeStroke =
-      firstShape && 'stroke' in firstShape ? (firstShape as { stroke?: string }).stroke : undefined;
+      firstShape && 'stroke' in firstShape ? (firstShape as { stroke?: FillType }).stroke : undefined;
 
     if (inputStroke && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStroke))) {
       inputStroke.value =
@@ -1217,6 +1336,9 @@ export function setupUIBindings(
       } else if (strokeState.kind === 'mixed') {
         inputStrokeHex.value = '';
         inputStrokeHex.placeholder = 'Mixto';
+      } else if (strokeState.kind === 'gradient') {
+        inputStrokeHex.value = '';
+        inputStrokeHex.placeholder = strokeState.gradient.type === 'linear' ? 'Gradiente lineal' : 'Gradiente radial';
       } else {
         inputStrokeHex.value = strokeState.hex;
         inputStrokeHex.placeholder = strokeState.hex;
@@ -1497,7 +1619,7 @@ export function setupUIBindings(
   inputStrokeWidth?.addEventListener('focus', onInputStart);
 
   // Previsualización y consolidación genéricas parametrizadas por propiedad
-  const previewColor = (property: 'fill' | 'stroke', color: string) => {
+  const previewColor = (property: 'fill' | 'stroke', color: FillType) => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
     if (leafShapes.length === 0) {
@@ -1527,7 +1649,7 @@ export function setupUIBindings(
     stateManager.updateShapesStyle(entries);
   };
 
-  const commitColor = (property: 'fill' | 'stroke', color: string) => {
+  const commitColor = (property: 'fill' | 'stroke', color: FillType) => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
     if (leafShapes.length === 0) {
@@ -1565,7 +1687,7 @@ export function setupUIBindings(
           after: { fill: color },
         };
       } else {
-        const beforeStroke = snapshot?.stroke ?? ('stroke' in shape ? (shape as { stroke?: string }).stroke : undefined) ?? 'none';
+        const beforeStroke = snapshot?.stroke ?? ('stroke' in shape ? (shape as { stroke?: FillType }).stroke : undefined) ?? 'none';
         const beforeStrokeWidth = snapshot?.strokeWidth ?? ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined);
         const needsStrokeWidth =
           !isNonePaint(color) && (beforeStrokeWidth === undefined || beforeStrokeWidth <= 0);
@@ -1977,6 +2099,333 @@ export function setupUIBindings(
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
 
+  // 5.0 Manejadores del Sistema de Degradados (Lineal / Radial)
+  const onFillModeChange = () => {
+    if (!selectFillMode) return;
+    const mode = selectFillMode.value;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const currentPaint = getCurrentPaintState('fill', leafShapes);
+
+    if (mode === 'none') {
+      commitColor('fill', 'none');
+      syncPropertiesPanel();
+      return;
+    }
+
+    if (mode === 'solid') {
+      const color = currentPaint.kind === 'gradient'
+        ? currentPaint.gradient.stops[0]?.color ?? lastRememberedFill
+        : lastRememberedFill;
+      commitColor('fill', color);
+      syncPropertiesPanel();
+      return;
+    }
+
+    if (mode === 'linear') {
+      let grad: Gradient;
+      if (currentPaint.kind === 'gradient') {
+        grad = {
+          type: 'linear',
+          x1: 0,
+          y1: 0.5,
+          x2: 1,
+          y2: 0.5,
+          stops: currentPaint.gradient.stops,
+        };
+      } else {
+        const baseColor = currentPaint.kind === 'color' ? currentPaint.hex : lastRememberedFill;
+        grad = createDefaultLinearGradient(baseColor, '#ffffff');
+      }
+      commitColor('fill', grad);
+      syncPropertiesPanel();
+      return;
+    }
+
+    if (mode === 'radial') {
+      let grad: Gradient;
+      if (currentPaint.kind === 'gradient') {
+        grad = {
+          type: 'radial',
+          cx: 0.5,
+          cy: 0.5,
+          r: 0.5,
+          stops: currentPaint.gradient.stops,
+        };
+      } else {
+        const baseColor = currentPaint.kind === 'color' ? currentPaint.hex : lastRememberedFill;
+        grad = createDefaultRadialGradient(baseColor, '#ffffff');
+      }
+      commitColor('fill', grad);
+      syncPropertiesPanel();
+      return;
+    }
+  };
+
+  const onGradientTrackClick = (e: MouseEvent) => {
+    if (isDraggingStopMarker) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('.gradient-stop-marker')) return;
+    if (!gradientTrack) return;
+
+    const rect = gradientTrack.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const offset = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const paintState = getCurrentPaintState('fill', leafShapes);
+    if (paintState.kind !== 'gradient') return;
+
+    const currentGrad = paintState.gradient;
+    const color = interpolateGradientColor(currentGrad, offset);
+    const newStopId = `stop-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newStop: GradientStop = {
+      id: newStopId,
+      offset: Number(offset.toFixed(4)),
+      color,
+      opacity: 1,
+    };
+    const updatedStops = [...currentGrad.stops, newStop].sort((a, b) => a.offset - b.offset);
+    const updatedGrad = { ...currentGrad, stops: updatedStops };
+
+    activeStopId = newStopId;
+    captureInitialStyle();
+    commitColor('fill', updatedGrad);
+    syncPropertiesPanel();
+  };
+
+  let stopDragState: {
+    stopId: string;
+    startX: number;
+    startY: number;
+    initialOffset: number;
+    initialGradient: Gradient;
+  } | null = null;
+
+  let onWindowMouseMoveRef: ((e: MouseEvent) => void) | null = null;
+  let onWindowMouseUpRef: ((e: MouseEvent) => void) | null = null;
+
+  const onGradientStopsContainerMouseDown = (e: MouseEvent) => {
+    const marker = (e.target as HTMLElement).closest('.gradient-stop-marker') as HTMLElement | null;
+    if (!marker || !gradientTrack) return;
+    e.stopPropagation();
+
+    const stopId = marker.dataset.stopId;
+    if (!stopId) return;
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const paintState = getCurrentPaintState('fill', leafShapes);
+    if (paintState.kind !== 'gradient') return;
+
+    const currentGrad = paintState.gradient;
+    const targetStop = currentGrad.stops.find((s) => s.id === stopId);
+    if (!targetStop) return;
+
+    activeStopId = stopId;
+    isDraggingStopMarker = true;
+    captureInitialStyle();
+
+    stopDragState = {
+      stopId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialOffset: targetStop.offset,
+      initialGradient: currentGrad,
+    };
+
+    onWindowMouseMoveRef = (moveEvent: MouseEvent) => {
+      if (!stopDragState || !gradientTrack) return;
+      const rect = gradientTrack.getBoundingClientRect();
+      const newOffset = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
+      const dy = moveEvent.clientY - stopDragState.startY;
+
+      if (dy > 35 && stopDragState.initialGradient.stops.length > 2) {
+        marker.style.opacity = '0.3';
+      } else {
+        marker.style.opacity = '1';
+      }
+
+      const updatedStops = stopDragState.initialGradient.stops.map((s) =>
+        s.id === stopDragState!.stopId ? { ...s, offset: Number(newOffset.toFixed(4)) } : s
+      );
+      const previewGrad = { ...stopDragState.initialGradient, stops: updatedStops };
+      previewColor('fill', previewGrad);
+
+      marker.style.left = `${newOffset * 100}%`;
+      if (inputStopOffset && document.activeElement !== inputStopOffset) {
+        inputStopOffset.value = String(Math.round(newOffset * 100));
+      }
+      if (gradientTrackFill) {
+        const sorted = [...updatedStops].sort((a, b) => a.offset - b.offset);
+        const cssStops = sorted
+          .map((s) => `${colorWithOpacity(s.color, s.opacity ?? 1)} ${Math.round(s.offset * 100)}%`)
+          .join(', ');
+        gradientTrackFill.style.background = `linear-gradient(to right, ${cssStops})`;
+      }
+    };
+
+    onWindowMouseUpRef = (upEvent: MouseEvent) => {
+      if (onWindowMouseMoveRef) {
+        window.removeEventListener('mousemove', onWindowMouseMoveRef);
+        onWindowMouseMoveRef = null;
+      }
+      if (onWindowMouseUpRef) {
+        window.removeEventListener('mouseup', onWindowMouseUpRef);
+        onWindowMouseUpRef = null;
+      }
+      if (!stopDragState) return;
+
+      const dy = upEvent.clientY - stopDragState.startY;
+      const shouldDelete = dy > 35 && stopDragState.initialGradient.stops.length > 2;
+
+      if (shouldDelete) {
+        const updatedStops = stopDragState.initialGradient.stops.filter((s) => s.id !== stopDragState!.stopId);
+        const finalGrad = { ...stopDragState.initialGradient, stops: updatedStops };
+        activeStopId = updatedStops[0]?.id ?? null;
+        commitColor('fill', finalGrad);
+      } else {
+        const rect = gradientTrack.getBoundingClientRect();
+        const finalOffset = Math.max(0, Math.min(1, (upEvent.clientX - rect.left) / rect.width));
+        const updatedStops = stopDragState.initialGradient.stops.map((s) =>
+          s.id === stopDragState!.stopId ? { ...s, offset: Number(finalOffset.toFixed(4)) } : s
+        );
+        const finalGrad = { ...stopDragState.initialGradient, stops: updatedStops };
+        commitColor('fill', finalGrad);
+      }
+
+      stopDragState = null;
+      isDraggingStopMarker = false;
+      syncPropertiesPanel();
+    };
+
+    window.addEventListener('mousemove', onWindowMouseMoveRef);
+    window.addEventListener('mouseup', onWindowMouseUpRef);
+    syncPropertiesPanel();
+  };
+
+  const updateActiveStop = (updater: (stop: GradientStop) => GradientStop, isPreview: boolean = false) => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const paintState = getCurrentPaintState('fill', leafShapes);
+    if (paintState.kind !== 'gradient' || !activeStopId) return;
+
+    const currentGrad = paintState.gradient;
+    const updatedStops = currentGrad.stops.map((s) => (s.id === activeStopId ? updater(s) : s));
+    const nextGrad = { ...currentGrad, stops: updatedStops };
+
+    if (isPreview) {
+      previewColor('fill', nextGrad);
+      if (gradientTrackFill) {
+        const sorted = [...updatedStops].sort((a, b) => a.offset - b.offset);
+        const cssStops = sorted
+          .map((s) => `${colorWithOpacity(s.color, s.opacity ?? 1)} ${Math.round(s.offset * 100)}%`)
+          .join(', ');
+        gradientTrackFill.style.background = `linear-gradient(to right, ${cssStops})`;
+      }
+      const activeStop = updatedStops.find((s) => s.id === activeStopId);
+      if (activeStop && swatchStopPreview) {
+        swatchStopPreview.style.backgroundColor = colorWithOpacity(activeStop.color, activeStop.opacity ?? 1);
+      }
+    } else {
+      commitColor('fill', nextGrad);
+      syncPropertiesPanel();
+    }
+  };
+
+  const onStopColorInput = () => {
+    if (!inputStopColor) return;
+    const hex = inputStopColor.value.toLowerCase();
+    updateActiveStop((s) => ({ ...s, color: hex }), true);
+    if (inputStopHex) inputStopHex.value = hex;
+  };
+
+  const onStopColorChange = () => {
+    if (!inputStopColor) return;
+    const hex = inputStopColor.value.toLowerCase();
+    updateActiveStop((s) => ({ ...s, color: hex }), false);
+  };
+
+  const onStopHexBlur = () => {
+    if (!inputStopHex) return;
+    const parsed = parseHexColor(inputStopHex.value);
+    if (parsed) {
+      inputStopHex.removeAttribute('aria-invalid');
+      updateActiveStop((s) => ({ ...s, color: parsed }), false);
+    } else {
+      syncPropertiesPanel();
+    }
+  };
+
+  const onStopHexKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onStopHexBlur();
+      inputStopHex?.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      syncPropertiesPanel();
+      inputStopHex?.blur();
+    }
+  };
+
+  const onStopOffsetChange = () => {
+    if (!inputStopOffset) return;
+    const num = Math.max(0, Math.min(100, parseFloat(inputStopOffset.value) || 0));
+    updateActiveStop((s) => ({ ...s, offset: Number((num / 100).toFixed(4)) }), false);
+  };
+
+  const onStopOpacityChange = () => {
+    if (!inputStopOpacity) return;
+    const num = Math.max(0, Math.min(100, parseFloat(inputStopOpacity.value) || 100));
+    updateActiveStop((s) => ({ ...s, opacity: Number((num / 100).toFixed(2)) }), false);
+  };
+
+  const onGradientFlip = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const paintState = getCurrentPaintState('fill', leafShapes);
+    if (paintState.kind !== 'gradient') return;
+
+    const currentGrad = paintState.gradient;
+    const flippedStops = currentGrad.stops
+      .map((s) => ({ ...s, offset: Number((1 - s.offset).toFixed(4)) }))
+      .sort((a, b) => a.offset - b.offset);
+
+    const nextGrad = { ...currentGrad, stops: flippedStops };
+    commitColor('fill', nextGrad);
+    syncPropertiesPanel();
+  };
+
+  const onDeleteStop = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const paintState = getCurrentPaintState('fill', leafShapes);
+    if (paintState.kind !== 'gradient' || !activeStopId) return;
+
+    const currentGrad = paintState.gradient;
+    if (currentGrad.stops.length <= 2) return;
+
+    const remainingStops = currentGrad.stops.filter((s) => s.id !== activeStopId);
+    activeStopId = remainingStops[0]?.id ?? null;
+    const nextGrad = { ...currentGrad, stops: remainingStops };
+    commitColor('fill', nextGrad);
+    syncPropertiesPanel();
+  };
+
+  selectFillMode?.addEventListener('change', onFillModeChange);
+  gradientTrack?.addEventListener('click', onGradientTrackClick);
+  gradientStopsContainer?.addEventListener('mousedown', onGradientStopsContainerMouseDown);
+  inputStopColor?.addEventListener('input', onStopColorInput);
+  inputStopColor?.addEventListener('change', onStopColorChange);
+  inputStopHex?.addEventListener('blur', onStopHexBlur);
+  inputStopHex?.addEventListener('keydown', onStopHexKeyDown);
+  inputStopOffset?.addEventListener('change', onStopOffsetChange);
+  inputStopOpacity?.addEventListener('change', onStopOpacityChange);
+  btnGradientFlip?.addEventListener('click', onGradientFlip);
+  btnDeleteStop?.addEventListener('click', onDeleteStop);
+
   // 5.1 Manejadores de Tipografía para nodo Text
   const commitTextColor = (color: string) => {
     const selectedNodes = stateManager.getSelectedNodes();
@@ -2209,8 +2658,9 @@ export function setupUIBindings(
           inputTextHex.value = '';
           inputTextHex.placeholder = 'ninguno';
         } else {
-          inputTextHex.value = val;
-          inputTextHex.placeholder = val;
+          const hex = toValidHexColor(val, '#000000');
+          inputTextHex.value = hex;
+          inputTextHex.placeholder = hex;
         }
       }
       initialTextTypographySnapshot = null;
@@ -2228,8 +2678,9 @@ export function setupUIBindings(
         inputTextHex.value = '';
         inputTextHex.placeholder = 'ninguno';
       } else {
-        inputTextHex.value = val;
-        inputTextHex.placeholder = val;
+        const hex = toValidHexColor(val, '#000000');
+        inputTextHex.value = hex;
+        inputTextHex.placeholder = hex;
       }
     }
     initialTextTypographySnapshot = null;
@@ -4324,6 +4775,27 @@ export function setupUIBindings(
 
       btnFillNone?.removeEventListener('click', onFillNoneClick);
       btnStrokeNone?.removeEventListener('click', onStrokeNoneClick);
+
+      selectFillMode?.removeEventListener('change', onFillModeChange);
+      gradientTrack?.removeEventListener('click', onGradientTrackClick);
+      gradientStopsContainer?.removeEventListener('mousedown', onGradientStopsContainerMouseDown);
+      inputStopColor?.removeEventListener('input', onStopColorInput);
+      inputStopColor?.removeEventListener('change', onStopColorChange);
+      inputStopHex?.removeEventListener('blur', onStopHexBlur);
+      inputStopHex?.removeEventListener('keydown', onStopHexKeyDown);
+      inputStopOffset?.removeEventListener('change', onStopOffsetChange);
+      inputStopOpacity?.removeEventListener('change', onStopOpacityChange);
+      btnGradientFlip?.removeEventListener('click', onGradientFlip);
+      btnDeleteStop?.removeEventListener('click', onDeleteStop);
+
+      if (onWindowMouseMoveRef) {
+        window.removeEventListener('mousemove', onWindowMouseMoveRef);
+        onWindowMouseMoveRef = null;
+      }
+      if (onWindowMouseUpRef) {
+        window.removeEventListener('mouseup', onWindowMouseUpRef);
+        onWindowMouseUpRef = null;
+      }
 
       if (fillInvalidTimer) {
         clearTimeout(fillInvalidTimer);

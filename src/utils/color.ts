@@ -1,4 +1,5 @@
-import type { Shape } from '../types/scene-graph.ts';
+import type { Gradient, Shape } from '../types/scene-graph.ts';
+import { isGradient } from '../types/scene-graph.ts';
 
 /**
  * Constante estándar para representar la ausencia de relleno o contorno.
@@ -8,15 +9,20 @@ export const NONE_PAINT = 'none';
 export type PaintState =
   | { kind: 'none' }
   | { kind: 'color'; hex: string }
+  | { kind: 'gradient'; gradient: Gradient }
   | { kind: 'mixed' };
 
 /**
  * Determina si un valor de pintura corresponde a "sin pintura" (none / transparente).
  * Retorna true para undefined, null, '', 'none' y 'transparent' (sin distinguir mayúsculas ni espacios).
+ * Retorna false si es un objeto degradado (Gradient).
  */
 export function isNonePaint(v: unknown): boolean {
   if (v === undefined || v === null) {
     return true;
+  }
+  if (typeof v === 'object') {
+    return false;
   }
   if (typeof v !== 'string') {
     return false;
@@ -91,37 +97,53 @@ export function normalizeColor(value: string | null | undefined): string | null 
  * Obtiene el estado consolidado de pintura ('fill' o 'stroke') para un conjunto de figuras:
  * - { kind: 'none' }: Si la lista está vacía o todas las figuras carecen de pintura.
  * - { kind: 'color', hex }: Si todas las figuras comparten exactamente el mismo color tras normalizar.
- * - { kind: 'mixed' }: Si coexisten figuras con y sin pintura, o con distintos colores.
+ * - { kind: 'gradient', gradient }: Si todas las figuras comparten el mismo degradado.
+ * - { kind: 'mixed' }: Si coexisten figuras con distintos estilos de pintura.
  */
 export function getPaintState(shapes: readonly Shape[], property: 'fill' | 'stroke'): PaintState {
   if (!shapes || shapes.length === 0) {
     return { kind: 'none' };
   }
 
-  const normalizedPaints: string[] = [];
+  const rawPaints = shapes.map((shape) =>
+    property === 'fill' ? shape.fill : ('stroke' in shape ? shape.stroke : undefined)
+  );
 
-  for (const shape of shapes) {
-    const raw = property === 'fill' ? shape.fill : ('stroke' in shape ? shape.stroke : undefined);
+  const allNone = rawPaints.every(isNonePaint);
+  if (allNone) {
+    return { kind: 'none' };
+  }
+
+  const first = rawPaints[0];
+  if (isGradient(first)) {
+    const firstStr = JSON.stringify(first);
+    const allSameGrad = rawPaints.every((p) => isGradient(p) && JSON.stringify(p) === firstStr);
+    if (allSameGrad) {
+      return { kind: 'gradient', gradient: first };
+    }
+    return { kind: 'mixed' };
+  }
+
+  const normalizedPaints: string[] = [];
+  for (const raw of rawPaints) {
     if (isNonePaint(raw)) {
       normalizedPaints.push(NONE_PAINT);
-    } else {
+    } else if (typeof raw === 'string') {
       const hex = normalizeColor(raw);
-      if (hex) {
-        normalizedPaints.push(hex);
-      } else {
-        normalizedPaints.push(NONE_PAINT);
-      }
+      normalizedPaints.push(hex ?? NONE_PAINT);
+    } else {
+      return { kind: 'mixed' };
     }
   }
 
-  const first = normalizedPaints[0];
-  const allSame = normalizedPaints.every((p) => p === first);
+  const firstColor = normalizedPaints[0];
+  const allSame = normalizedPaints.every((p) => p === firstColor);
 
   if (allSame) {
-    if (first === NONE_PAINT) {
+    if (firstColor === NONE_PAINT) {
       return { kind: 'none' };
     }
-    return { kind: 'color', hex: first };
+    return { kind: 'color', hex: firstColor };
   }
 
   return { kind: 'mixed' };

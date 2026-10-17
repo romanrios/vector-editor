@@ -6,6 +6,7 @@ import {
   isGroup,
   isSelectable,
   isShape,
+  isGradient,
   type AABB,
   type LayerChildNode,
   type Path,
@@ -13,6 +14,7 @@ import {
   type SelectableNode,
   type Shape,
   type Vector2D,
+  type Gradient,
 } from '../../types/scene-graph.ts';
 import {
   computeBoxScale,
@@ -43,6 +45,13 @@ import { BatchCommand } from '../../commands/BatchCommand.ts';
 import { ResizeCommand, type ShapeDimensions } from '../../commands/ResizeCommand.ts';
 import { RotateCommand } from '../../commands/RotateCommand.ts';
 import { AddShapeCommand } from '../../commands/AddShapeCommand.ts';
+import { StyleCommand } from '../../commands/StyleCommand.ts';
+import {
+  hitTestGradientHandles,
+  worldToGradientCoord,
+  gradientToWorldPoint,
+  projectPointOnSegment,
+} from '../../utils/gradient.ts';
 import type { ViewportManager } from '../../utils/viewport.ts';
 import type { SelectionOperations, PreparedClone } from '../SelectionOperations.ts';
 import type { ToolHandler } from './ToolHandler.ts';
@@ -115,6 +124,17 @@ export class SelectToolHandler implements ToolHandler {
 
   // Estado de transformación combinada
   private _multiTransformState: MultiTransformState | null = null;
+
+  // Estado de manipulación interactiva de degradados
+  private _activeGradientDrag: {
+    readonly shapeId: string;
+    readonly property: 'fill' | 'stroke';
+    readonly initialGradient: Gradient;
+    currentGradient: Gradient;
+    readonly handleType: 'gradient-start' | 'gradient-end' | 'gradient-center' | 'gradient-radius' | 'gradient-stop';
+    readonly stopId?: string;
+    readonly startMouse: Vector2D;
+  } | null = null;
 
   private _hoveredShapeId: string | null = null;
 
@@ -294,6 +314,35 @@ export class SelectToolHandler implements ToolHandler {
       const selectedNode = this.stateManager.getSelectedNode();
       if (selectedNode && isShape(selectedNode)) {
         const zoom = this.getViewportManager().zoom;
+
+        // Comprobar manipulación interactiva de degradados
+        const grad = isGradient(selectedNode.fill)
+          ? selectedNode.fill
+          : isGradient(selectedNode.stroke)
+          ? selectedNode.stroke
+          : null;
+        const gradProp: 'fill' | 'stroke' = isGradient(selectedNode.fill) ? 'fill' : 'stroke';
+
+        if (grad) {
+          const hitGrad = hitTestGradientHandles(selectedNode, grad, x, y, 10 / zoom);
+          if (hitGrad) {
+            this._activeGradientDrag = {
+              shapeId: selectedNode.id,
+              property: gradProp,
+              initialGradient: grad,
+              currentGradient: grad,
+              handleType: hitGrad.type,
+              stopId: hitGrad.stopId,
+              startMouse: { x, y },
+            };
+            this._isDragging = false;
+            this._isResizing = false;
+            this._isRotating = false;
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+        }
+
         const handles = getSelectionHandles(selectedNode, 8 / zoom, 30 / zoom);
         const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
@@ -456,6 +505,46 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseMove(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeGradientDrag) {
+      const { shapeId, property, currentGradient, handleType, stopId } = this._activeGradientDrag;
+      const currentShape = this.stateManager.findNode(shapeId);
+      if (!currentShape || !isShape(currentShape)) return;
+
+      const norm = worldToGradientCoord(currentShape, x, y);
+      let nextGrad: Gradient = currentGradient;
+
+      if (handleType === 'gradient-start' && currentGradient.type === 'linear') {
+        nextGrad = { ...currentGradient, x1: norm.x, y1: norm.y };
+      } else if (handleType === 'gradient-end' && currentGradient.type === 'linear') {
+        nextGrad = { ...currentGradient, x2: norm.x, y2: norm.y };
+      } else if (handleType === 'gradient-center' && currentGradient.type === 'radial') {
+        nextGrad = { ...currentGradient, cx: norm.x, cy: norm.y };
+      } else if (handleType === 'gradient-radius' && currentGradient.type === 'radial') {
+        const dx = norm.x - currentGradient.cx;
+        const dy = norm.y - currentGradient.cy;
+        const r = Math.max(0.01, Math.hypot(dx, dy));
+        nextGrad = { ...currentGradient, r };
+      } else if (handleType === 'gradient-stop' && stopId) {
+        let t = 0;
+        if (currentGradient.type === 'linear') {
+          const p1 = gradientToWorldPoint(currentShape, currentGradient.x1, currentGradient.y1);
+          const p2 = gradientToWorldPoint(currentShape, currentGradient.x2, currentGradient.y2);
+          t = projectPointOnSegment(coords, p1, p2);
+        } else {
+          const c = gradientToWorldPoint(currentShape, currentGradient.cx, currentGradient.cy);
+          const rPt = gradientToWorldPoint(currentShape, currentGradient.cx + currentGradient.r, currentGradient.cy);
+          t = projectPointOnSegment(coords, c, rPt);
+        }
+        const updatedStops = currentGradient.stops.map((s) => (s.id === stopId ? { ...s, offset: t } : s));
+        nextGrad = { ...currentGradient, stops: updatedStops };
+      }
+
+      this._activeGradientDrag.currentGradient = nextGrad;
+      this.stateManager.updateShape(shapeId, { [property]: nextGrad });
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
 
     if (this._multiTransformState) {
       this.applyMultiTransform(x, y, Boolean(event.shiftKey));
@@ -633,6 +722,20 @@ export class SelectToolHandler implements ToolHandler {
       const selectedShape = currentSelected[0];
       if (isShape(selectedShape)) {
         const zoom = this.getViewportManager().zoom;
+
+        const grad = isGradient(selectedShape.fill)
+          ? selectedShape.fill
+          : isGradient(selectedShape.stroke)
+          ? selectedShape.stroke
+          : null;
+        if (grad) {
+          const hitGrad = hitTestGradientHandles(selectedShape, grad, x, y, 10 / zoom);
+          if (hitGrad) {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+        }
+
         const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
         if (hoveredHandle) {
@@ -658,6 +761,25 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseUp(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeGradientDrag) {
+      const { shapeId, property, initialGradient, currentGradient } = this._activeGradientDrag;
+      this._activeGradientDrag = null;
+
+      if (JSON.stringify(initialGradient) !== JSON.stringify(currentGradient)) {
+        const cmd = new StyleCommand(
+          this.stateManager,
+          shapeId,
+          { [property]: initialGradient },
+          { [property]: currentGradient }
+        );
+        this.commandManager.recordCommand(cmd);
+      }
+
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
 
     if (this._multiTransformState) {
       const entries: ShapeTransformEntry[] = this._multiTransformState.leafShapes.map((initialShape) => {
@@ -920,6 +1042,7 @@ export class SelectToolHandler implements ToolHandler {
     this.pendingSingleSelectionId = null;
     this.dragStartScreen = null;
     this.hasMovedPastThreshold = false;
+    this._activeGradientDrag = null;
   }
 
   public resetResize(): void {
@@ -970,6 +1093,16 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   public handleEscape(): boolean {
+    if (this._activeGradientDrag) {
+      this.stateManager.updateShape(this._activeGradientDrag.shapeId, {
+        [this._activeGradientDrag.property]: this._activeGradientDrag.initialGradient,
+      });
+      this._activeGradientDrag = null;
+      this.stateManager.markDirty();
+      this.canvas.style.cursor = 'default';
+      return true;
+    }
+
     if (this._multiTransformState) {
       const restoreEntries = this._multiTransformState.leafShapes.map((shape) => ({
         id: shape.id,

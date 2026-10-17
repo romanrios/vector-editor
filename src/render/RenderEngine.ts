@@ -2,6 +2,8 @@ import {
   isGroup,
   isShape,
   isText,
+  isGradient,
+  isLinearGradient,
   type AABB,
   type Document,
   type Ellipse,
@@ -14,6 +16,7 @@ import {
   type Shape,
   type Text,
   type Vector2D,
+  type Gradient,
 } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import {
@@ -31,6 +34,7 @@ import type { ShapePreview } from '../input/InputController.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 import { isNonePaint } from '../utils/color.ts';
+import { createCanvasGradient, gradientToWorldPoint } from '../utils/gradient.ts';
 
 export interface TextEditRenderState {
   textId: string;
@@ -487,13 +491,37 @@ export class RenderEngine {
     }
 
     if (!isNonePaint(rect.fill)) {
-      this.ctx.fillStyle = rect.fill!;
+      if (isGradient(rect.fill)) {
+        const baseAABB = {
+          minX: rect.x,
+          minY: rect.y,
+          maxX: rect.x + rect.width,
+          maxY: rect.y + rect.height,
+          width: rect.width,
+          height: rect.height,
+        };
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, rect.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = rect.fill!;
+      }
       this.ctx.fill();
     }
 
     if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
       this.ctx.lineWidth = rect.strokeWidth;
-      this.ctx.strokeStyle = rect.stroke!;
+      if (isGradient(rect.stroke)) {
+        const baseAABB = {
+          minX: rect.x,
+          minY: rect.y,
+          maxX: rect.x + rect.width,
+          maxY: rect.y + rect.height,
+          width: rect.width,
+          height: rect.height,
+        };
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, rect.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = rect.stroke!;
+      }
       this.ctx.stroke();
     }
 
@@ -506,7 +534,11 @@ export class RenderEngine {
   private renderEllipse(ellipse: Ellipse): void {
     this.ctx.save();
 
-    const rotationRad = ellipse.rotation ? (ellipse.rotation * Math.PI) / 180 : 0;
+    if (ellipse.rotation) {
+      this.ctx.translate(ellipse.x, ellipse.y);
+      this.ctx.rotate((ellipse.rotation * Math.PI) / 180);
+      this.ctx.translate(-ellipse.x, -ellipse.y);
+    }
 
     this.ctx.beginPath();
     this.ctx.ellipse(
@@ -514,19 +546,36 @@ export class RenderEngine {
       ellipse.y,
       ellipse.radiusX,
       ellipse.radiusY,
-      rotationRad,
+      0,
       0,
       Math.PI * 2
     );
 
+    const baseAABB = {
+      minX: ellipse.x - ellipse.radiusX,
+      minY: ellipse.y - ellipse.radiusY,
+      maxX: ellipse.x + ellipse.radiusX,
+      maxY: ellipse.y + ellipse.radiusY,
+      width: ellipse.radiusX * 2,
+      height: ellipse.radiusY * 2,
+    };
+
     if (!isNonePaint(ellipse.fill)) {
-      this.ctx.fillStyle = ellipse.fill!;
+      if (isGradient(ellipse.fill)) {
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, ellipse.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = ellipse.fill!;
+      }
       this.ctx.fill();
     }
 
     if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
       this.ctx.lineWidth = ellipse.strokeWidth;
-      this.ctx.strokeStyle = ellipse.stroke!;
+      if (isGradient(ellipse.stroke)) {
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, ellipse.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = ellipse.stroke!;
+      }
       this.ctx.stroke();
     }
 
@@ -568,6 +617,11 @@ export class RenderEngine {
           this.renderTextEditOverlay(node, textEdit, zoom);
         } else if (!pathEdit || pathEdit.pathId !== node.id) {
           this.renderSingleShapeSelection(node, zoom);
+          if (isGradient(node.fill)) {
+            this.renderGradientOverlay(node, node.fill, zoom);
+          } else if (isGradient(node.stroke)) {
+            this.renderGradientOverlay(node, node.stroke, zoom);
+          }
         }
       }
     } else if (selectedNodes.length > 1) {
@@ -898,6 +952,143 @@ export class RenderEngine {
   }
 
   /**
+   * Dibuja los tiradores visuales del degradado activo sobre la figura seleccionada:
+   * línea conectora, tiradores de inicio/fin (o centro/radio) y marcadores para cada stop.
+   */
+  private renderGradientOverlay(shape: Shape, gradient: Gradient, zoom: number): void {
+    const handleRadius = 6 / zoom;
+    const stopRadius = 5 / zoom;
+    this.ctx.save();
+
+    if (isLinearGradient(gradient)) {
+      const p1 = gradientToWorldPoint(shape, gradient.x1, gradient.y1, this.ctx);
+      const p2 = gradientToWorldPoint(shape, gradient.x2, gradient.y2, this.ctx);
+
+      // 1. Línea conectora entre inicio y fin (sombra + línea blanca)
+      this.ctx.beginPath();
+      this.ctx.moveTo(p1.x, p1.y);
+      this.ctx.lineTo(p2.x, p2.y);
+      this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+      this.ctx.lineWidth = 3 / zoom;
+      this.ctx.stroke();
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(p1.x, p1.y);
+      this.ctx.lineTo(p2.x, p2.y);
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.stroke();
+
+      // 2. Marcadores para cada parada (stop) de color a lo largo de la línea
+      for (const stop of gradient.stops) {
+        const offset = Math.max(0, Math.min(1, stop.offset));
+        const px = p1.x + offset * (p2.x - p1.x);
+        const py = p1.y + offset * (p2.y - p1.y);
+
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, stopRadius, 0, Math.PI * 2);
+        this.ctx.fillStyle = stop.color;
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1.5 / zoom;
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, stopRadius + 1 / zoom, 0, Math.PI * 2);
+        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        this.ctx.lineWidth = 1 / zoom;
+        this.ctx.stroke();
+      }
+
+      // 3. Tirador circular de inicio (p1)
+      this.ctx.beginPath();
+      this.ctx.arc(p1.x, p1.y, handleRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 2 / zoom;
+      this.ctx.stroke();
+
+      // 4. Tirador circular de fin (p2)
+      this.ctx.beginPath();
+      this.ctx.arc(p2.x, p2.y, handleRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#2563eb';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 2 / zoom;
+      this.ctx.stroke();
+    } else {
+      // Degradado Radial
+      const center = gradientToWorldPoint(shape, gradient.cx, gradient.cy, this.ctx);
+      const radiusPoint = gradientToWorldPoint(shape, gradient.cx + gradient.r, gradient.cy, this.ctx);
+      const radDist = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
+
+      // Círculo perimetral de referencia tenue
+      this.ctx.beginPath();
+      this.ctx.arc(center.x, center.y, radDist, 0, Math.PI * 2);
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      this.ctx.setLineDash([4 / zoom, 4 / zoom]);
+      this.ctx.lineWidth = 1 / zoom;
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      // Línea de radio
+      this.ctx.beginPath();
+      this.ctx.moveTo(center.x, center.y);
+      this.ctx.lineTo(radiusPoint.x, radiusPoint.y);
+      this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+      this.ctx.lineWidth = 3 / zoom;
+      this.ctx.stroke();
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(center.x, center.y);
+      this.ctx.lineTo(radiusPoint.x, radiusPoint.y);
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.stroke();
+
+      // Stops a lo largo del radio
+      for (const stop of gradient.stops) {
+        const offset = Math.max(0, Math.min(1, stop.offset));
+        const px = center.x + offset * (radiusPoint.x - center.x);
+        const py = center.y + offset * (radiusPoint.y - center.y);
+
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, stopRadius, 0, Math.PI * 2);
+        this.ctx.fillStyle = stop.color;
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1.5 / zoom;
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.arc(px, py, stopRadius + 1 / zoom, 0, Math.PI * 2);
+        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        this.ctx.lineWidth = 1 / zoom;
+        this.ctx.stroke();
+      }
+
+      // Tirador central
+      this.ctx.beginPath();
+      this.ctx.arc(center.x, center.y, handleRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#2563eb';
+      this.ctx.lineWidth = 2 / zoom;
+      this.ctx.stroke();
+
+      // Tirador perimetral de radio
+      this.ctx.beginPath();
+      this.ctx.arc(radiusPoint.x, radiusPoint.y, handleRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#2563eb';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 2 / zoom;
+      this.ctx.stroke();
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
    * Dibuja un nodo Path utilizando curvas de Bézier cúbicas (bezierCurveTo) en Canvas 2D.
    */
   private renderPath(path: Path, _zoom?: number): void {
@@ -946,13 +1137,23 @@ export class RenderEngine {
     }
 
     if (!isNonePaint(path.fill)) {
-      this.ctx.fillStyle = path.fill!;
+      if (isGradient(path.fill)) {
+        const baseAABB = getPathBaseAABB(path);
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, path.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = path.fill!;
+      }
       this.ctx.fill();
     }
 
     if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
       this.ctx.lineWidth = path.strokeWidth;
-      this.ctx.strokeStyle = path.stroke!;
+      if (isGradient(path.stroke)) {
+        const baseAABB = getPathBaseAABB(path);
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, path.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = path.stroke!;
+      }
       this.ctx.lineCap = 'round';
       this.ctx.lineJoin = 'round';
       this.ctx.stroke();
@@ -999,9 +1200,21 @@ export class RenderEngine {
     this.ctx.textBaseline = 'top';
 
     // 3. Color de relleno (negro por defecto si no se indica)
-    this.ctx.fillStyle = text.fill ?? '#000000';
+    if (hasFill) {
+      if (isGradient(text.fill)) {
+        const baseAABB = getTextBaseAABB(text, this.ctx);
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, text.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = text.fill ?? '#000000';
+      }
+    }
     if (hasStroke) {
-      this.ctx.strokeStyle = text.stroke!;
+      if (isGradient(text.stroke)) {
+        const baseAABB = getTextBaseAABB(text, this.ctx);
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, text.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = text.stroke!;
+      }
       this.ctx.lineWidth = text.strokeWidth ?? 1;
       this.ctx.lineJoin = 'round';
     }

@@ -8,10 +8,52 @@ import type {
   Ellipse,
   Text,
   SelectableNode,
+  Gradient,
 } from '../types/scene-graph.ts';
-import { isGroup } from '../types/scene-graph.ts';
+import { isGroup, isShape, isGradient, isLinearGradient } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
 import { getPathBaseAABB, getTextLineHeight, getWrappedTextLines } from './geometry.ts';
+
+interface ExportGradientEntry {
+  readonly id: string;
+  readonly gradient: Gradient;
+}
+
+function collectGradientsFromChild(
+  child: LayerChildNode,
+  selectedSet: Set<string> | null
+): ExportGradientEntry[] {
+  if (child.visible === false) {
+    return [];
+  }
+
+  if (selectedSet) {
+    if (isGroup(child)) {
+      const leaves = collectLeafShapes(child);
+      const anySelected = leaves.some((l) => selectedSet.has(l.id)) || selectedSet.has(child.id);
+      if (!anySelected) {
+        return [];
+      }
+    } else if (!selectedSet.has(child.id)) {
+      return [];
+    }
+  }
+
+  const entries: ExportGradientEntry[] = [];
+  if (isGroup(child)) {
+    for (const nested of child.children) {
+      entries.push(...collectGradientsFromChild(nested, selectedSet));
+    }
+  } else if (isShape(child)) {
+    if (isGradient(child.fill)) {
+      entries.push({ id: `gradient-${child.id}-fill`, gradient: child.fill });
+    }
+    if (isGradient(child.stroke)) {
+      entries.push({ id: `gradient-${child.id}-stroke`, gradient: child.stroke });
+    }
+  }
+  return entries;
+}
 
 /**
  * Opciones para la exportación de documentos a SVG
@@ -181,7 +223,11 @@ function renderChildToSvg(
   if (isNonePaint(child.fill)) {
     commonAttrs.push('fill="none"');
   } else if (child.fill) {
-    commonAttrs.push(`fill="${escapeXml(child.fill)}"`);
+    if (isGradient(child.fill)) {
+      commonAttrs.push(`fill="url(#gradient-${child.id}-fill)"`);
+    } else {
+      commonAttrs.push(`fill="${escapeXml(child.fill)}"`);
+    }
   } else {
     // Por especificación SVG, si fill se omite el valor predeterminado es negro.
     // En Vectedit, si no se define fill en figuras geométricas, no se dibuja relleno.
@@ -190,7 +236,11 @@ function renderChildToSvg(
 
   // Trazo
   if (!isNonePaint(child.stroke) && child.stroke && child.strokeWidth && child.strokeWidth > 0) {
-    commonAttrs.push(`stroke="${escapeXml(child.stroke)}"`);
+    if (isGradient(child.stroke)) {
+      commonAttrs.push(`stroke="url(#gradient-${child.id}-stroke)"`);
+    } else {
+      commonAttrs.push(`stroke="${escapeXml(child.stroke)}"`);
+    }
     commonAttrs.push(`stroke-width="${formatNum(child.strokeWidth, precision)}"`);
   } else {
     commonAttrs.push('stroke="none"');
@@ -441,6 +491,50 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
   lines.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatNum(vx, precision)} ${formatNum(vy, precision)} ${formatNum(vw, precision)} ${formatNum(vh, precision)}" width="${formatNum(vw, precision)}" height="${formatNum(vh, precision)}">`
   );
+
+  // Recopilar y emitir definiciones de degradados (<defs>)
+  const allGradients: ExportGradientEntry[] = [];
+  for (const layer of doc.children) {
+    if (layer.visible === false) {
+      continue;
+    }
+    for (const child of layer.children) {
+      allGradients.push(...collectGradientsFromChild(child, selectedSet));
+    }
+  }
+
+  if (allGradients.length > 0) {
+    lines.push('  <defs>');
+    for (const entry of allGradients) {
+      const grad = entry.gradient;
+      if (isLinearGradient(grad)) {
+        lines.push(
+          `    <linearGradient id="${entry.id}" gradientUnits="objectBoundingBox" x1="${formatNum(grad.x1 * 100, precision)}%" y1="${formatNum(grad.y1 * 100, precision)}%" x2="${formatNum(grad.x2 * 100, precision)}%" y2="${formatNum(grad.y2 * 100, precision)}%">`
+        );
+        for (const stop of grad.stops) {
+          const stopOpacity = stop.opacity !== undefined ? ` stop-opacity="${formatNum(stop.opacity, 3)}"` : '';
+          lines.push(
+            `      <stop offset="${formatNum(stop.offset * 100, precision)}%" stop-color="${escapeXml(stop.color)}"${stopOpacity} />`
+          );
+        }
+        lines.push('    </linearGradient>');
+      } else {
+        const fxAttr = grad.fx !== undefined ? ` fx="${formatNum(grad.fx * 100, precision)}%"` : '';
+        const fyAttr = grad.fy !== undefined ? ` fy="${formatNum(grad.fy * 100, precision)}%"` : '';
+        lines.push(
+          `    <radialGradient id="${entry.id}" gradientUnits="objectBoundingBox" cx="${formatNum(grad.cx * 100, precision)}%" cy="${formatNum(grad.cy * 100, precision)}%" r="${formatNum(grad.r * 100, precision)}%"${fxAttr}${fyAttr}>`
+        );
+        for (const stop of grad.stops) {
+          const stopOpacity = stop.opacity !== undefined ? ` stop-opacity="${formatNum(stop.opacity, 3)}"` : '';
+          lines.push(
+            `      <stop offset="${formatNum(stop.offset * 100, precision)}%" stop-color="${escapeXml(stop.color)}"${stopOpacity} />`
+          );
+        }
+        lines.push('    </radialGradient>');
+      }
+    }
+    lines.push('  </defs>');
+  }
 
   // Fondo opcional
   if (options.includeBackground) {

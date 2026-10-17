@@ -1,4 +1,17 @@
-import type { Document, Group, Layer, LayerChildNode, Path, PathPoint, Rectangle, Ellipse, Text } from '../types/scene-graph.ts';
+import type {
+  Document,
+  Group,
+  Layer,
+  LayerChildNode,
+  Path,
+  PathPoint,
+  Rectangle,
+  Ellipse,
+  Text,
+  FillType,
+  Gradient,
+  GradientStop,
+} from '../types/scene-graph.ts';
 
 /**
  * Serializa el estado completo del Scene Graph (Document) en un string JSON puro.
@@ -74,6 +87,84 @@ function isObject(val: unknown): val is Record<string, unknown> {
 
 function isFiniteNumber(val: unknown): val is number {
   return typeof val === 'number' && Number.isFinite(val);
+}
+
+function parseGradientStop(stop: unknown, stopPath: string): GradientStop {
+  if (!isObject(stop)) {
+    throw new DocumentParseError(`${stopPath} debe ser un objeto`);
+  }
+  if (typeof stop.id !== 'string' || stop.id.trim() === '') {
+    throw new DocumentParseError(`${stopPath}.id debe ser un string no vacío`);
+  }
+  if (!isFiniteNumber(stop.offset) || stop.offset < 0 || stop.offset > 1) {
+    throw new DocumentParseError(`${stopPath}.offset debe ser un número finito entre 0 y 1`);
+  }
+  if (typeof stop.color !== 'string') {
+    throw new DocumentParseError(`${stopPath}.color debe ser un string`);
+  }
+  if (stop.opacity !== undefined && (!isFiniteNumber(stop.opacity) || stop.opacity < 0 || stop.opacity > 1)) {
+    throw new DocumentParseError(`${stopPath}.opacity debe ser un número finito entre 0 y 1`);
+  }
+  return {
+    id: stop.id,
+    offset: stop.offset,
+    color: stop.color,
+    ...(stop.opacity !== undefined ? { opacity: stop.opacity } : {}),
+  };
+}
+
+function parseGradient(grad: unknown, gradPath: string): Gradient {
+  if (!isObject(grad)) {
+    throw new DocumentParseError(`${gradPath} debe ser un objeto`);
+  }
+  if (grad.type !== 'linear' && grad.type !== 'radial') {
+    throw new DocumentParseError(`${gradPath}.type debe ser 'linear' o 'radial'`);
+  }
+  if (!Array.isArray(grad.stops) || grad.stops.length === 0) {
+    throw new DocumentParseError(`${gradPath}.stops debe ser un array no vacío de paradas de degradado`);
+  }
+
+  const cleanStops = grad.stops.map((s, idx) => parseGradientStop(s, `${gradPath}.stops[${idx}]`));
+
+  if (grad.type === 'linear') {
+    if (!isFiniteNumber(grad.x1)) throw new DocumentParseError(`${gradPath}.x1 debe ser un número finito`);
+    if (!isFiniteNumber(grad.y1)) throw new DocumentParseError(`${gradPath}.y1 debe ser un número finito`);
+    if (!isFiniteNumber(grad.x2)) throw new DocumentParseError(`${gradPath}.x2 debe ser un número finito`);
+    if (!isFiniteNumber(grad.y2)) throw new DocumentParseError(`${gradPath}.y2 debe ser un número finito`);
+
+    return {
+      type: 'linear',
+      x1: grad.x1,
+      y1: grad.y1,
+      x2: grad.x2,
+      y2: grad.y2,
+      stops: cleanStops,
+    };
+  } else {
+    if (!isFiniteNumber(grad.cx)) throw new DocumentParseError(`${gradPath}.cx debe ser un número finito`);
+    if (!isFiniteNumber(grad.cy)) throw new DocumentParseError(`${gradPath}.cy debe ser un número finito`);
+    if (!isFiniteNumber(grad.r) || grad.r <= 0) throw new DocumentParseError(`${gradPath}.r debe ser un número finito positivo`);
+
+    return {
+      type: 'radial',
+      cx: grad.cx,
+      cy: grad.cy,
+      r: grad.r,
+      ...(grad.fx !== undefined && isFiniteNumber(grad.fx) ? { fx: grad.fx } : {}),
+      ...(grad.fy !== undefined && isFiniteNumber(grad.fy) ? { fy: grad.fy } : {}),
+      stops: cleanStops,
+    };
+  }
+}
+
+function parseFillType(val: unknown, fillPath: string): FillType {
+  if (typeof val === 'string') {
+    return val;
+  }
+  if (isObject(val)) {
+    return parseGradient(val, fillPath);
+  }
+  throw new DocumentParseError(`${fillPath} debe ser un string o un objeto Gradient`);
 }
 
 function parseLayerChild(
@@ -171,11 +262,11 @@ function parseLayerChild(
   if (child.strokeWidth !== undefined && !isFiniteNumber(child.strokeWidth)) {
     throw new DocumentParseError(`${childPath}.strokeWidth debe ser un número finito`);
   }
-  if (child.fill !== undefined && typeof child.fill !== 'string') {
-    throw new DocumentParseError(`${childPath}.fill debe ser un string`);
+  if (child.fill !== undefined) {
+    (child as { fill?: FillType }).fill = parseFillType(child.fill, `${childPath}.fill`);
   }
-  if (child.stroke !== undefined && typeof child.stroke !== 'string') {
-    throw new DocumentParseError(`${childPath}.stroke debe ser un string`);
+  if (child.stroke !== undefined) {
+    (child as { stroke?: FillType }).stroke = parseFillType(child.stroke, `${childPath}.stroke`);
   }
   if (child.visible !== undefined && typeof child.visible !== 'boolean') {
     throw new DocumentParseError(`${childPath}.visible debe ser un booleano`);

@@ -31,6 +31,51 @@ export interface PathPoint {
 }
 
 /**
+ * Parada de color (stop) dentro de un degradado
+ */
+export interface GradientStop {
+  readonly id: string;
+  readonly offset: number; // Normalizado en el rango [0, 1]
+  readonly color: string;
+  readonly opacity?: number; // Normalizado en el rango [0, 1]
+}
+
+/**
+ * Degradado lineal definido en coordenadas relativas/normalizadas [0, 1] de la caja base de la figura
+ */
+export interface LinearGradient {
+  readonly type: 'linear';
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  readonly stops: readonly GradientStop[];
+}
+
+/**
+ * Degradado radial definido en coordenadas relativas/normalizadas [0, 1] de la caja base de la figura
+ */
+export interface RadialGradient {
+  readonly type: 'radial';
+  readonly cx: number;
+  readonly cy: number;
+  readonly r: number;
+  readonly fx?: number;
+  readonly fy?: number;
+  readonly stops: readonly GradientStop[];
+}
+
+/**
+ * Unión de tipos de degradados soportados
+ */
+export type Gradient = LinearGradient | RadialGradient;
+
+/**
+ * Tipo universal de pintura para rellenos y contornos (color sólido hex/css, degradado o 'none')
+ */
+export type FillType = string | Gradient;
+
+/**
  * Propiedades geométricas y visuales para nodos de tipo Path (trazados vectoriales de Bézier)
  */
 export interface Path extends BaseNode {
@@ -39,8 +84,8 @@ export interface Path extends BaseNode {
   readonly y: number;
   readonly points: readonly PathPoint[];
   readonly closed?: boolean;
-  readonly fill?: string;
-  readonly stroke?: string;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly rotation?: number;
   readonly opacity?: number;
@@ -80,8 +125,8 @@ export interface Rectangle extends BaseNode {
   readonly y: number;
   readonly width: number;
   readonly height: number;
-  readonly fill?: string;
-  readonly stroke?: string;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly cornerRadius?: number;
   readonly rotation?: number;
@@ -97,8 +142,8 @@ export interface Ellipse extends BaseNode {
   readonly y: number;
   readonly radiusX: number;
   readonly radiusY: number;
-  readonly fill?: string;
-  readonly stroke?: string;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly rotation?: number;
   readonly opacity?: number;
@@ -133,8 +178,8 @@ export interface Text extends BaseNode {
   readonly fontStyle?: FontStyle;
   readonly textAlign?: TextAlign;
   readonly lineHeight?: number;
-  readonly fill?: string;
-  readonly stroke?: string;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly rotation?: number;
   readonly opacity?: number;
@@ -253,3 +298,20 @@ export function isPath(node: SceneNode): node is Path {
 export function isText(node: SceneNode): node is Text {
   return node.type === 'text';
 }
+
+export function isGradient(val: unknown): val is Gradient {
+  if (typeof val !== 'object' || val === null) {
+    return false;
+  }
+  const type = (val as { type?: unknown }).type;
+  return type === 'linear' || type === 'radial';
+}
+
+export function isLinearGradient(val: unknown): val is LinearGradient {
+  return isGradient(val) && val.type === 'linear';
+}
+
+export function isRadialGradient(val: unknown): val is RadialGradient {
+  return isGradient(val) && val.type === 'radial';
+}
+

@@ -9,9 +9,24 @@ import type {
   Text,
   SelectableNode,
 } from '../types/scene-graph.ts';
-import { isGroup, isShape } from '../types/scene-graph.ts';
+import { isGroup, isShape, isGradient, type FillType, type Shape } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
 import { getPathBaseAABB, getTextLineHeight, getTextLineRanges } from './geometry.ts';
+import { createCanvasGradient, getShapeBaseAABB } from './gradient.ts';
+
+function resolveRasterPaint(
+  ctx: CanvasRenderingContext2D,
+  shape: Shape,
+  paint: FillType | undefined,
+  defaultColor: string = '#000000'
+): string | CanvasGradient {
+  if (!paint) return defaultColor;
+  if (isGradient(paint)) {
+    const baseAABB = getShapeBaseAABB(shape, ctx);
+    return createCanvasGradient(ctx, paint, baseAABB, 1);
+  }
+  return paint;
+}
 
 export interface RasterExportOptions {
   /**
@@ -207,13 +222,13 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
     }
 
     if (!isNonePaint(rect.fill) && rect.fill) {
-      ctx.fillStyle = rect.fill;
+      ctx.fillStyle = resolveRasterPaint(ctx, rect, rect.fill);
       ctx.fill();
     }
 
     if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0 && rect.stroke) {
       ctx.lineWidth = rect.strokeWidth;
-      ctx.strokeStyle = rect.stroke;
+      ctx.strokeStyle = resolveRasterPaint(ctx, rect, rect.stroke);
       ctx.stroke();
     }
   } else if (shape.type === 'ellipse') {
@@ -242,13 +257,13 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
     }
 
     if (!isNonePaint(ellipse.fill) && ellipse.fill) {
-      ctx.fillStyle = ellipse.fill;
+      ctx.fillStyle = resolveRasterPaint(ctx, ellipse, ellipse.fill);
       ctx.fill();
     }
 
     if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0 && ellipse.stroke) {
       ctx.lineWidth = ellipse.strokeWidth;
-      ctx.strokeStyle = ellipse.stroke;
+      ctx.strokeStyle = resolveRasterPaint(ctx, ellipse, ellipse.stroke);
       ctx.stroke();
     }
   } else if (shape.type === 'path') {
@@ -289,13 +304,13 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
       }
 
       if (!isNonePaint(path.fill) && path.fill) {
-        ctx.fillStyle = path.fill;
+        ctx.fillStyle = resolveRasterPaint(ctx, path, path.fill);
         ctx.fill();
       }
 
       if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0 && path.stroke) {
         ctx.lineWidth = path.strokeWidth;
-        ctx.strokeStyle = path.stroke;
+        ctx.strokeStyle = resolveRasterPaint(ctx, path, path.stroke);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
@@ -323,9 +338,9 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
       ctx.textAlign = text.textAlign ?? 'left';
       ctx.textBaseline = 'top';
 
-      ctx.fillStyle = text.fill ?? '#000000';
+      ctx.fillStyle = resolveRasterPaint(ctx, text, text.fill, '#000000');
       if (hasStroke && text.stroke) {
-        ctx.strokeStyle = text.stroke;
+        ctx.strokeStyle = resolveRasterPaint(ctx, text, text.stroke, '#000000');
         ctx.lineWidth = text.strokeWidth ?? 1;
         ctx.lineJoin = 'round';
       }

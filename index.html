@@ -1309,6 +1309,57 @@
         background: repeating-linear-gradient(45deg, #52525b, #52525b 3px, #27272a 3px, #27272a 6px) !important;
       }
 
+      /* Degradados en Panel de Propiedades */
+      .gradient-track {
+        position: relative;
+        width: 100%;
+        height: 18px;
+        border-radius: var(--radius-xs);
+        border: 1px solid var(--border-default);
+        cursor: copy;
+        background-color: #1f1f23;
+        background-image:
+          linear-gradient(45deg, #2e2e34 25%, transparent 25%),
+          linear-gradient(-45deg, #2e2e34 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #2e2e34 75%),
+          linear-gradient(-45deg, transparent 75%, #2e2e34 75%);
+        background-size: 8px 8px;
+        background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+      }
+
+      .gradient-track-fill {
+        position: absolute;
+        inset: 0;
+        border-radius: calc(var(--radius-xs) - 1px);
+        pointer-events: none;
+      }
+
+      .gradient-stop-marker {
+        position: absolute;
+        top: 50%;
+        width: 12px;
+        height: 18px;
+        transform: translate(-50%, -50%);
+        border: 2px solid #ffffff;
+        border-radius: 3px;
+        cursor: grab;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+        pointer-events: auto;
+        transition: border-color var(--transition);
+      }
+
+      .gradient-stop-marker:hover {
+        transform: translate(-50%, -50%) scale(1.15);
+        z-index: 2;
+      }
+
+      .gradient-stop-marker.selected {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.8);
+        z-index: 3;
+      }
+
       .control-group input[type="color"] {
         position: absolute;
         inset: 0;
@@ -2275,8 +2326,18 @@
         </summary>
         <div class="section-content">
           <div class="control-group" id="group-fill">
-            <label for="input-fill-hex">Relleno</label>
-            <div class="color-composite-group">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label for="select-fill-mode">Relleno</label>
+              <select id="select-fill-mode" class="control-select" style="width: auto; min-width: 95px; padding: 2px 6px; font-size: 11px;" aria-label="Modo de relleno">
+                <option value="solid">Sólido</option>
+                <option value="linear">Lineal</option>
+                <option value="radial">Radial</option>
+                <option value="none">Ninguno</option>
+              </select>
+            </div>
+
+            <!-- Controles Relleno Sólido -->
+            <div class="color-composite-group" id="fill-solid-controls">
               <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
                 <div class="color-swatch-preview" id="swatch-fill-preview"></div>
                 <input type="color" id="input-fill" title="Elegir color de relleno" aria-label="Elegir color de relleno">
@@ -2288,6 +2349,46 @@
                   <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
                 </svg>
               </button>
+            </div>
+
+            <!-- Controles Relleno Degradado -->
+            <div id="fill-gradient-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 6px;">
+              <!-- Barra del degradado interactiva -->
+              <div style="position: relative; width: 100%; padding: 4px 0;">
+                <div id="gradient-track" class="gradient-track" title="Clic para agregar parada de color">
+                  <div id="gradient-track-fill" class="gradient-track-fill"></div>
+                  <div id="gradient-stops-container" style="position: absolute; inset: 0;"></div>
+                </div>
+              </div>
+
+              <!-- Fila del stop activo -->
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                <div class="color-composite-group" style="flex: 1; min-width: 0;">
+                  <div class="color-swatch-wrapper" id="swatch-stop-wrapper" style="width: 22px; height: 22px;">
+                    <div class="color-swatch-preview" id="swatch-stop-preview"></div>
+                    <input type="color" id="input-stop-color" title="Color de parada activa">
+                  </div>
+                  <input type="text" id="input-stop-hex" class="input-hex" maxlength="7" style="font-size: 11px; padding: 2px 4px; height: 22px;" placeholder="#000000" aria-label="Color hex parada activa">
+                </div>
+
+                <div class="input-number-wrapper" style="width: 58px;" title="Posición de parada">
+                  <input type="number" id="input-stop-offset" min="0" max="100" step="1" value="0" style="padding: 2px 4px; height: 22px; font-size: 11px;" aria-label="Posición de parada">
+                  <span class="input-unit" aria-hidden="true">%</span>
+                </div>
+
+                <div class="input-number-wrapper" style="width: 52px;" title="Opacidad de parada">
+                  <input type="number" id="input-stop-opacity" min="0" max="100" step="1" value="100" style="padding: 2px 4px; height: 22px; font-size: 11px;" aria-label="Opacidad de parada">
+                  <span class="input-unit" aria-hidden="true">%</span>
+                </div>
+
+                <button type="button" id="btn-gradient-flip" class="btn-color-none" style="width: 24px; height: 22px; font-size: 12px;" title="Invertir degradado" aria-label="Invertir degradado">
+                  ⇄
+                </button>
+
+                <button type="button" id="btn-delete-stop" class="btn-color-none" style="width: 24px; height: 22px; font-size: 12px;" title="Eliminar parada" aria-label="Eliminar parada">
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
           <div class="control-group" id="group-stroke">

@@ -10,12 +10,14 @@ export interface ShapeStyleChangeEntry {
   readonly after: ShapeStyleUpdate;
 }
 
+import { isPaintEqual } from '../state/StateManager.ts';
+
 /**
  * Compara dos objetos ShapeStyleUpdate para verificar si son idénticos.
  */
 function areStylesEqual(a: ShapeStyleUpdate, b: ShapeStyleUpdate): boolean {
   if (a === b) return true;
-  if (a.fill !== b.fill) return false;
+  if (!isPaintEqual(a.fill, b.fill)) return false;
   if (a.stroke !== b.stroke) return false;
   if (a.strokeWidth !== b.strokeWidth) return false;
   if (a.opacity !== b.opacity) return false;

@@ -11,6 +11,7 @@ import type {
   SelectableNode,
   Shape,
   Text,
+  FillType,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -41,8 +42,8 @@ export interface ShapeDimensionsEntry {
 }
 
 export interface ShapeStyleUpdate {
-  readonly fill?: string;
-  readonly stroke?: string;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly opacity?: number;
 }
@@ -58,6 +59,14 @@ export interface DocumentIndex {
 }
 
 export const documentIndexCache = new WeakMap<Document, DocumentIndex>();
+
+export function isPaintEqual(a: FillType | undefined, b: FillType | undefined): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a === 'string') return a === b;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 /**
  * Helper puro que expande una colección de nodos seleccionables (figuras o grupos),
@@ -1607,10 +1616,10 @@ export class StateManager {
             continue;
           }
 
-          const hasFillChange = targetStyle.fill !== undefined && targetStyle.fill !== child.fill;
-          const childStroke = 'stroke' in child ? (child as { stroke?: string }).stroke : undefined;
+          const hasFillChange = targetStyle.fill !== undefined && !isPaintEqual(targetStyle.fill, child.fill);
+          const childStroke = 'stroke' in child ? (child as { stroke?: FillType }).stroke : undefined;
           const childStrokeWidth = 'strokeWidth' in child ? (child as { strokeWidth?: number }).strokeWidth : undefined;
-          const hasStrokeChange = targetStyle.stroke !== undefined && targetStyle.stroke !== childStroke;
+          const hasStrokeChange = targetStyle.stroke !== undefined && !isPaintEqual(targetStyle.stroke, childStroke);
           const hasStrokeWidthChange =
             targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== childStrokeWidth;
           const hasOpacityChange = targetStyle.opacity !== undefined && targetStyle.opacity !== child.opacity;
