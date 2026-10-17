@@ -160,6 +160,7 @@ export class StateManager {
   private _selectedSet: ReadonlySet<string> = new Set();
   private _listeners: Set<StateListener> = new Set();
   private _isDirty: boolean = true;
+  private _activeLayerId: string | null = null;
   private commandManager: CommandManager | null = null;
   private _drawingStyle: DrawingStyle = {
     fill: '#38bdf8',
@@ -188,6 +189,7 @@ export class StateManager {
     const initial = initialState ? structuredClone(initialState) : defaultState;
     this._isDirty = true;
     this._state = deepFreeze(initial);
+    this._activeLayerId = initial.children[0]?.id ?? null;
     this._selectedIds = Object.freeze([]);
     this._selectedSet = new Set();
     if (commandManager) {
@@ -318,6 +320,7 @@ export class StateManager {
     // Al cargar un documento nuevo, la selección queda siempre vacía
     this._selectedIds = Object.freeze([]);
     this._selectedSet = new Set();
+    this._activeLayerId = this._state.children[0]?.id ?? null;
 
     this.notify();
   }
@@ -658,6 +661,156 @@ export class StateManager {
   }
 
   /**
+   * Modifica la visibilidad de cualquier nodo (Layer, Group o Shape) en el Scene Graph de forma inmutable.
+   * Retorna true si cambió el valor de visibilidad, false si no hubo cambios o el nodo no existe.
+   */
+  public setNodeVisibility(nodeId: string, visible: boolean): boolean {
+    const node = this.findNode(nodeId);
+    if (!node) {
+      return false;
+    }
+    const current = node.visible ?? true;
+    if (current === visible) {
+      return false;
+    }
+    return this.updateNode(nodeId, { visible });
+  }
+
+  /**
+   * Modifica el estado de bloqueo de cualquier nodo (Layer, Group o Shape) en el Scene Graph de forma inmutable.
+   * Si el nodo pasa a estar bloqueado y estaba en la selección activa (o contenía descendientes seleccionados),
+   * estos son removidos de la selección.
+   * Retorna true si cambió el valor de bloqueo, false si no hubo cambios o el nodo no existe.
+   */
+  public setNodeLocked(nodeId: string, locked: boolean): boolean {
+    const node = this.findNode(nodeId);
+    if (!node) {
+      return false;
+    }
+    const current = node.locked ?? false;
+    if (current === locked) {
+      return false;
+    }
+    const changed = this.updateNode(nodeId, { locked });
+    if (changed && locked) {
+      const selected = this.getSelection();
+      if (selected.length > 0) {
+        const docIndex = getDocumentIndex(this._state);
+        const toRemove = selected.filter(
+          (id) => id === nodeId || isDescendantOf(id, nodeId, docIndex.parentMap)
+        );
+        if (toRemove.length > 0) {
+          this.removeFromSelection(toRemove);
+        }
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Modifica el nombre de cualquier nodo (Document, Layer, Group o Shape) en el Scene Graph de forma inmutable.
+   * Retorna true si cambió el nombre, false si no hubo cambios o el nodo no existe.
+   */
+  public setNodeName(nodeId: string, name: string): boolean {
+    const node = this.findNode(nodeId);
+    if (!node) {
+      return false;
+    }
+    const trimmed = name.trim();
+    if (!trimmed || node.name === trimmed) {
+      return false;
+    }
+    return this.updateNode(nodeId, { name: trimmed });
+  }
+
+  /**
+   * Obtiene el ID de la capa activa donde se insertarán nuevas figuras.
+   * Si la capa activa registrada ya no existe, recae en la primera capa del documento.
+   */
+  public getActiveLayerId(): string {
+    const doc = this._state;
+    if (this._activeLayerId && doc.children.some((l) => l.id === this._activeLayerId)) {
+      return this._activeLayerId;
+    }
+    const fallbackId = doc.children[0]?.id ?? '';
+    this._activeLayerId = fallbackId || null;
+    return fallbackId;
+  }
+
+  /**
+   * Obtiene la capa activa del documento, o null si el documento no tiene capas.
+   */
+  public getActiveLayer(): Layer | null {
+    const activeId = this.getActiveLayerId();
+    if (!activeId) return null;
+    const node = this.findNode(activeId);
+    return node && isLayer(node) ? node : null;
+  }
+
+  /**
+   * Establece la capa activa para la creación de elementos.
+   * Retorna true si la capa existe y se configuró correctamente.
+   */
+  public setActiveLayerId(layerId: string): boolean {
+    const node = this.findNode(layerId);
+    if (!node || !isLayer(node)) {
+      return false;
+    }
+    if (this._activeLayerId !== layerId) {
+      this._activeLayerId = layerId;
+      this.markDirty();
+      this.notify();
+    }
+    return true;
+  }
+
+  /**
+   * Localiza la capa raíz contenedora a la que pertenece un nodo (o retorna el mismo nodo si ya es Layer).
+   */
+  public findLayerOfNode(nodeId: string): Layer | null {
+    const node = this.findNode(nodeId);
+    if (!node) return null;
+    if (isLayer(node)) return node;
+    let current: ParentNode | null = this.findParent(nodeId);
+    while (current) {
+      if (isLayer(current)) return current;
+      if (isDocument(current)) return null;
+      current = this.findParent(current.id);
+    }
+    return null;
+  }
+
+  /**
+   * Desplaza un nodo (Layer, Group o Shape) un paso hacia arriba o hacia abajo
+   * en el orden de apilamiento dentro de su contenedor padre.
+   * 'up': se desplaza hacia el frente (incrementa su índice).
+   * 'down': se desplaza hacia el fondo (decrementa su índice).
+   * Retorna true si fue desplazado, o false si ya estaba en el extremo o no se encontró.
+   */
+  public reorderNodeStep(nodeId: string, direction: 'up' | 'down'): boolean {
+    const parent = this.findParent(nodeId);
+    if (!parent) {
+      return false;
+    }
+    let children: readonly { id: string }[] = [];
+    if (isDocument(parent)) {
+      children = parent.children;
+    } else if (isLayer(parent) || isGroup(parent)) {
+      children = parent.children;
+    }
+    const fromIndex = children.findIndex((c) => c.id === nodeId);
+    if (fromIndex === -1) {
+      return false;
+    }
+    const toIndex = direction === 'up' ? fromIndex + 1 : fromIndex - 1;
+    if (toIndex < 0 || toIndex >= children.length) {
+      return false;
+    }
+    this.reorderNodes(parent.id, fromIndex, toIndex);
+    return true;
+  }
+
+  /**
    * Atajo para añadir una figura a una capa o grupo.
    */
   public addShape(layerOrGroupId: string, shape: Shape, index?: number): void {
@@ -878,6 +1031,12 @@ export class StateManager {
 
     this._selectedIds = Object.freeze(normalizedIds);
     this._selectedSet = new Set(normalizedIds);
+    if (normalizedIds.length > 0) {
+      const containingLayer = this.findLayerOfNode(normalizedIds[0]);
+      if (containingLayer) {
+        this._activeLayerId = containingLayer.id;
+      }
+    }
     this.markDirty();
     this.notify();
   }

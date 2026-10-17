@@ -108,7 +108,7 @@ export class CreationToolHandler implements ToolHandler {
     }
 
     const currentState = this.stateManager.getState();
-    const targetLayer = currentState.children[0];
+    const targetLayer = this.stateManager.getActiveLayer() ?? currentState.children[0];
     if (!targetLayer) {
       this.cancelCreation();
       return;

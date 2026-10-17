@@ -417,7 +417,10 @@ export class SelectionOperations {
    * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
   public duplicate(): (Shape[] & Shape) | null {
-    const prepared = this.prepareClones(this.stateManager.getSelectedNodes(), { dx: 10, dy: 10 });
+    const unLockedNodes = this.stateManager
+      .getSelectedNodes()
+      .filter((n) => !this.stateManager.isEffectivelyLocked(n.id));
+    const prepared = this.prepareClones(unLockedNodes, { dx: 10, dy: 10 });
     if (prepared.length === 0) {
       return null;
     }
@@ -501,7 +504,7 @@ export class SelectionOperations {
     this._pasteCount++;
     const offset = this._pasteCount * 10;
     const doc = this.stateManager.getState();
-    const defaultLayerId = doc.children[0]?.id;
+    const defaultLayerId = this.stateManager.getActiveLayerId() || doc.children[0]?.id;
 
     const clonedNodes: SelectableNode[] = [];
     const commands: AddShapeCommand[] = [];
@@ -544,7 +547,9 @@ export class SelectionOperations {
    * Registra UNA sola entrada en el historial de comandos (DeleteCommand o BatchCommand).
    */
   public deleteSelected(): boolean {
-    const selectedNodes = this.stateManager.getSelectedNodes();
+    const selectedNodes = this.stateManager
+      .getSelectedNodes()
+      .filter((n) => !this.stateManager.isEffectivelyLocked(n.id));
     if (selectedNodes.length === 0) {
       return false;
     }

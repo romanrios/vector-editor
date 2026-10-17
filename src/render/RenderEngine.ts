@@ -538,7 +538,10 @@ export class RenderEngine {
   private renderSelectionOverlay(_document: Document, zoom: number): void {
     const selectedNodes: SelectableNode[] = [];
     for (const node of this.stateManager.getSelectedNodes()) {
-      if (this.stateManager.isEffectivelyVisible(node.id)) {
+      if (
+        this.stateManager.isEffectivelyVisible(node.id) &&
+        !this.stateManager.isEffectivelyLocked(node.id)
+      ) {
         selectedNodes.push(node);
       }
     }

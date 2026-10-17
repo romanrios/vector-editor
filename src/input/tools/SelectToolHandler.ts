@@ -245,7 +245,9 @@ export class SelectToolHandler implements ToolHandler {
     const { x, y } = coords;
 
     // 1. Manejadores de redimensionado y rotación:
-    const selectedNodes = this.stateManager.getSelectedNodes();
+    const selectedNodes = this.stateManager
+      .getSelectedNodes()
+      .filter((n) => !this.stateManager.isEffectivelyLocked(n.id));
     const isMultiOrGroup = selectedNodes.length >= 2 || (selectedNodes.length === 1 && isGroup(selectedNodes[0]));
 
     if (isMultiOrGroup) {

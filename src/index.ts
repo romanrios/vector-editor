@@ -49,6 +49,12 @@ export * from './commands/GroupCommand.ts';
 export * from './commands/UngroupCommand.ts';
 export * from './commands/UpdateTextCommand.ts';
 export * from './commands/UpdateTextTypographyCommand.ts';
+export * from './commands/SetVisibilityCommand.ts';
+export * from './commands/SetLockedCommand.ts';
+export * from './commands/MoveStepCommand.ts';
+export * from './commands/AddLayerCommand.ts';
+export * from './commands/DeleteLayerCommand.ts';
+export * from './commands/RenameNodeCommand.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

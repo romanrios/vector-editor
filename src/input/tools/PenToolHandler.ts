@@ -64,7 +64,7 @@ export class PenToolHandler implements ToolHandler {
 
   public handlePenMouseDown(x: number, y: number): void {
     const currentState = this.stateManager.getState();
-    const targetLayer = currentState.children[0];
+    const targetLayer = this.stateManager.getActiveLayer() ?? currentState.children[0];
     if (!targetLayer) return;
 
     if (this._activePathId === null) {
