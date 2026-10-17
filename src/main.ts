@@ -35,12 +35,13 @@ import {
   type SelectableNode,
   type Shape,
   type Text,
+  type Path,
   type FontStyle,
   type FontWeight,
   type TextAlign,
 } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
-import { getSelectionBounds, normalizeAngle } from './utils/geometry.ts';
+import { getSelectionBounds, normalizeAngle, getPointType } from './utils/geometry.ts';
 import { getShapeDimensions, rotateShapesAboutPivot } from './utils/transform.ts';
 import { getPresetById, findPresetForSize } from './utils/artboardPresets.ts';
 import type { ShapeDimensions } from './commands/ResizeCommand.ts';
@@ -192,6 +193,13 @@ export function setupUIBindings(
   const btnAlignCenterV = document.querySelector<HTMLButtonElement>('#btn-align-center-v');
   const btnAlignBottom = document.querySelector<HTMLButtonElement>('#btn-align-bottom');
   const btnDistributeV = document.querySelector<HTMLButtonElement>('#btn-distribute-v');
+
+  // Sección Punto de Trazado en Panel de Propiedades
+  const sectionPathPoint = document.querySelector<HTMLDetailsElement>('#section-path-point');
+  const btnPointCorner = document.querySelector<HTMLButtonElement>('#btn-point-corner');
+  const btnPointSmooth = document.querySelector<HTMLButtonElement>('#btn-point-smooth');
+  const btnPointSymmetric = document.querySelector<HTMLButtonElement>('#btn-point-symmetric');
+  const btnDeleteAnchor = document.querySelector<HTMLButtonElement>('#btn-delete-anchor');
 
   // Botón responsive para alternar panel lateral
   const btnTogglePanel = document.querySelector<HTMLButtonElement>('#btn-toggle-panel');
@@ -930,6 +938,27 @@ export function setupUIBindings(
       sectionArtboard.style.display = hasSelection ? 'none' : 'block';
     }
 
+    const pathEdit = inputController?.pathEditState ?? null;
+    const hasSelectedAnchors = Boolean(
+      pathEdit && pathEdit.selectedAnchors && pathEdit.selectedAnchors.size > 0
+    );
+
+    if (sectionPathPoint) {
+      sectionPathPoint.style.display = hasSelectedAnchors ? 'block' : 'none';
+      if (hasSelectedAnchors && pathEdit) {
+        const pathNode = stateManager.findNode(pathEdit.pathId) as Path | null;
+        if (pathNode) {
+          const firstIndex = pathEdit.selectedAnchors.values().next().value;
+          const pt = firstIndex !== undefined ? pathNode.points[firstIndex] : undefined;
+          const ptType = pt ? (pt.pointType ?? getPointType(pt)) : 'corner';
+
+          btnPointCorner?.classList.toggle('active', ptType === 'corner');
+          btnPointSmooth?.classList.toggle('active', ptType === 'smooth');
+          btnPointSymmetric?.classList.toggle('active', ptType === 'symmetric');
+        }
+      }
+    }
+
     if (hasSelection) {
       if (selectionState) {
         selectionState.style.display = 'block';
@@ -980,6 +1009,9 @@ export function setupUIBindings(
       }
       if (sectionTypography) {
         sectionTypography.style.display = 'none';
+      }
+      if (sectionPathPoint) {
+        sectionPathPoint.style.display = 'none';
       }
       if (sectionAppearance) {
         sectionAppearance.style.display = 'block';
@@ -2437,6 +2469,33 @@ export function setupUIBindings(
   };
 
   btnDeleteSelection?.addEventListener('click', onDeleteSelectionClick);
+
+  // Botones de control de vértices de trazado
+  const onPointCornerClick = () => {
+    inputController.setSelectedPathPointType('corner');
+    syncPropertiesPanel();
+  };
+  const onPointSmoothClick = () => {
+    inputController.setSelectedPathPointType('smooth');
+    syncPropertiesPanel();
+  };
+  const onPointSymmetricClick = () => {
+    inputController.setSelectedPathPointType('symmetric');
+    syncPropertiesPanel();
+  };
+  const onDeleteAnchorClick = () => {
+    inputController.deleteSelected();
+    syncPropertiesPanel();
+  };
+
+  btnPointCorner?.addEventListener('click', onPointCornerClick);
+  btnPointSmooth?.addEventListener('click', onPointSmoothClick);
+  btnPointSymmetric?.addEventListener('click', onPointSymmetricClick);
+  btnDeleteAnchor?.addEventListener('click', onDeleteAnchorClick);
+
+  const onCanvasClickOrPointerUp = () => {
+    syncPropertiesPanel();
+  };
 
   // Botón responsive para alternar panel de propiedades en pantallas estrechas (< 900px)
   const onTogglePanelClick = () => {
@@ -4074,6 +4133,7 @@ export function setupUIBindings(
 
   // 7. Observabilidad de dimensiones del contenedor del lienzo (ResizeObserver)
   const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
+  canvas?.addEventListener('pointerup', onCanvasClickOrPointerUp);
   const canvasContainer = document.querySelector<HTMLElement>('#canvas-container, .canvas-viewport') ?? canvas;
   let resizeObserver: ResizeObserver | null = null;
 
@@ -4260,6 +4320,11 @@ export function setupUIBindings(
       btnSendToBack?.removeEventListener('click', onSendToBackClick);
       btnDuplicate?.removeEventListener('click', onDuplicateClick);
       btnDeleteSelection?.removeEventListener('click', onDeleteSelectionClick);
+      btnPointCorner?.removeEventListener('click', onPointCornerClick);
+      btnPointSmooth?.removeEventListener('click', onPointSmoothClick);
+      btnPointSymmetric?.removeEventListener('click', onPointSymmetricClick);
+      btnDeleteAnchor?.removeEventListener('click', onDeleteAnchorClick);
+      canvas?.removeEventListener('pointerup', onCanvasClickOrPointerUp);
       btnTogglePanel?.removeEventListener('click', onTogglePanelClick);
       tabBtnProperties?.removeEventListener('click', onTabPropertiesClick);
       tabBtnLayers?.removeEventListener('click', onTabLayersClick);

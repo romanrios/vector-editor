@@ -2453,6 +2453,51 @@
           </div>
         </details>
 
+        <!-- Sección: Punto de Trazado (visible cuando hay anclas de trazado seleccionadas) -->
+        <details class="collapsible-section" id="section-path-point" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Punto de Trazado</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label>Tipo de vértice</label>
+              <div class="panel-icon-grid" role="group" aria-label="Tipo de vértice">
+                <button id="btn-point-corner" class="panel-icon-btn" title="Esquina (Manejadores independientes)" aria-label="Esquina">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
+                    <polyline points="4 20 9 15"/>
+                    <polyline points="15 9 20 4"/>
+                  </svg>
+                </button>
+                <button id="btn-point-smooth" class="panel-icon-btn" title="Suavizado (Colineal, longitudes independientes)" aria-label="Suavizado">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                    <line x1="4" y1="12" x2="20" y2="12"/>
+                    <circle cx="4" cy="12" r="1.5"/>
+                    <circle cx="20" cy="12" r="1.5"/>
+                  </svg>
+                </button>
+                <button id="btn-point-symmetric" class="panel-icon-btn" title="Simétrico (Colineal, longitudes iguales)" aria-label="Simétrico">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="12 8 16 12 12 16 8 12" fill="currentColor"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <circle cx="3" cy="12" r="1.5"/>
+                    <circle cx="21" cy="12" r="1.5"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="control-group">
+              <button id="btn-delete-anchor" class="panel-btn-danger" title="Eliminar ancla seleccionada" aria-label="Eliminar ancla" style="width: 100%; padding: 6px; font-size: 12px; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); background: var(--bg-control); color: var(--text-primary); cursor: pointer;">
+                Eliminar ancla
+              </button>
+            </div>
+          </div>
+        </details>
+
         <!-- Sección: Alinear (visible solo con 2 o más figuras seleccionadas) -->
         <details class="collapsible-section" id="section-align" open style="display: none;">
           <summary class="section-header" tabindex="0">

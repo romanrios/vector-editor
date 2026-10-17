@@ -1,19 +1,28 @@
 import type { StateManager } from '../../state/StateManager.ts';
 import type { CommandManager } from '../../commands/CommandManager.ts';
 import { PointCommand } from '../../commands/PointCommand.ts';
+import { InsertPathPointCommand } from '../../commands/InsertPathPointCommand.ts';
+import { DeletePathPointCommand } from '../../commands/DeletePathPointCommand.ts';
+import { UpdatePathPointTypeCommand } from '../../commands/UpdatePathPointTypeCommand.ts';
 import type { ViewportManager } from '../../utils/viewport.ts';
 import {
   isPointInAABB,
   getPathBaseAABB,
   getVisiblePathHandles,
   isSmoothPoint,
-  mirrorHandleCollinear,
   translatePathAnchors,
+  findNearestPointOnPath,
+  splitPathSegment,
+  deletePathPointsFromPath,
+  getPointType,
+  applyPointType,
+  syncOppositeHandle,
 } from '../../utils/geometry.ts';
 import {
   type AABB,
   type Path,
   type PathPoint,
+  type PathPointType,
   type Shape,
   type Vector2D,
 } from '../../types/scene-graph.ts';
@@ -49,6 +58,9 @@ export class DirectSelectToolHandler implements ToolHandler {
   private _selectedAnchors: Set<number> = new Set();
   private _anchorsPathId: string | null = null;
   private _isDraggedPointSmooth: boolean = false;
+  private _hoverInsertPoint: { localPoint: Vector2D; worldPoint: Vector2D; segmentIndex: number; t: number } | null = null;
+  private _lastAnchorClickTime: number = 0;
+  private _lastAnchorClickIndex: number = -1;
 
   constructor(
     stateManager: StateManager,
@@ -96,7 +108,15 @@ export class DirectSelectToolHandler implements ToolHandler {
     return this._anchorsPathId;
   }
 
-  public get pathEditState(): { pathId: string; selectedAnchors: ReadonlySet<number> } | null {
+  public get hoverInsertPoint(): Vector2D | null {
+    return this._hoverInsertPoint ? this._hoverInsertPoint.worldPoint : null;
+  }
+
+  public get pathEditState(): {
+    pathId: string;
+    selectedAnchors: ReadonlySet<number>;
+    hoverInsertPoint?: Vector2D | null;
+  } | null {
     const selection = this.stateManager.getSelection();
     if (selection.length === 1) {
       const selectedNode = this.stateManager.getSelectedNode();
@@ -108,6 +128,7 @@ export class DirectSelectToolHandler implements ToolHandler {
         return {
           pathId: selectedNode.id,
           selectedAnchors: this._selectedAnchors,
+          hoverInsertPoint: this._hoverInsertPoint ? this._hoverInsertPoint.localPoint : null,
         };
       }
     }
@@ -140,7 +161,7 @@ export class DirectSelectToolHandler implements ToolHandler {
   }
 
   public onMouseDown(event: MouseEvent, coords: Vector2D): void {
-    this.handleDirectSelectMouseDown(coords.x, coords.y, Boolean(event.shiftKey));
+    this.handleDirectSelectMouseDown(coords.x, coords.y, Boolean(event.shiftKey), Boolean(event.altKey));
   }
 
   public onMouseMove(event: MouseEvent, coords: Vector2D): void {
@@ -179,10 +200,16 @@ export class DirectSelectToolHandler implements ToolHandler {
     this._isDraggedPointSmooth = false;
     this._directSelectOrigin = null;
     this._initialPathPoints = null;
+    this._hoverInsertPoint = null;
     this.clearSelectedAnchors();
   }
 
-  public handleDirectSelectMouseDown(x: number, y: number, shiftKey: boolean = false): void {
+  public handleDirectSelectMouseDown(
+    x: number,
+    y: number,
+    shiftKey: boolean = false,
+    altKey: boolean = false
+  ): void {
     this.ensureAnchorsPathSync();
     const selectedNode = this.stateManager.getSelectedNode();
     let activePath: Path | null =
@@ -190,6 +217,13 @@ export class DirectSelectToolHandler implements ToolHandler {
     let hitPoint = activePath ? this.findPathPointHit(activePath, x, y) : null;
 
     if (!hitPoint) {
+      // Si el cursor está sobre un segmento válido y se hace clic, subdividir e insertar punto
+      if (activePath && this._hoverInsertPoint) {
+        const { segmentIndex, t } = this._hoverInsertPoint;
+        this.insertAnchorAt(activePath.id, segmentIndex, t);
+        return;
+      }
+
       // Evaluar hitTest sobre figuras ignorando grupos: si es un Path, seleccionarlo directamente
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.type === 'path') {
@@ -210,6 +244,26 @@ export class DirectSelectToolHandler implements ToolHandler {
 
     if (activePath && hitPoint) {
       if (hitPoint.type === 'anchor') {
+        // Alt/Option+clic sobre un vértice existente: eliminarlo reconectando el trazado
+        if (altKey) {
+          this.deleteAnchorAt(activePath.id, hitPoint.index);
+          return;
+        }
+
+        // Doble clic sobre el vértice: conmutar tipo de vértice (corner -> smooth -> symmetric)
+        const now = Date.now();
+        if (
+          now - this._lastAnchorClickTime < 350 &&
+          this._lastAnchorClickIndex === hitPoint.index
+        ) {
+          this._lastAnchorClickTime = 0;
+          this._lastAnchorClickIndex = -1;
+          this.toggleAnchorType(activePath.id, hitPoint.index);
+          return;
+        }
+        this._lastAnchorClickTime = now;
+        this._lastAnchorClickIndex = hitPoint.index;
+
         if (this._anchorsPathId !== activePath.id) {
           this._selectedAnchors.clear();
           this._anchorsPathId = activePath.id;
@@ -296,6 +350,7 @@ export class DirectSelectToolHandler implements ToolHandler {
             )
           : this._initialPathPoints.map((pt, idx) => {
               if (idx !== pointIndex) return pt;
+              const ptType = pt.pointType ?? (this._isDraggedPointSmooth ? 'smooth' : 'corner');
               if (type === 'handleIn') {
                 const initH = pt.handleIn ?? { x: pt.x, y: pt.y };
                 const newHandleIn = {
@@ -303,11 +358,12 @@ export class DirectSelectToolHandler implements ToolHandler {
                   y: initH.y + deltaY,
                 };
                 let newHandleOut = pt.handleOut;
-                if (this._isDraggedPointSmooth && !altKey && pt.handleOut) {
-                  newHandleOut = mirrorHandleCollinear(
+                if (!altKey && pt.handleOut) {
+                  newHandleOut = syncOppositeHandle(
                     { x: pt.x, y: pt.y },
                     newHandleIn,
-                    pt.handleOut
+                    pt.handleOut,
+                    ptType
                   );
                 }
                 return {
@@ -322,11 +378,12 @@ export class DirectSelectToolHandler implements ToolHandler {
                   y: initH.y + deltaY,
                 };
                 let newHandleIn = pt.handleIn;
-                if (this._isDraggedPointSmooth && !altKey && pt.handleIn) {
-                  newHandleIn = mirrorHandleCollinear(
+                if (!altKey && pt.handleIn) {
+                  newHandleIn = syncOppositeHandle(
                     { x: pt.x, y: pt.y },
                     newHandleOut,
-                    pt.handleIn
+                    pt.handleIn,
+                    ptType
                   );
                 }
                 return {
@@ -347,10 +404,50 @@ export class DirectSelectToolHandler implements ToolHandler {
     if (selection.length === 1) {
       const selectedNode = this.stateManager.getSelectedNode();
       if (selectedNode && selectedNode.type === 'path') {
-        const hit = this.findPathPointHit(selectedNode as Path, x, y);
-        this.canvas.style.cursor = hit ? 'pointer' : 'default';
+        const activePath = selectedNode as Path;
+        const hit = this.findPathPointHit(activePath, x, y);
+        if (hit) {
+          if (this._hoverInsertPoint) {
+            this._hoverInsertPoint = null;
+            this.stateManager.markDirty();
+          }
+          this.canvas.style.cursor = 'pointer';
+          return;
+        }
+
+        const zoom = this.getViewportManager().zoom;
+        const proj = findNearestPointOnPath(activePath, x, y);
+        if (proj && proj.distance * zoom <= 6) {
+          this.canvas.style.cursor = 'copy';
+          const prev = this._hoverInsertPoint;
+          const changed =
+            !prev ||
+            prev.segmentIndex !== proj.segmentIndex ||
+            Math.abs(prev.t - proj.t) > 0.01;
+          this._hoverInsertPoint = {
+            localPoint: proj.point,
+            worldPoint: proj.worldPoint,
+            segmentIndex: proj.segmentIndex,
+            t: proj.t,
+          };
+          if (changed) {
+            this.stateManager.markDirty();
+          }
+          return;
+        }
+
+        if (this._hoverInsertPoint) {
+          this._hoverInsertPoint = null;
+          this.stateManager.markDirty();
+        }
+        this.canvas.style.cursor = 'default';
         return;
       }
+    }
+
+    if (this._hoverInsertPoint) {
+      this._hoverInsertPoint = null;
+      this.stateManager.markDirty();
     }
     this.canvas.style.cursor = 'default';
   }
@@ -461,7 +558,168 @@ export class DirectSelectToolHandler implements ToolHandler {
     };
   }
 
+  /**
+   * Inserta un nuevo punto de ancla sobre un segmento en el parámetro t usando De Casteljau.
+   */
+  public insertAnchorAt(pathId: string, segmentIndex: number, t: number): boolean {
+    const pathNode = this.stateManager.findNode(pathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') return false;
+
+    const initialPoints = pathNode.points;
+    const finalPoints = splitPathSegment(pathNode, segmentIndex, t);
+    if (finalPoints === initialPoints) return false;
+
+    const insertedIndex = segmentIndex < initialPoints.length - 1 ? segmentIndex + 1 : finalPoints.length - 1;
+    const command = new InsertPathPointCommand(
+      this.stateManager,
+      pathId,
+      initialPoints,
+      finalPoints,
+      insertedIndex,
+      segmentIndex,
+      t
+    );
+    this.commandManager.executeCommand(command);
+
+    this._selectedAnchors.clear();
+    this._selectedAnchors.add(insertedIndex);
+    this._anchorsPathId = pathId;
+    this._hoverInsertPoint = null;
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Elimina un ancla por índice en un trazado reconectando los puntos adyacentes.
+   */
+  public deleteAnchorAt(pathId: string, anchorIndex: number): boolean {
+    const pathNode = this.stateManager.findNode(pathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') return false;
+
+    const initialPoints = pathNode.points;
+    const finalPoints = deletePathPointsFromPath(pathNode, [anchorIndex]);
+    if (!finalPoints) return false;
+
+    const command = new DeletePathPointCommand(
+      this.stateManager,
+      pathId,
+      initialPoints,
+      finalPoints,
+      [anchorIndex]
+    );
+    this.commandManager.executeCommand(command);
+
+    this._selectedAnchors.delete(anchorIndex);
+    if (this._selectedAnchors.size === 0) {
+      this._anchorsPathId = null;
+    }
+    this._hoverInsertPoint = null;
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Elimina todos los anclas seleccionadas actualmente del trazado activo.
+   */
+  public deleteSelectedAnchors(): boolean {
+    if (this._selectedAnchors.size === 0 || !this._anchorsPathId) {
+      return false;
+    }
+    const pathNode = this.stateManager.findNode(this._anchorsPathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') {
+      return false;
+    }
+    const initialPoints = pathNode.points;
+    const deletedIndices = Array.from(this._selectedAnchors);
+    const finalPoints = deletePathPointsFromPath(pathNode, this._selectedAnchors);
+    if (!finalPoints) {
+      return false;
+    }
+
+    const command = new DeletePathPointCommand(
+      this.stateManager,
+      this._anchorsPathId,
+      initialPoints,
+      finalPoints,
+      deletedIndices
+    );
+    this.commandManager.executeCommand(command);
+
+    this._selectedAnchors.clear();
+    this._anchorsPathId = null;
+    this._hoverInsertPoint = null;
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Conmuta el tipo de vértice del ancla dada (corner -> smooth -> symmetric -> corner).
+   */
+  public toggleAnchorType(pathId: string, anchorIndex: number): boolean {
+    const pathNode = this.stateManager.findNode(pathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') return false;
+    const pt = pathNode.points[anchorIndex];
+    if (!pt) return false;
+
+    const currentType = pt.pointType ?? getPointType(pt);
+    let nextType: PathPointType = 'corner';
+    if (currentType === 'corner') {
+      nextType = 'smooth';
+    } else if (currentType === 'smooth') {
+      nextType = 'symmetric';
+    } else {
+      nextType = 'corner';
+    }
+
+    if (this._anchorsPathId !== pathId) {
+      this._selectedAnchors.clear();
+      this._anchorsPathId = pathId;
+    }
+    this._selectedAnchors.clear();
+    this._selectedAnchors.add(anchorIndex);
+
+    return this.setSelectedAnchorsType(nextType);
+  }
+
+  /**
+   * Establece el tipo de vértice (corner, smooth, symmetric) para los anclas seleccionadas (o todas si no hay ninguna seleccionada).
+   */
+  public setSelectedAnchorsType(targetType: PathPointType): boolean {
+    const selection = this.stateManager.getSelection();
+    const pathId = this._anchorsPathId ?? (selection.length === 1 ? selection[0] : null);
+    if (!pathId) return false;
+    const pathNode = this.stateManager.findNode(pathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') return false;
+
+    const targetIndices = this._selectedAnchors.size > 0
+      ? Array.from(this._selectedAnchors)
+      : pathNode.points.map((_, i) => i);
+
+    const initialPoints = pathNode.points;
+    const indicesSet = new Set(targetIndices);
+    const n = pathNode.points.length;
+    const finalPoints = pathNode.points.map((pt, i) => {
+      if (!indicesSet.has(i)) return pt;
+      const prev = pathNode.closed ? pathNode.points[(i - 1 + n) % n] : (i > 0 ? pathNode.points[i - 1] : undefined);
+      const next = pathNode.closed ? pathNode.points[(i + 1) % n] : (i < n - 1 ? pathNode.points[i + 1] : undefined);
+      return applyPointType(pt, targetType, prev, next);
+    });
+
+    const command = new UpdatePathPointTypeCommand(
+      this.stateManager,
+      pathId,
+      initialPoints,
+      finalPoints,
+      targetIndices,
+      targetType
+    );
+    this.commandManager.executeCommand(command);
+    this.stateManager.markDirty();
+    return true;
+  }
+
   public destroy(): void {
     this.resetDirectSelect();
   }
 }
+

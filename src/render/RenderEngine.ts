@@ -13,6 +13,7 @@ import {
   type SelectableNode,
   type Shape,
   type Text,
+  type Vector2D,
 } from '../types/scene-graph.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import {
@@ -24,6 +25,7 @@ import {
   getSelectionBounds,
   getShapeAABB,
   getVisiblePathHandles,
+  getPointType,
 } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import type { SnapGuide } from '../types/engine.ts';
@@ -55,9 +57,13 @@ export interface RenderEngineOptions {
    */
   previewProvider?: () => ShapePreview | null;
   /**
-   * Proveedor funcional opcional del estado de edición de nodos para Selección Directa.
+   * Proveedor funcional opcional del estado de edición de nodos para Selección Directa o Pluma.
    */
-  pathEditProvider?: () => { pathId: string; selectedAnchors: ReadonlySet<number> } | null;
+  pathEditProvider?: () => {
+    pathId: string;
+    selectedAnchors: ReadonlySet<number>;
+    hoverInsertPoint?: Vector2D | null;
+  } | null;
   /**
    * Proveedor funcional opcional del estado de edición de texto en curso.
    */
@@ -1200,7 +1206,11 @@ export class RenderEngine {
    */
   private renderPathEditOverlay(
     path: Path,
-    state: { pathId: string; selectedAnchors: ReadonlySet<number> },
+    state: {
+      pathId: string;
+      selectedAnchors: ReadonlySet<number>;
+      hoverInsertPoint?: Vector2D | null;
+    },
     zoom: number
   ): void {
     if (!path.points || path.points.length === 0) {
@@ -1219,7 +1229,31 @@ export class RenderEngine {
       this.ctx.translate(-cx, -cy);
     }
 
-    // 2. Dibuja solo los manejadores de getVisiblePathHandles: línea ancla→manejador + círculo
+    // 2. Dibuja previsualización de inserción de nodo sobre la curva si existe
+    if (state.hoverInsertPoint) {
+      const hip = state.hoverInsertPoint;
+      const previewRadius = 4 / zoom;
+      this.ctx.beginPath();
+      this.ctx.arc(hip.x, hip.y, previewRadius, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#0284c7';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.stroke();
+
+      // Cruz indicadora '+'
+      const crossSize = 2.2 / zoom;
+      this.ctx.beginPath();
+      this.ctx.moveTo(hip.x - crossSize, hip.y);
+      this.ctx.lineTo(hip.x + crossSize, hip.y);
+      this.ctx.moveTo(hip.x, hip.y - crossSize);
+      this.ctx.lineTo(hip.x, hip.y + crossSize);
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = 1 / zoom;
+      this.ctx.stroke();
+    }
+
+    // 3. Dibuja solo los manejadores de getVisiblePathHandles: línea ancla→manejador + círculo
     const handleRadius = 3.5 / zoom;
     const visibleHandles = getVisiblePathHandles(path, state.selectedAnchors);
     for (const h of visibleHandles) {
@@ -1238,19 +1272,43 @@ export class RenderEngine {
       this.ctx.fill();
     }
 
-    // 3. Dibuja TODAS las anclas: cuadrado blanco con borde azul; las seleccionadas, rellenas de azul
+    // 4. Dibuja TODAS las anclas con forma representativa de su tipo:
+    // - Esquina: cuadrado
+    // - Suavizado: círculo
+    // - Simétrico: rombo (diamante)
     const anchorSize = 6 / zoom;
     const halfAnchor = anchorSize / 2;
 
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
       const isSelected = state.selectedAnchors.has(i);
+      const ptType = pt.pointType ?? getPointType(pt);
 
       this.ctx.fillStyle = isSelected ? '#0284c7' : '#ffffff';
       this.ctx.strokeStyle = '#0284c7';
       this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.fillRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
-      this.ctx.strokeRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
+
+      if (ptType === 'smooth') {
+        // Círculo
+        this.ctx.beginPath();
+        this.ctx.arc(pt.x, pt.y, halfAnchor, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+      } else if (ptType === 'symmetric') {
+        // Rombo (diamante)
+        this.ctx.beginPath();
+        this.ctx.moveTo(pt.x, pt.y - halfAnchor);
+        this.ctx.lineTo(pt.x + halfAnchor, pt.y);
+        this.ctx.lineTo(pt.x, pt.y + halfAnchor);
+        this.ctx.lineTo(pt.x - halfAnchor, pt.y);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+      } else {
+        // Esquina: cuadrado
+        this.ctx.fillRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
+        this.ctx.strokeRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
+      }
     }
 
     this.ctx.restore();

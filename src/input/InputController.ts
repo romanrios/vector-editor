@@ -9,6 +9,7 @@ import {
   type Group,
   type LayerChildNode,
   type Path,
+  type PathPointType,
   type SelectableNode,
   type Shape,
   type Vector2D,
@@ -262,7 +263,8 @@ export class InputController {
     this.penToolHandler = new PenToolHandler(
       this.stateManager,
       this.canvas,
-      () => this.viewportManager
+      () => this.viewportManager,
+      this.commandManager
     );
 
     // 4. Inicializar DirectSelectToolHandler
@@ -530,7 +532,11 @@ export class InputController {
     return this.directSelectToolHandler.directSelectTarget;
   }
 
-  public get pathEditState(): { pathId: string; selectedAnchors: ReadonlySet<number> } | null {
+  public get pathEditState(): {
+    pathId: string;
+    selectedAnchors: ReadonlySet<number>;
+    hoverInsertPoint?: Vector2D | null;
+  } | null {
     if (this._currentTool === 'pen') {
       return this.penToolHandler.pathEditState;
     }
@@ -1378,7 +1384,15 @@ export class InputController {
   }
 
   public deleteSelected(): boolean {
+    if (this._currentTool === 'direct-select' && this.directSelectToolHandler.selectedAnchors.size > 0) {
+      const deleted = this.directSelectToolHandler.deleteSelectedAnchors();
+      if (deleted) return true;
+    }
     return this._selectionOperations.deleteSelected();
+  }
+
+  public setSelectedPathPointType(type: PathPointType): boolean {
+    return this.directSelectToolHandler.setSelectedAnchorsType(type);
   }
 
   public moveSelection(dx: number, dy: number, timestamp?: number): boolean {

@@ -5,6 +5,9 @@ import type {
   LayerChildNode,
   ParentNode,
   SceneNode,
+  Path,
+  PathPoint,
+  PathPointType,
   SelectableNode,
   Shape,
   Text,
@@ -18,6 +21,11 @@ import {
   moveItem,
   removeAt,
 } from '../utils/immutable.ts';
+import {
+  splitPathSegment,
+  deletePathPointsFromPath,
+  applyPointType,
+} from '../utils/geometry.ts';
 
 export type StateListener = (state: Readonly<Document>) => void;
 
@@ -1723,6 +1731,73 @@ export class StateManager {
     }
 
     return updated;
+  }
+
+  /**
+   * Inserta un nuevo punto de ancla en un segmento de un trazado existente subdividiéndolo con De Casteljau.
+   */
+  public insertPathPoint(
+    pathId: string,
+    segmentIndex: number,
+    t: number
+  ): { pointIndex: number; newPoint: PathPoint } | null {
+    const target = this.findNode(pathId);
+    if (!target || target.type !== 'path') {
+      return null;
+    }
+    const path = target as Path;
+    const nextPoints = splitPathSegment(path, segmentIndex, t);
+    if (nextPoints === path.points) {
+      return null;
+    }
+    const insertedIndex = segmentIndex < path.points.length - 1 ? segmentIndex + 1 : nextPoints.length - 1;
+    this.updateShape<Path>(pathId, { points: nextPoints });
+    return {
+      pointIndex: insertedIndex,
+      newPoint: nextPoints[insertedIndex],
+    };
+  }
+
+  /**
+   * Elimina uno o más vértices de un trazado existente y reconecta los segmentos adyacentes.
+   */
+  public deletePathPoints(pathId: string, indices: readonly number[]): boolean {
+    const target = this.findNode(pathId);
+    if (!target || target.type !== 'path') {
+      return false;
+    }
+    const path = target as Path;
+    const nextPoints = deletePathPointsFromPath(path, indices);
+    if (!nextPoints) {
+      return false;
+    }
+    return this.updateShape<Path>(pathId, { points: nextPoints });
+  }
+
+  /**
+   * Actualiza el tipo de vértice (corner, smooth, symmetric) de uno o varios puntos de ancla de un trazado.
+   */
+  public setPathPointType(
+    pathId: string,
+    indices: readonly number[],
+    pointType: PathPointType
+  ): boolean {
+    const target = this.findNode(pathId);
+    if (!target || target.type !== 'path') {
+      return false;
+    }
+    const path = target as Path;
+    const indicesSet = new Set(indices);
+    const n = path.points.length;
+    const nextPoints = path.points.map((pt, i) => {
+      if (!indicesSet.has(i)) {
+        return pt;
+      }
+      const prev = path.closed ? path.points[(i - 1 + n) % n] : (i > 0 ? path.points[i - 1] : undefined);
+      const next = path.closed ? path.points[(i + 1) % n] : (i < n - 1 ? path.points[i + 1] : undefined);
+      return applyPointType(pt, pointType, prev, next);
+    });
+    return this.updateShape<Path>(pathId, { points: nextPoints });
   }
 
   /**

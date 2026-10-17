@@ -12,6 +12,14 @@ export interface Vector2D {
 }
 
 /**
+ * Modo o tipo de vértice para un punto de ancla de un trazado Bézier:
+ * - 'corner': Manejadores independientes en ángulo y magnitud.
+ * - 'smooth': Manejadores colineales (180° opuestos) con longitudes independientes.
+ * - 'symmetric': Manejadores colineales de idéntica longitud.
+ */
+export type PathPointType = 'corner' | 'smooth' | 'symmetric';
+
+/**
  * Punto de ancla para un trazado con puntos de control Bézier cúbicos opcionales
  */
 export interface PathPoint {
@@ -19,6 +27,7 @@ export interface PathPoint {
   readonly y: number;
   readonly handleIn?: Vector2D;
   readonly handleOut?: Vector2D;
+  readonly pointType?: PathPointType;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Group, Path, PathPoint, Rectangle, SelectableNode, Shape, Text, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
@@ -2466,3 +2466,533 @@ export function isSmoothPoint(point: PathPoint): boolean {
   const cross = Math.abs(uInX * uOutY - uInY * uOutX);
   return cross < 1e-3;
 }
+
+/**
+ * Subdivide una curva Bézier cúbica en el parámetro t ∈ [0, 1] usando el algoritmo de De Casteljau,
+ * preservando exactamente la geometría de la curva en dos segmentos cúbicos contiguos.
+ */
+export function splitCubicBezier(
+  p0: Vector2D,
+  p1: Vector2D,
+  p2: Vector2D,
+  p3: Vector2D,
+  t: number
+): {
+  left: [Vector2D, Vector2D, Vector2D, Vector2D];
+  right: [Vector2D, Vector2D, Vector2D, Vector2D];
+} {
+  const clampT = Math.max(0, Math.min(1, t));
+  const u = 1 - clampT;
+
+  const p01 = { x: u * p0.x + clampT * p1.x, y: u * p0.y + clampT * p1.y };
+  const p12 = { x: u * p1.x + clampT * p2.x, y: u * p1.y + clampT * p2.y };
+  const p23 = { x: u * p2.x + clampT * p3.x, y: u * p2.y + clampT * p3.y };
+
+  const p012 = { x: u * p01.x + clampT * p12.x, y: u * p01.y + clampT * p12.y };
+  const p123 = { x: u * p12.x + clampT * p23.x, y: u * p12.y + clampT * p23.y };
+
+  const p0123 = { x: u * p012.x + clampT * p123.x, y: u * p012.y + clampT * p123.y };
+
+  return {
+    left: [p0, p01, p012, p0123],
+    right: [p0123, p123, p23, p3],
+  };
+}
+
+/**
+ * Evalúa el punto sobre una curva Bézier cúbica en el parámetro t ∈ [0, 1].
+ */
+export function evaluateCubicBezier(
+  p0: Vector2D,
+  p1: Vector2D,
+  p2: Vector2D,
+  p3: Vector2D,
+  t: number
+): Vector2D {
+  const clampT = Math.max(0, Math.min(1, t));
+  const u = 1 - clampT;
+  const tt = clampT * clampT;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * clampT;
+
+  return {
+    x: uuu * p0.x + 3 * uu * clampT * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
+    y: uuu * p0.y + 3 * uu * clampT * p1.y + 3 * u * tt * p2.y + ttt * p3.y,
+  };
+}
+
+/**
+ * Proyecta un punto sobre un segmento de línea recta (p0 -> p1) y encuentra el punto más cercano, parámetro t y distancia.
+ */
+export function findNearestPointOnSegment(
+  p0: Vector2D,
+  p1: Vector2D,
+  px: number,
+  py: number
+): { t: number; point: Vector2D; distance: number } {
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq < 1e-9) {
+    return {
+      t: 0,
+      point: { x: p0.x, y: p0.y },
+      distance: Math.hypot(px - p0.x, py - p0.y),
+    };
+  }
+
+  const rawT = ((px - p0.x) * dx + (py - p0.y) * dy) / lenSq;
+  const t = Math.max(0, Math.min(1, rawT));
+  const point = {
+    x: p0.x + t * dx,
+    y: p0.y + t * dy,
+  };
+
+  return {
+    t,
+    point,
+    distance: Math.hypot(px - point.x, py - point.y),
+  };
+}
+
+/**
+ * Encuentra el punto más cercano sobre una curva Bézier cúbica a un punto objetivo (px, py).
+ * Utiliza muestreo uniforme inicial seguido de búsqueda ternaria para precisión subpíxel.
+ */
+export function findNearestPointOnCubicBezier(
+  p0: Vector2D,
+  p1: Vector2D,
+  p2: Vector2D,
+  p3: Vector2D,
+  px: number,
+  py: number,
+  samples: number = 40
+): { t: number; point: Vector2D; distance: number } {
+  let bestT = 0;
+  let bestDistSq = Infinity;
+  let bestPoint = p0;
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const pt = evaluateCubicBezier(p0, p1, p2, p3, t);
+    const dSq = (px - pt.x) ** 2 + (py - pt.y) ** 2;
+    if (dSq < bestDistSq) {
+      bestDistSq = dSq;
+      bestT = t;
+      bestPoint = pt;
+    }
+  }
+
+  // Refinamiento fino mediante búsqueda ternaria en vecindad de bestT
+  const step = 1 / samples;
+  let left = Math.max(0, bestT - step);
+  let right = Math.min(1, bestT + step);
+
+  for (let iter = 0; iter < 14; iter++) {
+    const m1 = left + (right - left) / 3;
+    const m2 = right - (right - left) / 3;
+    const pt1 = evaluateCubicBezier(p0, p1, p2, p3, m1);
+    const pt2 = evaluateCubicBezier(p0, p1, p2, p3, m2);
+    const d1 = (px - pt1.x) ** 2 + (py - pt1.y) ** 2;
+    const d2 = (px - pt2.x) ** 2 + (py - pt2.y) ** 2;
+
+    if (d1 < d2) {
+      right = m2;
+      if (d1 < bestDistSq) {
+        bestDistSq = d1;
+        bestT = m1;
+        bestPoint = pt1;
+      }
+    } else {
+      left = m1;
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        bestT = m2;
+        bestPoint = pt2;
+      }
+    }
+  }
+
+  return {
+    t: bestT,
+    point: bestPoint,
+    distance: Math.sqrt(bestDistSq),
+  };
+}
+
+/**
+ * Resultado de la proyección más cercana sobre los segmentos de un trazado Path.
+ */
+export interface PathSegmentProjection {
+  readonly segmentIndex: number;
+  readonly t: number;
+  readonly point: Vector2D; // En coordenadas locales del trazado
+  readonly worldPoint: Vector2D; // En coordenadas del mundo
+  readonly distance: number; // Distancia euclidiana en el mundo
+}
+
+/**
+ * Proyecta un punto en coordenadas del mundo sobre los segmentos de un trazado Path,
+ * calculando la distancia mínima y el parámetro t. Contempla rotación del trazado.
+ */
+export function findNearestPointOnPath(
+  path: Path,
+  worldX: number,
+  worldY: number,
+  maxDistance: number = Infinity
+): PathSegmentProjection | null {
+  if (!path.points || path.points.length < 2) {
+    return null;
+  }
+
+  const n = path.points.length;
+  const numSegments = path.closed ? n : n - 1;
+  if (numSegments < 1) {
+    return null;
+  }
+
+  // Desrotar punto de consulta si el trazado tiene rotación
+  let localX = worldX;
+  let localY = worldY;
+  let cx = 0;
+  let cy = 0;
+
+  if (path.rotation) {
+    const baseAABB = getPathBaseAABB(path);
+    cx = (baseAABB.minX + baseAABB.maxX) / 2;
+    cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    const rad = (-path.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = worldX - cx;
+    const dy = worldY - cy;
+    localX = cx + dx * cos - dy * sin;
+    localY = cy + dx * sin + dy * cos;
+  }
+
+  let bestSegment = -1;
+  let bestT = 0;
+  let bestDist = Infinity;
+  let bestLocalPoint: Vector2D = { x: 0, y: 0 };
+
+  for (let i = 0; i < numSegments; i++) {
+    const p0 = path.points[i];
+    const p3 = path.points[(i + 1) % n];
+
+    const hOut = p0.handleOut;
+    const hIn = p3.handleIn;
+
+    const hasOut = hOut && (hOut.x !== p0.x || hOut.y !== p0.y);
+    const hasIn = hIn && (hIn.x !== p3.x || hIn.y !== p3.y);
+
+    let res: { t: number; point: Vector2D; distance: number };
+    if (!hasOut && !hasIn) {
+      // Segmento recto
+      res = findNearestPointOnSegment(p0, p3, localX, localY);
+    } else {
+      // Curva Bézier cúbica
+      const p1 = hOut ?? p0;
+      const p2 = hIn ?? p3;
+      res = findNearestPointOnCubicBezier(p0, p1, p2, p3, localX, localY);
+    }
+
+    if (res.distance < bestDist) {
+      bestDist = res.distance;
+      bestSegment = i;
+      bestT = res.t;
+      bestLocalPoint = res.point;
+    }
+  }
+
+  if (bestSegment < 0 || bestDist > maxDistance) {
+    return null;
+  }
+
+  // Convertir punto local a coordenadas del mundo si existe rotación
+  let worldPoint: Vector2D = bestLocalPoint;
+  if (path.rotation) {
+    const rad = (path.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = bestLocalPoint.x - cx;
+    const dy = bestLocalPoint.y - cy;
+    worldPoint = {
+      x: cx + dx * cos - dy * sin,
+      y: cy + dx * sin + dy * cos,
+    };
+  }
+
+  return {
+    segmentIndex: bestSegment,
+    t: bestT,
+    point: bestLocalPoint,
+    worldPoint,
+    distance: bestDist,
+  };
+}
+
+/**
+ * Subdivide un segmento del trazado en el parámetro t usando el algoritmo de De Casteljau,
+ * insertando un nuevo PathPoint entre los vértices del segmento y preservando la forma exacta del trazado.
+ */
+export function splitPathSegment(
+  path: Path,
+  segmentIndex: number,
+  t: number
+): readonly PathPoint[] {
+  const points = path.points;
+  const n = points.length;
+  if (n < 2 || segmentIndex < 0 || segmentIndex >= (path.closed ? n : n - 1)) {
+    return points;
+  }
+
+  const i0 = segmentIndex;
+  const i1 = (segmentIndex + 1) % n;
+  const p0 = points[i0];
+  const p3 = points[i1];
+
+  const hOut = p0.handleOut;
+  const hIn = p3.handleIn;
+
+  const hasOut = hOut && (hOut.x !== p0.x || hOut.y !== p0.y);
+  const hasIn = hIn && (hIn.x !== p3.x || hIn.y !== p3.y);
+
+  const clampT = Math.max(0, Math.min(1, t));
+
+  let updatedP0: PathPoint;
+  let newPoint: PathPoint;
+  let updatedP3: PathPoint;
+
+  if (!hasOut && !hasIn) {
+    // Segmento de línea recta
+    const newX = (1 - clampT) * p0.x + clampT * p3.x;
+    const newY = (1 - clampT) * p0.y + clampT * p3.y;
+    updatedP0 = p0;
+    updatedP3 = p3;
+    newPoint = {
+      x: newX,
+      y: newY,
+      pointType: 'corner',
+    };
+  } else {
+    // Segmento Bézier cúbico: De Casteljau
+    const p1 = hOut ?? p0;
+    const p2 = hIn ?? p3;
+    const { left, right } = splitCubicBezier(p0, p1, p2, p3, clampT);
+
+    updatedP0 = {
+      ...p0,
+      handleOut: left[1],
+    };
+    newPoint = {
+      x: left[3].x,
+      y: left[3].y,
+      handleIn: left[2],
+      handleOut: right[1],
+      pointType: 'smooth',
+    };
+    updatedP3 = {
+      ...p3,
+      handleIn: right[2],
+    };
+  }
+
+  const result: PathPoint[] = [];
+  if (segmentIndex < n - 1) {
+    for (let i = 0; i < n; i++) {
+      if (i === i0) {
+        result.push(updatedP0);
+        result.push(newPoint);
+      } else if (i === i1) {
+        result.push(updatedP3);
+      } else {
+        result.push(points[i]);
+      }
+    }
+  } else {
+    // Cierre del trazado: el segmento conecta el último punto (n - 1) con el primero (0)
+    result.push(updatedP3);
+    for (let i = 1; i < n - 1; i++) {
+      result.push(points[i]);
+    }
+    result.push(updatedP0);
+    result.push(newPoint);
+  }
+
+  return result;
+}
+
+/**
+ * Elimina uno o varios vértices de un trazado por índice, reconectando los puntos adyacentes.
+ * Retorna null si la cantidad de puntos resultantes es menor a 2.
+ */
+export function deletePathPointsFromPath(
+  path: Path,
+  indicesToDelete: readonly number[] | ReadonlySet<number>
+): readonly PathPoint[] | null {
+  const set = indicesToDelete instanceof Set ? indicesToDelete : new Set(indicesToDelete);
+  const remaining: PathPoint[] = [];
+
+  for (let i = 0; i < path.points.length; i++) {
+    if (!set.has(i)) {
+      remaining.push(path.points[i]);
+    }
+  }
+
+  if (remaining.length < 2) {
+    return null;
+  }
+
+  return remaining;
+}
+
+/**
+ * Determina el tipo de vértice de un punto de ancla (corner, smooth, o symmetric).
+ */
+export function getPointType(point: PathPoint): PathPointType {
+  if (point.pointType) {
+    return point.pointType;
+  }
+  if (!point.handleIn || !point.handleOut) {
+    return 'corner';
+  }
+  if (!isSmoothPoint(point)) {
+    return 'corner';
+  }
+  const lenIn = Math.hypot(point.handleIn.x - point.x, point.handleIn.y - point.y);
+  const lenOut = Math.hypot(point.handleOut.x - point.x, point.handleOut.y - point.y);
+  if (Math.abs(lenIn - lenOut) < 0.5) {
+    return 'symmetric';
+  }
+  return 'smooth';
+}
+
+/**
+ * Aplica un nuevo tipo de vértice a un punto de ancla, recalculando o sincronizando sus manejadores.
+ */
+export function applyPointType(
+  point: PathPoint,
+  targetType: PathPointType,
+  prevPoint?: PathPoint,
+  nextPoint?: PathPoint
+): PathPoint {
+  if (targetType === 'corner') {
+    return {
+      ...point,
+      pointType: 'corner',
+    };
+  }
+
+  const lenIn = point.handleIn ? Math.hypot(point.handleIn.x - point.x, point.handleIn.y - point.y) : 0;
+  const lenOut = point.handleOut ? Math.hypot(point.handleOut.x - point.x, point.handleOut.y - point.y) : 0;
+
+  if (targetType === 'smooth') {
+    if (lenIn > 1e-4 && lenOut > 1e-4) {
+      const alignedIn = mirrorHandleCollinear(
+        { x: point.x, y: point.y },
+        point.handleOut!,
+        point.handleIn!
+      );
+      return {
+        ...point,
+        handleIn: alignedIn,
+        pointType: 'smooth',
+      };
+    } else if (lenOut > 1e-4) {
+      const dx = point.handleOut!.x - point.x;
+      const dy = point.handleOut!.y - point.y;
+      return {
+        ...point,
+        handleIn: { x: point.x - dx, y: point.y - dy },
+        pointType: 'smooth',
+      };
+    } else if (lenIn > 1e-4) {
+      const dx = point.handleIn!.x - point.x;
+      const dy = point.handleIn!.y - point.y;
+      return {
+        ...point,
+        handleOut: { x: point.x - dx, y: point.y - dy },
+        pointType: 'smooth',
+      };
+    } else {
+      // Sintetizar manejadores tangentes si no existen
+      let dirX = 1;
+      let dirY = 0;
+      let defaultLen = 30;
+      if (prevPoint && nextPoint) {
+        const dx = nextPoint.x - prevPoint.x;
+        const dy = nextPoint.y - prevPoint.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1e-4) {
+          dirX = dx / d;
+          dirY = dy / d;
+          defaultLen = Math.min(d / 4, 40);
+        }
+      }
+      return {
+        ...point,
+        handleIn: { x: point.x - dirX * defaultLen, y: point.y - dirY * defaultLen },
+        handleOut: { x: point.x + dirX * defaultLen, y: point.y + dirY * defaultLen },
+        pointType: 'smooth',
+      };
+    }
+  }
+
+  // targetType === 'symmetric'
+  let targetLen = Math.max(lenIn, lenOut);
+  if (lenIn > 1e-4 && lenOut > 1e-4) {
+    targetLen = (lenIn + lenOut) / 2;
+  } else if (targetLen < 1e-4) {
+    targetLen = 30;
+  }
+
+  let dirX = 1;
+  let dirY = 0;
+  if (lenOut > 1e-4) {
+    dirX = (point.handleOut!.x - point.x) / lenOut;
+    dirY = (point.handleOut!.y - point.y) / lenOut;
+  } else if (lenIn > 1e-4) {
+    dirX = -(point.handleIn!.x - point.x) / lenIn;
+    dirY = -(point.handleIn!.y - point.y) / lenIn;
+  } else if (prevPoint && nextPoint) {
+    const dx = nextPoint.x - prevPoint.x;
+    const dy = nextPoint.y - prevPoint.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 1e-4) {
+      dirX = dx / d;
+      dirY = dy / d;
+      targetLen = Math.min(d / 4, 40);
+    }
+  }
+
+  return {
+    ...point,
+    handleIn: { x: point.x - dirX * targetLen, y: point.y - dirY * targetLen },
+    handleOut: { x: point.x + dirX * targetLen, y: point.y + dirY * targetLen },
+    pointType: 'symmetric',
+  };
+}
+
+/**
+ * Sincroniza el manejador opuesto respecto al ancla según el tipo de vértice cuando se arrastra uno de ellos.
+ */
+export function syncOppositeHandle(
+  anchor: Vector2D,
+  draggedHandle: Vector2D,
+  oppositeInitial: Vector2D,
+  pointType?: PathPointType
+): Vector2D {
+  if (pointType === 'symmetric') {
+    return {
+      x: 2 * anchor.x - draggedHandle.x,
+      y: 2 * anchor.y - draggedHandle.y,
+    };
+  }
+  if (pointType === 'corner') {
+    return oppositeInitial;
+  }
+  return mirrorHandleCollinear(anchor, draggedHandle, oppositeInitial);
+}
+
