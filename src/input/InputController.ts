@@ -57,7 +57,16 @@ import { LineToolHandler } from './tools/LineToolHandler.ts';
 import { TextToolHandler } from './tools/TextToolHandler.ts';
 
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text';
-export type InputControllerEvent = 'toolChange' | 'exportRequest';
+export interface CanvasContextMenuData {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly worldX: number;
+  readonly worldY: number;
+  readonly hitShape: Shape | null;
+  readonly targetNode: SelectableNode | null;
+}
+export type CanvasContextMenuCallback = (data: CanvasContextMenuData) => void;
+export type InputControllerEvent = 'toolChange' | 'exportRequest' | 'canvasContextMenu';
 export type ToolChangeCallback = (tool: ToolMode) => void;
 export type ExportRequestCallback = () => void;
 export type SmartGuidesChangeCallback = (enabled: boolean) => void;
@@ -90,6 +99,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Alt + arrastrar', description: 'Copiar mientras se mueve', category: 'Selección' },
   { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
   { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
+  { key: 'Ctrl+X / Cmd+X', description: 'Cortar figuras seleccionadas', category: 'Edición' },
   { key: 'Ctrl+C / Cmd+C', description: 'Copiar figuras seleccionadas', category: 'Edición' },
   { key: 'Ctrl+V / Cmd+V', description: 'Pegar figuras del portapapeles', category: 'Edición' },
   { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figuras seleccionadas', category: 'Edición' },
@@ -189,6 +199,7 @@ export class InputController {
   private onMouseMoveHandler: (e: MouseEvent) => void;
   private onMouseUpHandler: (e: MouseEvent) => void;
   private onWheelHandler: (e: WheelEvent) => void;
+  private onContextMenuHandler: (e: MouseEvent) => void;
   private onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
   private onKeyUpHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -323,6 +334,7 @@ export class InputController {
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
     this.onMouseUpHandler = (e: MouseEvent) => this.handleMouseUp(e);
     this.onWheelHandler = (e: WheelEvent) => this.handleWheel(e);
+    this.onContextMenuHandler = (e: MouseEvent) => this.handleContextMenu(e);
 
     this.attachEventListeners();
   }
@@ -396,6 +408,7 @@ export class InputController {
 
   public on(event: 'toolChange', listener: ToolChangeCallback): () => void;
   public on(event: 'exportRequest', listener: ExportRequestCallback): () => void;
+  public on(event: 'canvasContextMenu', listener: CanvasContextMenuCallback): () => void;
   public on(event: InputControllerEvent, listener: (...args: any[]) => void): () => void {
     let listeners = this.eventListeners.get(event);
     if (!listeners) {
@@ -411,6 +424,7 @@ export class InputController {
 
   public off(event: 'toolChange', listener: ToolChangeCallback): void;
   public off(event: 'exportRequest', listener: ExportRequestCallback): void;
+  public off(event: 'canvasContextMenu', listener: CanvasContextMenuCallback): void;
   public off(event: InputControllerEvent, listener: (...args: any[]) => void): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
@@ -423,7 +437,8 @@ export class InputController {
 
   public emit(event: 'toolChange', tool: ToolMode): void;
   public emit(event: 'exportRequest'): void;
-  public emit(event: InputControllerEvent, arg?: ToolMode): void {
+  public emit(event: 'canvasContextMenu', data: CanvasContextMenuData): void;
+  public emit(event: InputControllerEvent, arg?: any): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       for (const listener of listeners) {
@@ -627,6 +642,7 @@ export class InputController {
     this.canvas.addEventListener('dblclick', this.onDoubleClickHandler);
     this.canvas.addEventListener('mousemove', this.onMouseMoveHandler);
     this.canvas.addEventListener('wheel', this.onWheelHandler, { passive: false });
+    this.canvas.addEventListener('contextmenu', this.onContextMenuHandler);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('mouseup', this.onMouseUpHandler);
@@ -661,6 +677,7 @@ export class InputController {
     this.canvas.removeEventListener('dblclick', this.onDoubleClickHandler);
     this.canvas.removeEventListener('mousemove', this.onMouseMoveHandler);
     this.canvas.removeEventListener('wheel', this.onWheelHandler);
+    this.canvas.removeEventListener('contextmenu', this.onContextMenuHandler);
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('mouseup', this.onMouseUpHandler);
@@ -909,7 +926,7 @@ export class InputController {
     }
   }
 
-  private resolveNodeToSelect(hitShape: Shape): SelectableNode {
+  public resolveNodeToSelect(hitShape: Shape): SelectableNode {
     const selectedNodes = this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 1) {
       const currentSelected = selectedNodes[0];
@@ -1016,6 +1033,41 @@ export class InputController {
 
     // Modo 'select'
     this.selectToolHandler.onMouseDown(event, coords);
+  }
+
+  public handleContextMenu(event: MouseEvent): void {
+    event.preventDefault?.();
+
+    if (this.textEditManager.isEditingText) {
+      this.commitTextEdit();
+    }
+
+    const coords = this.getLocalCoordinates(event);
+    const hitShape = this.hitTest(coords.x, coords.y);
+    const targetNode = hitShape ? this.resolveNodeToSelect(hitShape) : null;
+
+    if (targetNode) {
+      if (!this.stateManager.isSelected(targetNode.id)) {
+        if (event.shiftKey) {
+          this.stateManager.toggleInSelection(targetNode.id);
+        } else {
+          this.stateManager.selectNode(targetNode.id);
+        }
+      }
+    } else {
+      if (this.options.deselectOnEmptyClick && !event.shiftKey) {
+        this.stateManager.selectNode(null);
+      }
+    }
+
+    this.emit('canvasContextMenu', {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      worldX: coords.x,
+      worldY: coords.y,
+      hitShape,
+      targetNode,
+    });
   }
 
   public startEditingText(textId: string, initialCursorIndex?: number, selectAll: boolean = false): boolean {
@@ -1170,6 +1222,12 @@ export class InputController {
       } else if (keyLower === 'y') {
         event.preventDefault?.();
         this.commandManager.redo();
+        return;
+      }
+
+      if (keyLower === 'x') {
+        event.preventDefault?.();
+        this.cut();
         return;
       }
 
@@ -1422,12 +1480,20 @@ export class InputController {
     return this._selectionOperations.duplicate();
   }
 
+  public cut(): boolean {
+    return this._selectionOperations.cut();
+  }
+
   public copy(): boolean {
     return this._selectionOperations.copy();
   }
 
-  public paste(): (Shape[] & Shape) | null {
-    return this._selectionOperations.paste();
+  public paste(targetPoint?: { x: number; y: number }): (Shape[] & Shape) | null {
+    return this._selectionOperations.paste(targetPoint);
+  }
+
+  public pasteAt(x: number, y: number): (Shape[] & Shape) | null {
+    return this._selectionOperations.paste({ x, y });
   }
 
   public groupSelection(): Group | null {

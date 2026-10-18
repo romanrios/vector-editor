@@ -294,6 +294,7 @@ export function setupUIBindings(
   const menuItemExport = document.querySelector<HTMLButtonElement>('#menu-item-export');
   const menuItemUndo = document.querySelector<HTMLButtonElement>('#menu-item-undo');
   const menuItemRedo = document.querySelector<HTMLButtonElement>('#menu-item-redo');
+  const menuItemCut = document.querySelector<HTMLButtonElement>('#menu-item-cut');
   const menuItemCopy = document.querySelector<HTMLButtonElement>('#menu-item-copy');
   const menuItemPaste = document.querySelector<HTMLButtonElement>('#menu-item-paste');
   const menuItemDuplicate = document.querySelector<HTMLButtonElement>('#menu-item-duplicate');
@@ -342,6 +343,38 @@ export function setupUIBindings(
 
   // Diálogo de Exportación (SVG, PNG, WebP, JSON)
   const exportDialog = document.querySelector<HTMLDialogElement>('#export-dialog');
+
+  // Menú contextual flotante (Click Derecho en el lienzo)
+  const contextMenu = document.querySelector<HTMLElement>('#context-menu');
+  const ctxItemCut = document.querySelector<HTMLButtonElement>('#ctx-item-cut');
+  const ctxItemCopy = document.querySelector<HTMLButtonElement>('#ctx-item-copy');
+  const ctxItemPaste = document.querySelector<HTMLButtonElement>('#ctx-item-paste');
+  const ctxItemPasteHere = document.querySelector<HTMLButtonElement>('#ctx-item-paste-here');
+  const ctxItemDuplicate = document.querySelector<HTMLButtonElement>('#ctx-item-duplicate');
+  const ctxItemBringToFront = document.querySelector<HTMLButtonElement>('#ctx-item-bring-to-front');
+  const ctxItemSendToBack = document.querySelector<HTMLButtonElement>('#ctx-item-send-to-back');
+  const ctxItemGroup = document.querySelector<HTMLButtonElement>('#ctx-item-group');
+  const ctxItemUngroup = document.querySelector<HTMLButtonElement>('#ctx-item-ungroup');
+
+  const ctxItemAlign = document.querySelector<HTMLButtonElement>('#ctx-item-align');
+  const ctxDropdownAlign = document.querySelector<HTMLElement>('#ctx-dropdown-align');
+  const ctxItemAlignLeft = document.querySelector<HTMLButtonElement>('#ctx-item-align-left');
+  const ctxItemAlignCenterH = document.querySelector<HTMLButtonElement>('#ctx-item-align-center-h');
+  const ctxItemAlignRight = document.querySelector<HTMLButtonElement>('#ctx-item-align-right');
+  const ctxItemAlignTop = document.querySelector<HTMLButtonElement>('#ctx-item-align-top');
+  const ctxItemAlignCenterV = document.querySelector<HTMLButtonElement>('#ctx-item-align-center-v');
+  const ctxItemAlignBottom = document.querySelector<HTMLButtonElement>('#ctx-item-align-bottom');
+
+  const ctxItemPathfinder = document.querySelector<HTMLButtonElement>('#ctx-item-pathfinder');
+  const ctxDropdownPathfinder = document.querySelector<HTMLElement>('#ctx-dropdown-pathfinder');
+  const ctxItemPathfinderUnion = document.querySelector<HTMLButtonElement>('#ctx-item-pathfinder-union');
+  const ctxItemPathfinderSubtract = document.querySelector<HTMLButtonElement>('#ctx-item-pathfinder-subtract');
+  const ctxItemPathfinderIntersect = document.querySelector<HTMLButtonElement>('#ctx-item-pathfinder-intersect');
+  const ctxItemPathfinderExclude = document.querySelector<HTMLButtonElement>('#ctx-item-pathfinder-exclude');
+
+  const ctxItemLock = document.querySelector<HTMLButtonElement>('#ctx-item-lock');
+  const ctxItemSelectAll = document.querySelector<HTMLButtonElement>('#ctx-item-select-all');
+  const ctxItemDelete = document.querySelector<HTMLButtonElement>('#ctx-item-delete');
   const btnCloseExport = document.querySelector<HTMLButtonElement>('#btn-close-export');
   const btnCancelExport = document.querySelector<HTMLButtonElement>('#btn-cancel-export');
   const btnConfirmExport = document.querySelector<HTMLButtonElement>('#btn-confirm-export');
@@ -526,6 +559,10 @@ export function setupUIBindings(
 
     const hasSelection = selectedNodes.length > 0;
 
+    if (menuItemCut) {
+      menuItemCut.disabled = !hasSelection;
+      menuItemCut.setAttribute('aria-disabled', String(!hasSelection));
+    }
     if (menuItemCopy) {
       menuItemCopy.disabled = !hasSelection;
       menuItemCopy.setAttribute('aria-disabled', String(!hasSelection));
@@ -629,6 +666,94 @@ export function setupUIBindings(
     if (menuItemPaste) {
       menuItemPaste.disabled = !hasClipboard;
       menuItemPaste.setAttribute('aria-disabled', String(!hasClipboard));
+    }
+
+    const allLocked = hasSelection && selectedNodes.every((n) => stateManager.isEffectivelyLocked(n.id));
+    const anyLocked = selectedNodes.some((n) => stateManager.isEffectivelyLocked(n.id));
+
+    if (ctxItemCut) {
+      ctxItemCut.disabled = !hasSelection || allLocked;
+      ctxItemCut.setAttribute('aria-disabled', String(!hasSelection || allLocked));
+    }
+    if (ctxItemCopy) {
+      ctxItemCopy.disabled = !hasSelection;
+      ctxItemCopy.setAttribute('aria-disabled', String(!hasSelection));
+    }
+    if (ctxItemPaste) {
+      ctxItemPaste.disabled = !hasClipboard;
+      ctxItemPaste.setAttribute('aria-disabled', String(!hasClipboard));
+    }
+    if (ctxItemPasteHere) {
+      ctxItemPasteHere.disabled = !hasClipboard;
+      ctxItemPasteHere.setAttribute('aria-disabled', String(!hasClipboard));
+    }
+    if (ctxItemDuplicate) {
+      ctxItemDuplicate.disabled = !hasSelection;
+      ctxItemDuplicate.setAttribute('aria-disabled', String(!hasSelection));
+    }
+    if (ctxItemBringToFront) {
+      ctxItemBringToFront.disabled = !hasSelection;
+      ctxItemBringToFront.setAttribute('aria-disabled', String(!hasSelection));
+    }
+    if (ctxItemSendToBack) {
+      ctxItemSendToBack.disabled = !hasSelection;
+      ctxItemSendToBack.setAttribute('aria-disabled', String(!hasSelection));
+    }
+    if (ctxItemGroup) {
+      ctxItemGroup.disabled = !canGroup;
+      ctxItemGroup.setAttribute('aria-disabled', String(!canGroup));
+    }
+    if (ctxItemUngroup) {
+      ctxItemUngroup.disabled = !canUngroup;
+      ctxItemUngroup.setAttribute('aria-disabled', String(!canUngroup));
+    }
+    if (ctxItemAlign) {
+      ctxItemAlign.disabled = !canAlign;
+      ctxItemAlign.setAttribute('aria-disabled', String(!canAlign));
+    }
+    const ctxAlignSubmenuItems = [
+      ctxItemAlignLeft,
+      ctxItemAlignCenterH,
+      ctxItemAlignRight,
+      ctxItemAlignTop,
+      ctxItemAlignCenterV,
+      ctxItemAlignBottom,
+    ];
+    for (let i = 0; i < ctxAlignSubmenuItems.length; i++) {
+      const it = ctxAlignSubmenuItems[i];
+      if (it) {
+        it.disabled = !canAlign;
+        it.setAttribute('aria-disabled', String(!canAlign));
+      }
+    }
+    if (ctxItemPathfinder) {
+      ctxItemPathfinder.disabled = !canPathfinder;
+      ctxItemPathfinder.setAttribute('aria-disabled', String(!canPathfinder));
+    }
+    const ctxPathfinderSubmenuItems = [
+      ctxItemPathfinderUnion,
+      ctxItemPathfinderSubtract,
+      ctxItemPathfinderIntersect,
+      ctxItemPathfinderExclude,
+    ];
+    for (let i = 0; i < ctxPathfinderSubmenuItems.length; i++) {
+      const it = ctxPathfinderSubmenuItems[i];
+      if (it) {
+        it.disabled = !canPathfinder;
+        it.setAttribute('aria-disabled', String(!canPathfinder));
+      }
+    }
+    if (ctxItemLock) {
+      ctxItemLock.disabled = !hasSelection;
+      ctxItemLock.setAttribute('aria-disabled', String(!hasSelection));
+      const label = ctxItemLock.querySelector<HTMLElement>('.menu-item-label');
+      if (label) {
+        label.textContent = anyLocked ? 'Desbloquear' : 'Bloquear';
+      }
+    }
+    if (ctxItemDelete) {
+      ctxItemDelete.disabled = !hasSelection || allLocked;
+      ctxItemDelete.setAttribute('aria-disabled', String(!hasSelection || allLocked));
     }
 
     // Deshabilitación de zoom en límites [0.1, 32]
@@ -3987,6 +4112,7 @@ export function setupUIBindings(
       items: [
         menuItemUndo,
         menuItemRedo,
+        menuItemCut,
         menuItemCopy,
         menuItemPaste,
         menuItemDuplicate,
@@ -4057,6 +4183,28 @@ export function setupUIBindings(
         menuItemPathfinderExclude,
       ],
     },
+    {
+      trigger: ctxItemAlign,
+      dropdown: ctxDropdownAlign,
+      items: [
+        ctxItemAlignLeft,
+        ctxItemAlignCenterH,
+        ctxItemAlignRight,
+        ctxItemAlignTop,
+        ctxItemAlignCenterV,
+        ctxItemAlignBottom,
+      ],
+    },
+    {
+      trigger: ctxItemPathfinder,
+      dropdown: ctxDropdownPathfinder,
+      items: [
+        ctxItemPathfinderUnion,
+        ctxItemPathfinderSubtract,
+        ctxItemPathfinderIntersect,
+        ctxItemPathfinderExclude,
+      ],
+    },
   ];
 
   const closeAllSubmenus = () => {
@@ -4094,11 +4242,41 @@ export function setupUIBindings(
     }
   };
 
+  let lastContextWorldCoords: { x: number; y: number } | null = null;
+
+  const closeContextMenu = () => {
+    if (contextMenu) {
+      contextMenu.hidden = true;
+      contextMenu.classList?.remove('is-open');
+    }
+  };
+
+  const openContextMenu = (clientX: number, clientY: number) => {
+    if (!contextMenu) return;
+    closeAllMenus();
+    syncMenuItems();
+
+    contextMenu.hidden = false;
+    contextMenu.classList?.add('is-open');
+
+    const menuWidth = contextMenu.offsetWidth || 220;
+    const menuHeight = contextMenu.offsetHeight || 320;
+    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+
+    const posX = Math.max(10, Math.min(clientX, windowWidth - menuWidth - 10));
+    const posY = Math.max(10, Math.min(clientY, windowHeight - menuHeight - 10));
+
+    contextMenu.style.left = `${posX}px`;
+    contextMenu.style.top = `${posY}px`;
+  };
+
   let activeMenuIndex = -1;
 
   const closeAllMenus = () => {
     activeMenuIndex = -1;
     closeAllSubmenus();
+    closeContextMenu();
     for (const entry of menuEntries) {
       if (entry.trigger) {
         entry.trigger.setAttribute('aria-expanded', 'false');
@@ -4332,6 +4510,13 @@ export function setupUIBindings(
 
   const onDocumentClick = (e: MouseEvent) => {
     const target = e.target as Node | null;
+    if (contextMenu && !contextMenu.hidden) {
+      const isInsideCtx = contextMenu === target || (typeof contextMenu.contains === 'function' && contextMenu.contains(target));
+      if (!isInsideCtx) {
+        closeContextMenu();
+      }
+    }
+
     if (isZoomMenuOpen) {
       const isInsideZoom = (statusZoomBtn && (statusZoomBtn === target || statusZoomBtn.contains?.(target))) ||
                            (zoomDropdown && (zoomDropdown === target || zoomDropdown.contains?.(target)));
@@ -4364,6 +4549,13 @@ export function setupUIBindings(
   };
 
   const onDocumentKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && contextMenu && !contextMenu.hidden) {
+      e.preventDefault?.();
+      closeContextMenu();
+      canvas?.focus?.();
+      return;
+    }
+
     if (e.key === 'Escape' && exportDialog && (exportDialog.open || exportDialog.hasAttribute('open'))) {
       e.preventDefault?.();
       closeExportDialog();
@@ -4420,6 +4612,15 @@ export function setupUIBindings(
     if (commandManager.canRedo()) {
       closeAllMenus();
       commandManager.redo();
+      canvas?.focus?.();
+    }
+  };
+
+  const onMenuCutClick = () => {
+    if (stateManager.getSelection().length > 0) {
+      closeAllMenus();
+      inputController.cut();
+      syncMenuItems();
       canvas?.focus?.();
     }
   };
@@ -4568,6 +4769,117 @@ export function setupUIBindings(
   btnPathfinderIntersect?.addEventListener('click', onPathfinderIntersect);
   btnPathfinderExclude?.addEventListener('click', onPathfinderExclude);
 
+  const onCtxPasteHereClick = () => {
+    if (inputController.clipboard) {
+      closeAllMenus();
+      inputController.paste(lastContextWorldCoords ?? undefined);
+      syncMenuItems();
+      canvas?.focus?.();
+    }
+  };
+
+  const onCtxLockClick = () => {
+    const sel = stateManager.getSelection();
+    if (sel.length === 0) return;
+    closeAllMenus();
+    const anyLocked = sel.some((id) => stateManager.isEffectivelyLocked(id));
+    const targetLocked = !anyLocked;
+    const commands = sel.map((id) => new SetLockedCommand(stateManager, id, targetLocked));
+    if (commands.length === 1) {
+      commandManager.executeCommand(commands[0]);
+    } else if (commands.length > 1) {
+      commandManager.executeCommand(
+        new BatchCommand(commands, targetLocked ? 'Bloquear elementos' : 'Desbloquear elementos')
+      );
+    }
+    syncMenuItems();
+    canvas?.focus?.();
+  };
+
+  const onCtxSelectAllClick = () => {
+    closeAllMenus();
+    stateManager.selectAll();
+    syncMenuItems();
+    canvas?.focus?.();
+  };
+
+  const onCanvasContextMenu = (data: { clientX: number; clientY: number; worldX: number; worldY: number }) => {
+    lastContextWorldCoords = { x: data.worldX, y: data.worldY };
+    openContextMenu(data.clientX, data.clientY);
+  };
+
+  const onContextMenuNative = (e: MouseEvent) => {
+    e.preventDefault?.();
+  };
+
+  const ctxItemsList = [
+    ctxItemCut,
+    ctxItemCopy,
+    ctxItemPaste,
+    ctxItemPasteHere,
+    ctxItemDuplicate,
+    ctxItemBringToFront,
+    ctxItemSendToBack,
+    ctxItemGroup,
+    ctxItemUngroup,
+    ctxItemAlign,
+    ctxItemPathfinder,
+    ctxItemLock,
+    ctxItemSelectAll,
+    ctxItemDelete,
+  ];
+
+  const onContextMenuKeyDown = (e: KeyboardEvent) => {
+    const key = e.key;
+    const allItems = ctxItemsList.filter(Boolean) as HTMLButtonElement[];
+    const enabledItems = allItems.filter((it) => !it.disabled && it.getAttribute('aria-disabled') !== 'true');
+    const focusedItem = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLButtonElement;
+    const currentEnabledIndex = enabledItems.indexOf(focusedItem);
+
+    if (key === 'ArrowDown') {
+      e.preventDefault?.();
+      if (enabledItems.length === 0) return;
+      const nextIndex = currentEnabledIndex >= 0 ? (currentEnabledIndex + 1) % enabledItems.length : 0;
+      enabledItems[nextIndex].focus?.();
+    } else if (key === 'ArrowUp') {
+      e.preventDefault?.();
+      if (enabledItems.length === 0) return;
+      const prevIndex = currentEnabledIndex >= 0
+        ? (currentEnabledIndex - 1 + enabledItems.length) % enabledItems.length
+        : enabledItems.length - 1;
+      enabledItems[prevIndex].focus?.();
+    } else if (key === 'ArrowRight') {
+      const sub = submenuEntries.find((s) => s.trigger === focusedItem);
+      if (sub && !sub.trigger?.disabled && sub.trigger?.getAttribute('aria-disabled') !== 'true') {
+        e.preventDefault?.();
+        openSubmenu(sub, true);
+      }
+    } else if (key === 'ArrowLeft') {
+      closeAllSubmenus();
+      focusedItem?.focus?.();
+    } else if (key === 'Escape') {
+      e.preventDefault?.();
+      closeContextMenu();
+      canvas?.focus?.();
+    } else if (key === 'Tab') {
+      closeContextMenu();
+    } else if (key === 'Enter' || key === ' ') {
+      if (focusedItem && allItems.includes(focusedItem)) {
+        if (!focusedItem.disabled && focusedItem.getAttribute('aria-disabled') !== 'true') {
+          const sub = submenuEntries.find((s) => s.trigger === focusedItem);
+          if (sub) {
+            e.preventDefault?.();
+            openSubmenu(sub, true);
+            return;
+          }
+          e.preventDefault?.();
+          focusedItem.click();
+        }
+      }
+    }
+  };
+
+
   const onMenuZoomInClick = () => {
     closeAllMenus();
     inputController.zoomIn();
@@ -4707,6 +5019,7 @@ export function setupUIBindings(
   menuItemExport?.addEventListener('click', onMenuExportClick);
   menuItemUndo?.addEventListener('click', onMenuUndoClick);
   menuItemRedo?.addEventListener('click', onMenuRedoClick);
+  menuItemCut?.addEventListener('click', onMenuCutClick);
   menuItemCopy?.addEventListener('click', onMenuCopyClick);
   menuItemPaste?.addEventListener('click', onMenuPasteClick);
   menuItemDuplicate?.addEventListener('click', onMenuDuplicateClick);
@@ -4715,6 +5028,37 @@ export function setupUIBindings(
   menuItemSendToBack?.addEventListener('click', onMenuSendToBackClick);
   menuItemGroup?.addEventListener('click', onMenuGroupClick);
   menuItemUngroup?.addEventListener('click', onMenuUngroupClick);
+
+  ctxItemCut?.addEventListener('click', onMenuCutClick);
+  ctxItemCopy?.addEventListener('click', onMenuCopyClick);
+  ctxItemPaste?.addEventListener('click', onMenuPasteClick);
+  ctxItemPasteHere?.addEventListener('click', onCtxPasteHereClick);
+  ctxItemDuplicate?.addEventListener('click', onMenuDuplicateClick);
+  ctxItemBringToFront?.addEventListener('click', onMenuBringToFrontClick);
+  ctxItemSendToBack?.addEventListener('click', onMenuSendToBackClick);
+  ctxItemGroup?.addEventListener('click', onMenuGroupClick);
+  ctxItemUngroup?.addEventListener('click', onMenuUngroupClick);
+
+  ctxItemAlignLeft?.addEventListener('click', onAlignLeft);
+  ctxItemAlignCenterH?.addEventListener('click', onAlignCenterH);
+  ctxItemAlignRight?.addEventListener('click', onAlignRight);
+  ctxItemAlignTop?.addEventListener('click', onAlignTop);
+  ctxItemAlignCenterV?.addEventListener('click', onAlignCenterV);
+  ctxItemAlignBottom?.addEventListener('click', onAlignBottom);
+
+  ctxItemPathfinderUnion?.addEventListener('click', onPathfinderUnion);
+  ctxItemPathfinderSubtract?.addEventListener('click', onPathfinderSubtract);
+  ctxItemPathfinderIntersect?.addEventListener('click', onPathfinderIntersect);
+  ctxItemPathfinderExclude?.addEventListener('click', onPathfinderExclude);
+
+  ctxItemLock?.addEventListener('click', onCtxLockClick);
+  ctxItemSelectAll?.addEventListener('click', onCtxSelectAllClick);
+  ctxItemDelete?.addEventListener('click', onMenuDeleteClick);
+
+  contextMenu?.addEventListener('keydown', onContextMenuKeyDown);
+  contextMenu?.addEventListener('contextmenu', onContextMenuNative);
+  inputController.on('canvasContextMenu', onCanvasContextMenu);
+
   menuItemZoomIn?.addEventListener('click', onMenuZoomInClick);
   menuItemZoomOut?.addEventListener('click', onMenuZoomOutClick);
   menuItemZoomFit?.addEventListener('click', onMenuZoomFitClick);
@@ -5098,6 +5442,7 @@ export function setupUIBindings(
       menuItemExport?.removeEventListener('click', onMenuExportClick);
       menuItemUndo?.removeEventListener('click', onMenuUndoClick);
       menuItemRedo?.removeEventListener('click', onMenuRedoClick);
+      menuItemCut?.removeEventListener('click', onMenuCutClick);
       menuItemCopy?.removeEventListener('click', onMenuCopyClick);
       menuItemPaste?.removeEventListener('click', onMenuPasteClick);
       menuItemDuplicate?.removeEventListener('click', onMenuDuplicateClick);
@@ -5136,6 +5481,36 @@ export function setupUIBindings(
       btnPathfinderSubtract?.removeEventListener('click', onPathfinderSubtract);
       btnPathfinderIntersect?.removeEventListener('click', onPathfinderIntersect);
       btnPathfinderExclude?.removeEventListener('click', onPathfinderExclude);
+
+      ctxItemCut?.removeEventListener('click', onMenuCutClick);
+      ctxItemCopy?.removeEventListener('click', onMenuCopyClick);
+      ctxItemPaste?.removeEventListener('click', onMenuPasteClick);
+      ctxItemPasteHere?.removeEventListener('click', onCtxPasteHereClick);
+      ctxItemDuplicate?.removeEventListener('click', onMenuDuplicateClick);
+      ctxItemBringToFront?.removeEventListener('click', onMenuBringToFrontClick);
+      ctxItemSendToBack?.removeEventListener('click', onMenuSendToBackClick);
+      ctxItemGroup?.removeEventListener('click', onMenuGroupClick);
+      ctxItemUngroup?.removeEventListener('click', onMenuUngroupClick);
+
+      ctxItemAlignLeft?.removeEventListener('click', onAlignLeft);
+      ctxItemAlignCenterH?.removeEventListener('click', onAlignCenterH);
+      ctxItemAlignRight?.removeEventListener('click', onAlignRight);
+      ctxItemAlignTop?.removeEventListener('click', onAlignTop);
+      ctxItemAlignCenterV?.removeEventListener('click', onAlignCenterV);
+      ctxItemAlignBottom?.removeEventListener('click', onAlignBottom);
+
+      ctxItemPathfinderUnion?.removeEventListener('click', onPathfinderUnion);
+      ctxItemPathfinderSubtract?.removeEventListener('click', onPathfinderSubtract);
+      ctxItemPathfinderIntersect?.removeEventListener('click', onPathfinderIntersect);
+      ctxItemPathfinderExclude?.removeEventListener('click', onPathfinderExclude);
+
+      ctxItemLock?.removeEventListener('click', onCtxLockClick);
+      ctxItemSelectAll?.removeEventListener('click', onCtxSelectAllClick);
+      ctxItemDelete?.removeEventListener('click', onMenuDeleteClick);
+
+      contextMenu?.removeEventListener('keydown', onContextMenuKeyDown);
+      contextMenu?.removeEventListener('contextmenu', onContextMenuNative);
+      inputController.off('canvasContextMenu', onCanvasContextMenu);
 
       submenuEntries.forEach((sub, i) => {
         sub.dropdown?.removeEventListener('keydown', submenuKeyDownHandlers[i]);

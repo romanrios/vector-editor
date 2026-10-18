@@ -585,3 +585,333 @@ describe('Botón Duplicar en Panel de Propiedades (setupUIBindings)', () => {
     delete (globalThis as any).document;
   });
 });
+
+describe('Cortar elementos (Ctrl+X / Cmd+X / cut())', () => {
+  it('cut() copia el elemento al portapapeles, lo elimina del documento, limpia la selección y permite pegar (paste())', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'Rect1', x: 50, y: 50, width: 60, height: 40 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    const cutSuccess = controller.cut();
+    assert.equal(cutSuccess, true, 'cut() debe retornar true al cortar una figura seleccionada');
+    assert.ok(controller.clipboard !== null, 'El portapapeles debe contener la figura cortada');
+    assert.equal(controller.clipboard.id, 'r1');
+    assert.equal(stateManager.findNode('r1'), null, 'La figura cortada debe eliminarse del Scene Graph');
+    assert.deepEqual(stateManager.getSelection(), [], 'La selección debe quedar vacía tras cortar');
+    assert.equal(commandManager.undoCount, 1, 'Debe registrarse 1 comando en el historial');
+
+    // Pegar debe reinsertar la figura clonada desplazada 10 px
+    const pasted = controller.paste();
+    assert.ok(pasted !== null);
+    assert.equal(pasted.x, 60);
+    assert.equal(pasted.y, 60);
+    assert.equal(pasted.name, 'Rect1 copia');
+    assert.equal(stateManager.getSelectedNode()?.id, pasted.id);
+    assert.equal(commandManager.undoCount, 2);
+
+    controller.destroy();
+  });
+
+  it('cut() soporta deshacer (undo) y rehacer (redo)', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'Rect1', x: 20, y: 30, width: 40, height: 40 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    controller.cut();
+    assert.equal(stateManager.findNode('r1'), null);
+
+    // Deshacer restaura la figura original
+    commandManager.undo();
+    assert.ok(stateManager.findNode('r1') !== null);
+    assert.equal((stateManager.findNode('r1') as Shape).name, 'Rect1');
+
+    // Rehacer la vuelve a eliminar
+    commandManager.redo();
+    assert.equal(stateManager.findNode('r1'), null);
+
+    // El portapapeles aún tiene la figura cortada
+    assert.equal(controller.clipboard?.id, 'r1');
+
+    controller.destroy();
+  });
+
+  it('cut() con selección múltiple elimina en un solo BatchCommand y guarda todos en el portapapeles', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 10, y: 10, width: 20, height: 20 };
+    const r2: Rectangle = { id: 'r2', type: 'rectangle', name: 'R2', x: 50, y: 50, width: 30, height: 30 };
+    stateManager.addShape(layerId, r1);
+    stateManager.addShape(layerId, r2);
+    stateManager.setSelection(['r1', 'r2']);
+
+    const cutSuccess = controller.cut();
+    assert.equal(cutSuccess, true);
+    assert.equal(commandManager.undoCount, 1, 'Debe registrarse UNA sola entrada en historial (BatchCommand)');
+    assert.equal(stateManager.findNode('r1'), null);
+    assert.equal(stateManager.findNode('r2'), null);
+    assert.equal(controller.clipboard?.length, 2);
+
+    // Deshacer restaura ambas figuras en 1 solo paso
+    commandManager.undo();
+    assert.ok(stateManager.findNode('r1') !== null);
+    assert.ok(stateManager.findNode('r2') !== null);
+
+    controller.destroy();
+  });
+
+  it('cut() con un grupo copia el grupo al portapapeles y elimina el grupo del documento', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 10, y: 10, width: 20, height: 20 };
+    const r2: Rectangle = { id: 'r2', type: 'rectangle', name: 'R2', x: 40, y: 40, width: 20, height: 20 };
+    stateManager.addShape(layerId, r1);
+    stateManager.addShape(layerId, r2);
+    stateManager.setSelection(['r1', 'r2']);
+
+    const group = controller.groupSelection();
+    assert.ok(group !== null);
+    stateManager.setSelection([group.id]);
+
+    const cutSuccess = controller.cut();
+    assert.equal(cutSuccess, true);
+    assert.equal(stateManager.findNode(group.id), null);
+    assert.equal(controller.clipboard?.id, group.id);
+
+    // Deshacer restaura el grupo
+    commandManager.undo();
+    assert.ok(stateManager.findNode(group.id) !== null);
+
+    controller.destroy();
+  });
+
+  it('cut() no corta figuras bloqueadas y retorna false si todas están bloqueadas', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const lockedRect: Rectangle = {
+      id: 'l1',
+      type: 'rectangle',
+      name: 'Locked',
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 20,
+      locked: true,
+    };
+    stateManager.addShape(layerId, lockedRect);
+    stateManager.setSelection(['l1']);
+
+    const cutSuccess = controller.cut();
+    assert.equal(cutSuccess, false, 'No debe cortar figuras bloqueadas');
+    assert.equal(controller.clipboard, null);
+    assert.ok(stateManager.findNode('l1') !== null);
+
+    controller.destroy();
+  });
+
+  it('cut() en selección mixta (bloqueada y desbloqueada) solo corta la figura desbloqueada', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const lockedRect: Rectangle = {
+      id: 'l1',
+      type: 'rectangle',
+      name: 'Locked',
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 20,
+      locked: true,
+    };
+    const openRect: Rectangle = {
+      id: 'o1',
+      type: 'rectangle',
+      name: 'Open',
+      x: 50,
+      y: 50,
+      width: 20,
+      height: 20,
+    };
+    stateManager.addShape(layerId, lockedRect);
+    stateManager.addShape(layerId, openRect);
+    stateManager.setSelection(['l1', 'o1']);
+
+    const cutSuccess = controller.cut();
+    assert.equal(cutSuccess, true);
+    assert.ok(stateManager.findNode('l1') !== null, 'La figura bloqueada debe conservarse');
+    assert.equal(stateManager.findNode('o1'), null, 'La figura desbloqueada debe ser cortada');
+    assert.equal(controller.clipboard?.id, 'o1');
+
+    controller.destroy();
+  });
+
+  it('cut() retorna false y no modifica portapapeles si la selección está vacía', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    assert.equal(controller.cut(), false);
+    assert.equal(controller.clipboard, null);
+
+    controller.destroy();
+  });
+
+  it('atajo de teclado Ctrl+X corta la selección e invoca preventDefault', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'Rect', x: 10, y: 10, width: 20, height: 20 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    let prevented = false;
+    controller.handleKeyDown({
+      ctrlKey: true,
+      key: 'x',
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as KeyboardEvent);
+
+    assert.equal(prevented, true, 'Ctrl+X debe invocar preventDefault');
+    assert.equal(commandManager.undoCount, 1);
+    assert.equal(stateManager.findNode('r1'), null);
+    assert.equal(controller.clipboard?.id, 'r1');
+
+    controller.destroy();
+  });
+
+  it('atajo de teclado Cmd+X en macOS (metaKey) corta la selección', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'Rect', x: 10, y: 10, width: 20, height: 20 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    let prevented = false;
+    controller.handleKeyDown({
+      metaKey: true,
+      key: 'X',
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as KeyboardEvent);
+
+    assert.equal(prevented, true, 'Cmd+X debe invocar preventDefault');
+    assert.equal(commandManager.undoCount, 1);
+    assert.equal(stateManager.findNode('r1'), null);
+    assert.equal(controller.clipboard?.id, 'r1');
+
+    controller.destroy();
+  });
+
+  it('ignora atajo Ctrl+X cuando el foco está en un input o textarea', () => {
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'Rect', x: 10, y: 10, width: 20, height: 20 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    let prevented = false;
+    const textInput = new MockElement('input-name', 'INPUT');
+    controller.handleKeyDown({
+      ctrlKey: true,
+      key: 'x',
+      target: textInput,
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as KeyboardEvent);
+
+    assert.equal(prevented, false, 'No debe llamar preventDefault si el foco está en un input');
+    assert.equal(commandManager.undoCount, 0, 'No debe cortar si el foco está en un input');
+    assert.ok(stateManager.findNode('r1') !== null);
+    assert.equal(controller.clipboard, null);
+
+    controller.destroy();
+  });
+
+  it('vincula #menu-item-cut en setupUIBindings y cleanup remueve el listener', () => {
+    const menuItemCut = new MockElement('menu-item-cut');
+    const domMap: Record<string, MockElement> = {
+      '#menu-item-cut': menuItemCut,
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => domMap[selector] || null,
+      activeElement: null,
+    };
+
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const canvas = createMockCanvas();
+    const inputController = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+
+    const r1: Rectangle = { id: 'r1', type: 'rectangle', name: 'R1', x: 20, y: 30, width: 50, height: 40 };
+    stateManager.addShape(layerId, r1);
+    stateManager.selectNode('r1');
+
+    const { cleanup } = setupUIBindings(inputController, commandManager, stateManager);
+
+    // Clic en Cortar
+    menuItemCut.click();
+    assert.equal(commandManager.undoCount, 1);
+    assert.equal(stateManager.findNode('r1'), null);
+    assert.equal(inputController.clipboard?.id, 'r1');
+
+    // Ejecutar cleanup()
+    cleanup();
+
+    // Reinsertar y seleccionar
+    const r2: Rectangle = { id: 'r2', type: 'rectangle', name: 'R2', x: 0, y: 0, width: 10, height: 10 };
+    stateManager.addShape(layerId, r2);
+    stateManager.selectNode('r2');
+
+    // Clic tras cleanup no debe cortar de nuevo
+    menuItemCut.click();
+    assert.equal(commandManager.undoCount, 1);
+    assert.ok(stateManager.findNode('r2') !== null);
+
+    inputController.destroy();
+    delete (globalThis as any).document;
+  });
+});

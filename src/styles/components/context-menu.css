@@ -1,0 +1,22 @@
+/* Menú Contextual del Lienzo (Click Derecho) */
+.context-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2500;
+  min-width: 220px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+}
+
+.context-menu[hidden] {
+  display: none !important;
+}
+
+.context-menu .menu-submenu {
+  z-index: 2501;
+}

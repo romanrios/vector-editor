@@ -14,6 +14,7 @@ import { cloneNode } from '../utils/cloneShape.ts';
 import {
   computeNodesAlignment,
   computeNodesDistribution,
+  getSelectionBounds,
   type AlignmentMode,
   type DistributionAxis,
 } from '../utils/geometry.ts';
@@ -448,10 +449,11 @@ export class SelectionOperations {
 
   /**
    * Guarda una copia de los nodos seleccionados (figuras o grupos) en el portapapeles interno.
+   * Permite especificar una lista explícita de nodos a copiar.
    * Reinicia el contador de desplazamientos de pegados consecutivos.
    */
-  public copy(): boolean {
-    const selectedNodes = this.stateManager.getSelectedNodes();
+  public copy(nodesToCopy?: readonly SelectableNode[]): boolean {
+    const selectedNodes = nodesToCopy ?? this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 0) {
       return false;
     }
@@ -493,18 +495,61 @@ export class SelectionOperations {
   }
 
   /**
+   * Corta los elementos seleccionados: copia los elementos desbloqueados al portapapeles interno
+   * y los elimina del documento mediante DeleteCommand / BatchCommand.
+   * Si no hay elementos seleccionados o están todos bloqueados, no realiza ninguna acción y retorna false.
+   * Registra una sola entrada en el historial de comandos para la eliminación y reinicia el contador de pegados.
+   */
+  public cut(): boolean {
+    const selectedNodes = this.stateManager
+      .getSelectedNodes()
+      .filter((n) => !this.stateManager.isEffectivelyLocked(n.id));
+    if (selectedNodes.length === 0) {
+      return false;
+    }
+
+    const copied = this.copy(selectedNodes);
+    if (!copied) {
+      return false;
+    }
+
+    return this.deleteSelected();
+  }
+
+  /**
    * Crea copias de los elementos del portapapeles conservando sus posiciones relativas
-   * y orden de apilado relativo, desplazadas 10 px de forma acumulada en pegados consecutivos.
+   * y orden de apilado relativo, desplazadas 10 px de forma acumulada en pegados consecutivos,
+   * o centradas en targetPoint si se especifica.
    * Las copias se insertan en su contenedor de origen y quedan seleccionadas.
    * Registra UNA sola entrada en el historial de comandos (AddShapeCommand o BatchCommand).
    */
-  public paste(): (Shape[] & Shape) | null {
+  public paste(targetPoint?: { x: number; y: number }): (Shape[] & Shape) | null {
     if (!this._clipboard || !this._clipboardEntries || this._clipboardEntries.length === 0) {
       return null;
     }
 
-    this._pasteCount++;
-    const offset = this._pasteCount * 10;
+    let dx: number;
+    let dy: number;
+
+    if (targetPoint) {
+      const nodes = this._clipboardEntries.map((e) => e.node);
+      const bounds = getSelectionBounds(nodes);
+      if (bounds) {
+        const centerX = (bounds.minX + bounds.maxX) / 2;
+        const centerY = (bounds.minY + bounds.maxY) / 2;
+        dx = targetPoint.x - centerX;
+        dy = targetPoint.y - centerY;
+      } else {
+        this._pasteCount++;
+        dx = this._pasteCount * 10;
+        dy = this._pasteCount * 10;
+      }
+    } else {
+      this._pasteCount++;
+      dx = this._pasteCount * 10;
+      dy = this._pasteCount * 10;
+    }
+
     const doc = this.stateManager.getState();
     const defaultLayerId = this.stateManager.getActiveLayerId() || doc.children[0]?.id;
 
@@ -523,7 +568,7 @@ export class SelectionOperations {
         continue;
       }
 
-      const cloned = cloneNode(entry.node, { dx: offset, dy: offset });
+      const cloned = cloneNode(entry.node, { dx, dy });
       clonedNodes.push(cloned);
       commands.push(new AddShapeCommand(this.stateManager, targetParentId, cloned));
     }

@@ -135,8 +135,10 @@ vector-editor/
 | **Selección** | `Ctrl + A` | Seleccionar todas las figuras |
 | | `Shift + Clic` | Añadir o remover figura de la selección |
 | | Arrastre en fondo | Selección por marquesina rectangular |
+| | Clic derecho | Abrir menú contextual (Cortar, Copiar, Pegar, Pegar aquí, Duplicar, Disposición, Agrupar, Alinear, Pathfinder, Bloquear, etc.) |
 | **Edición** | `Ctrl + Z` | Deshacer última acción |
 | | `Ctrl + Shift + Z` / `Ctrl + Y` | Rehacer última acción |
+| | `Ctrl + X` | Cortar figuras seleccionadas |
 | | `Ctrl + C` | Copiar figuras seleccionadas |
 | | `Ctrl + V` | Pegar figuras del portapapeles |
 | | `Ctrl + D` | Duplicar figuras seleccionadas |
@@ -155,7 +157,7 @@ vector-editor/
 
 ## Cobertura y Calidad de Pruebas
 
-El repositorio mantiene una suite de pruebas automatizadas con más de 640 tests unitarios que cubren:
+El repositorio mantiene una suite de pruebas automatizadas con más de 780 tests unitarios que cubren:
 
 - **Integridad del Scene Graph**: Garantía de inmutabilidad (`Object.freeze`), persistencia estructural y aislamiento de la selección fuera del árbol del documento.
 - **Historial y Comandos**: Validación de operaciones unitarias y lotes compuestos (`BatchCommand`) con 1, 2 y 3 figuras en ciclos de Undo/Redo.

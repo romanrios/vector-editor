@@ -165,6 +165,7 @@ function setupMockDOM() {
     '#menu-item-export': new MockElement('menu-item-export', 'button'),
     '#menu-item-undo': new MockElement('menu-item-undo', 'button'),
     '#menu-item-redo': new MockElement('menu-item-redo', 'button'),
+    '#menu-item-cut': new MockElement('menu-item-cut', 'button'),
     '#menu-item-copy': new MockElement('menu-item-copy', 'button'),
     '#menu-item-paste': new MockElement('menu-item-paste', 'button'),
     '#menu-item-duplicate': new MockElement('menu-item-duplicate', 'button'),
@@ -203,6 +204,7 @@ function setupMockDOM() {
   elements['.menu-bar'].appendChild(elements['#menu-dropdown-edit']);
   elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-undo']);
   elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-redo']);
+  elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-cut']);
   elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-copy']);
   elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-paste']);
   elements['#menu-dropdown-edit'].appendChild(elements['#menu-item-duplicate']);
@@ -332,6 +334,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
 
     const itemUndo = elements['#menu-item-undo'];
     const itemRedo = elements['#menu-item-redo'];
+    const itemCut = elements['#menu-item-cut'];
     const itemCopy = elements['#menu-item-copy'];
     const itemPaste = elements['#menu-item-paste'];
     const itemDuplicate = elements['#menu-item-duplicate'];
@@ -343,6 +346,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     // 1. Estado inicial sin historial ni selección
     assert.equal(itemUndo.disabled, true);
     assert.equal(itemRedo.disabled, true);
+    assert.equal(itemCut.disabled, true);
     assert.equal(itemCopy.disabled, true);
     assert.equal(itemPaste.disabled, true);
     assert.equal(itemDuplicate.disabled, true);
@@ -373,6 +377,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     stateManager.selectNode(rect.id);
 
     // Con figura seleccionada, los ítems dependientes de selección se habilitan
+    assert.equal(itemCut.disabled, false);
     assert.equal(itemCopy.disabled, false);
     assert.equal(itemDuplicate.disabled, false);
     assert.equal(itemDelete.disabled, false);
@@ -402,6 +407,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
 
     // 6. Deseleccionar figura: ítems dependientes de selección se deshabilitan
     stateManager.selectNode(null);
+    assert.equal(itemCut.disabled, true);
     assert.equal(itemCopy.disabled, true);
     assert.equal(itemDuplicate.disabled, true);
     assert.equal(itemDelete.disabled, true);

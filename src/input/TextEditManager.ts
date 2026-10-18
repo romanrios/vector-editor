@@ -648,6 +648,26 @@ export class TextEditManager {
       return true;
     }
 
+    // Ctrl/Cmd + X: cortar texto seleccionado al portapapeles del sistema
+    if ((event.ctrlKey || event.metaKey) && keyLower === 'x') {
+      event.preventDefault?.();
+      if (hasSelection) {
+        const selectedText = text.slice(selMin, selMax);
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(selectedText).catch(() => {
+            // Silenciar errores de permisos de portapapeles
+          });
+        }
+        this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
+        this._textEditingState.cursorIndex = selMin;
+        this._textEditingState.selectionStart = selMin;
+        this._textEditingState.selectionEnd = selMin;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+      }
+      return true;
+    }
+
     // Ctrl/Cmd + C: copiar texto seleccionado al portapapeles del sistema
     if ((event.ctrlKey || event.metaKey) && keyLower === 'c') {
       event.preventDefault?.();
