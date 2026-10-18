@@ -431,8 +431,8 @@
           </svg>
         </summary>
         <div class="section-content">
-          <div class="control-group" id="group-fill">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <div id="group-fill" style="display: flex; flex-direction: column; gap: 6px;">
+            <div class="control-group">
               <label for="select-fill-mode">Relleno</label>
               <select id="select-fill-mode" class="control-select" style="width: auto; min-width: 95px; padding: 2px 6px; font-size: 11px;" aria-label="Modo de relleno">
                 <option value="solid">Sólido</option>
@@ -443,7 +443,7 @@
             </div>
 
             <!-- Controles Relleno Sólido -->
-            <div class="color-composite-group" id="fill-solid-controls">
+            <div class="color-composite-group" id="fill-solid-controls" style="display: flex; justify-content: flex-end;">
               <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
                 <div class="color-swatch-preview" id="swatch-fill-preview"></div>
                 <input type="color" id="input-fill" title="Elegir color de relleno" aria-label="Elegir color de relleno">
@@ -478,12 +478,12 @@
                 </div>
 
                 <div class="input-number-wrapper" style="width: 58px;" title="Posición de parada">
-                  <input type="number" id="input-stop-offset" min="0" max="100" step="1" value="0" style="padding: 2px 4px; height: 22px; font-size: 11px;" aria-label="Posición de parada">
+                  <input type="number" id="input-stop-offset" min="0" max="100" step="1" value="0" aria-label="Posición de parada">
                   <span class="input-unit" aria-hidden="true">%</span>
                 </div>
 
                 <div class="input-number-wrapper" style="width: 52px;" title="Opacidad de parada">
-                  <input type="number" id="input-stop-opacity" min="0" max="100" step="1" value="100" style="padding: 2px 4px; height: 22px; font-size: 11px;" aria-label="Opacidad de parada">
+                  <input type="number" id="input-stop-opacity" min="0" max="100" step="1" value="100" aria-label="Opacidad de parada">
                   <span class="input-unit" aria-hidden="true">%</span>
                 </div>
 
