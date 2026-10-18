@@ -509,6 +509,15 @@ export class RenderEngine {
 
     if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
       this.ctx.lineWidth = rect.strokeWidth;
+      if (rect.strokeDashArray && rect.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...rect.strokeDashArray]);
+      }
+      if (rect.strokeLineCap) {
+        this.ctx.lineCap = rect.strokeLineCap;
+      }
+      if (rect.strokeLineJoin) {
+        this.ctx.lineJoin = rect.strokeLineJoin;
+      }
       if (isGradient(rect.stroke)) {
         const baseAABB = {
           minX: rect.x,
@@ -571,7 +580,24 @@ export class RenderEngine {
 
     if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
       this.ctx.lineWidth = ellipse.strokeWidth;
+      if (ellipse.strokeDashArray && ellipse.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...ellipse.strokeDashArray]);
+      }
+      if (ellipse.strokeLineCap) {
+        this.ctx.lineCap = ellipse.strokeLineCap;
+      }
+      if (ellipse.strokeLineJoin) {
+        this.ctx.lineJoin = ellipse.strokeLineJoin;
+      }
       if (isGradient(ellipse.stroke)) {
+        const baseAABB = {
+          minX: ellipse.x - ellipse.radiusX,
+          minY: ellipse.y - ellipse.radiusY,
+          maxX: ellipse.x + ellipse.radiusX,
+          maxY: ellipse.y + ellipse.radiusY,
+          width: ellipse.radiusX * 2,
+          height: ellipse.radiusY * 2,
+        };
         this.ctx.strokeStyle = createCanvasGradient(this.ctx, ellipse.stroke, baseAABB);
       } else {
         this.ctx.strokeStyle = ellipse.stroke!;
@@ -1148,14 +1174,17 @@ export class RenderEngine {
 
     if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
       this.ctx.lineWidth = path.strokeWidth;
+      if (path.strokeDashArray && path.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...path.strokeDashArray]);
+      }
+      this.ctx.lineCap = path.strokeLineCap ?? 'round';
+      this.ctx.lineJoin = path.strokeLineJoin ?? 'round';
       if (isGradient(path.stroke)) {
         const baseAABB = getPathBaseAABB(path);
         this.ctx.strokeStyle = createCanvasGradient(this.ctx, path.stroke, baseAABB);
       } else {
         this.ctx.strokeStyle = path.stroke!;
       }
-      this.ctx.lineCap = 'round';
-      this.ctx.lineJoin = 'round';
       this.ctx.stroke();
     }
 
@@ -1209,6 +1238,11 @@ export class RenderEngine {
       }
     }
     if (hasStroke) {
+      if (text.strokeDashArray && text.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...text.strokeDashArray]);
+      }
+      this.ctx.lineCap = text.strokeLineCap ?? 'round';
+      this.ctx.lineJoin = text.strokeLineJoin ?? 'round';
       if (isGradient(text.stroke)) {
         const baseAABB = getTextBaseAABB(text, this.ctx);
         this.ctx.strokeStyle = createCanvasGradient(this.ctx, text.stroke, baseAABB);
@@ -1216,7 +1250,6 @@ export class RenderEngine {
         this.ctx.strokeStyle = text.stroke!;
       }
       this.ctx.lineWidth = text.strokeWidth ?? 1;
-      this.ctx.lineJoin = 'round';
     }
 
     // 4. Transformación de rotación respecto a la posición (x, y) del nodo
@@ -1579,9 +1612,12 @@ export class RenderEngine {
       } else if (typeof this.ctx.arc === 'function') {
         this.ctx.arc(preview.x, preview.y, (rx + ry) / 2, 0, Math.PI * 2);
       }
+    } else if (preview.type === 'line' && preview.x2 !== undefined && preview.y2 !== undefined) {
+      this.ctx.moveTo(preview.x, preview.y);
+      this.ctx.lineTo(preview.x2, preview.y2);
     }
 
-    if (!isNonePaint(preview.fill)) {
+    if (preview.type !== 'line' && !isNonePaint(preview.fill)) {
       this.ctx.fillStyle = preview.fill!;
       this.ctx.fill();
     }
@@ -1589,6 +1625,15 @@ export class RenderEngine {
     const strokeWidth = preview.strokeWidth;
     if (!isNonePaint(preview.stroke) && strokeWidth !== undefined && strokeWidth > 0) {
       this.ctx.lineWidth = strokeWidth;
+      if (preview.strokeDashArray && preview.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...preview.strokeDashArray]);
+      }
+      if (preview.strokeLineCap) {
+        this.ctx.lineCap = preview.strokeLineCap;
+      }
+      if (preview.strokeLineJoin) {
+        this.ctx.lineJoin = preview.strokeLineJoin;
+      }
       this.ctx.strokeStyle = preview.stroke!;
       this.ctx.stroke();
     }

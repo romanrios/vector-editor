@@ -28,6 +28,7 @@ export * from './input/tools/SelectToolHandler.ts';
 export * from './input/tools/PenToolHandler.ts';
 export * from './input/tools/DirectSelectToolHandler.ts';
 export * from './input/tools/CreationToolHandler.ts';
+export * from './input/tools/LineToolHandler.ts';
 export * from './input/tools/TextToolHandler.ts';
 
 export * from './utils/booleanOperations.ts';

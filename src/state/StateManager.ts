@@ -12,6 +12,8 @@ import type {
   Shape,
   Text,
   FillType,
+  StrokeLineCap,
+  StrokeLineJoin,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -46,6 +48,9 @@ export interface ShapeStyleUpdate {
   readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly opacity?: number;
+  readonly strokeDashArray?: readonly number[];
+  readonly strokeLineCap?: StrokeLineCap;
+  readonly strokeLineJoin?: StrokeLineJoin;
 }
 
 export interface ShapeStyleEntry {
@@ -164,6 +169,9 @@ export interface DrawingStyle {
   stroke: string;
   strokeWidth: number;
   opacity: number;
+  strokeDashArray?: readonly number[];
+  strokeLineCap?: StrokeLineCap;
+  strokeLineJoin?: StrokeLineJoin;
 }
 
 /**
@@ -184,6 +192,9 @@ export class StateManager {
     stroke: '#0284c7',
     strokeWidth: 2,
     opacity: 1,
+    strokeDashArray: undefined,
+    strokeLineCap: 'butt',
+    strokeLineJoin: 'miter',
   };
 
   constructor(initialState?: Document, commandManager?: CommandManager) {
@@ -231,12 +242,28 @@ export class StateManager {
       strokeWidth:
         partial.strokeWidth !== undefined ? partial.strokeWidth : this._drawingStyle.strokeWidth,
       opacity: partial.opacity !== undefined ? partial.opacity : this._drawingStyle.opacity,
+      strokeDashArray:
+        partial.strokeDashArray !== undefined ? partial.strokeDashArray : this._drawingStyle.strokeDashArray,
+      strokeLineCap:
+        partial.strokeLineCap !== undefined ? partial.strokeLineCap : this._drawingStyle.strokeLineCap,
+      strokeLineJoin:
+        partial.strokeLineJoin !== undefined ? partial.strokeLineJoin : this._drawingStyle.strokeLineJoin,
     };
+    const isSameDash =
+      (!nextStyle.strokeDashArray && !this._drawingStyle.strokeDashArray) ||
+      (Array.isArray(nextStyle.strokeDashArray) &&
+        Array.isArray(this._drawingStyle.strokeDashArray) &&
+        nextStyle.strokeDashArray.length === this._drawingStyle.strokeDashArray.length &&
+        nextStyle.strokeDashArray.every((v, i) => v === this._drawingStyle.strokeDashArray![i]));
+
     if (
       nextStyle.fill === this._drawingStyle.fill &&
       nextStyle.stroke === this._drawingStyle.stroke &&
       nextStyle.strokeWidth === this._drawingStyle.strokeWidth &&
-      nextStyle.opacity === this._drawingStyle.opacity
+      nextStyle.opacity === this._drawingStyle.opacity &&
+      nextStyle.strokeLineCap === this._drawingStyle.strokeLineCap &&
+      nextStyle.strokeLineJoin === this._drawingStyle.strokeLineJoin &&
+      isSameDash
     ) {
       return;
     }
@@ -1616,6 +1643,13 @@ export class StateManager {
             continue;
           }
 
+          const isDashEqual = (a?: readonly number[], b?: readonly number[]) => {
+            if (!a && !b) return true;
+            if (!a || !b) return false;
+            if (a.length !== b.length) return false;
+            return a.every((v, idx) => v === b[idx]);
+          };
+
           const hasFillChange = targetStyle.fill !== undefined && !isPaintEqual(targetStyle.fill, child.fill);
           const childStroke = 'stroke' in child ? (child as { stroke?: FillType }).stroke : undefined;
           const childStrokeWidth = 'strokeWidth' in child ? (child as { strokeWidth?: number }).strokeWidth : undefined;
@@ -1623,8 +1657,19 @@ export class StateManager {
           const hasStrokeWidthChange =
             targetStyle.strokeWidth !== undefined && targetStyle.strokeWidth !== childStrokeWidth;
           const hasOpacityChange = targetStyle.opacity !== undefined && targetStyle.opacity !== child.opacity;
+          const hasDashChange = 'strokeDashArray' in targetStyle && !isDashEqual(targetStyle.strokeDashArray, child.strokeDashArray);
+          const hasCapChange = 'strokeLineCap' in targetStyle && targetStyle.strokeLineCap !== child.strokeLineCap;
+          const hasJoinChange = 'strokeLineJoin' in targetStyle && targetStyle.strokeLineJoin !== child.strokeLineJoin;
 
-          if (!hasFillChange && !hasStrokeChange && !hasStrokeWidthChange && !hasOpacityChange) {
+          if (
+            !hasFillChange &&
+            !hasStrokeChange &&
+            !hasStrokeWidthChange &&
+            !hasOpacityChange &&
+            !hasDashChange &&
+            !hasCapChange &&
+            !hasJoinChange
+          ) {
             nextChildren[i] = child;
             continue;
           }
@@ -1637,6 +1682,9 @@ export class StateManager {
             ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
             ...(targetStyle.strokeWidth !== undefined ? { strokeWidth: targetStyle.strokeWidth } : {}),
             ...(targetStyle.opacity !== undefined ? { opacity: targetStyle.opacity } : {}),
+            ...('strokeDashArray' in targetStyle ? { strokeDashArray: targetStyle.strokeDashArray } : {}),
+            ...('strokeLineCap' in targetStyle ? { strokeLineCap: targetStyle.strokeLineCap } : {}),
+            ...('strokeLineJoin' in targetStyle ? { strokeLineJoin: targetStyle.strokeLineJoin } : {}),
           };
         } else {
           nextChildren[i] = child;

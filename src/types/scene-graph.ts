@@ -92,6 +92,16 @@ export interface Path extends BaseNode {
 }
 
 /**
+ * Estilos de terminación de línea (cap)
+ */
+export type StrokeLineCap = 'butt' | 'round' | 'square';
+
+/**
+ * Estilos de unión de esquinas de línea (join)
+ */
+export type StrokeLineJoin = 'miter' | 'round' | 'bevel';
+
+/**
  * Propiedades base compartidas por todos los nodos del árbol
  */
 export interface BaseNode {
@@ -102,6 +112,8 @@ export interface BaseNode {
   readonly locked?: boolean;
   readonly zIndex?: number;
   readonly strokeDashArray?: readonly number[];
+  readonly strokeLineCap?: StrokeLineCap;
+  readonly strokeLineJoin?: StrokeLineJoin;
 }
 
 /**

@@ -242,6 +242,15 @@ function renderChildToSvg(
       commonAttrs.push(`stroke="${escapeXml(child.stroke)}"`);
     }
     commonAttrs.push(`stroke-width="${formatNum(child.strokeWidth, precision)}"`);
+    if (child.strokeDashArray && child.strokeDashArray.length > 0) {
+      commonAttrs.push(`stroke-dasharray="${child.strokeDashArray.map((v) => formatNum(v, precision)).join(' ')}"`);
+    }
+    if (child.strokeLineCap) {
+      commonAttrs.push(`stroke-linecap="${escapeXml(child.strokeLineCap)}"`);
+    }
+    if (child.strokeLineJoin) {
+      commonAttrs.push(`stroke-linejoin="${escapeXml(child.strokeLineJoin)}"`);
+    }
   } else {
     commonAttrs.push('stroke="none"');
   }

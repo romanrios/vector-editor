@@ -49,6 +49,8 @@ import {
   type Gradient,
   type GradientStop,
   type FillType,
+  type StrokeLineCap,
+  type StrokeLineJoin,
 } from './types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from './utils/geometry.ts';
 import { getSelectionBounds, normalizeAngle, getPointType } from './utils/geometry.ts';
@@ -60,6 +62,29 @@ import type { ShapeDimensions } from './commands/ResizeCommand.ts';
 function debug(...args: unknown[]): void {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
     console.log(...args);
+  }
+}
+
+export function dashArrayToSelectValue(dash?: readonly number[]): string {
+  if (!dash || dash.length === 0) return 'solid';
+  const key = dash.join(',');
+  if (key === '6,6') return 'dashed';
+  if (key === '2,4') return 'dotted';
+  if (key === '8,4,2,4') return 'dash-dot';
+  return 'dashed';
+}
+
+export function selectValueToDashArray(val: string): number[] | undefined {
+  switch (val) {
+    case 'dashed':
+      return [6, 6];
+    case 'dotted':
+      return [2, 4];
+    case 'dash-dot':
+      return [8, 4, 2, 4];
+    case 'solid':
+    default:
+      return undefined;
   }
 }
 
@@ -109,6 +134,7 @@ export function setupUIBindings(
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
   const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
+  const btnLine = document.querySelector<HTMLButtonElement>('#tool-line');
   const btnText = document.querySelector<HTMLButtonElement>('#tool-text');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
@@ -171,6 +197,9 @@ export function setupUIBindings(
   const swatchStrokePreview = document.querySelector<HTMLElement>('#swatch-stroke-preview');
 
   const inputStrokeWidth = document.querySelector<HTMLInputElement>('#input-stroke-width');
+  const selectStrokeDash = document.querySelector<HTMLSelectElement>('#select-stroke-dash');
+  const selectStrokeCap = document.querySelector<HTMLSelectElement>('#select-stroke-cap');
+  const selectStrokeJoin = document.querySelector<HTMLSelectElement>('#select-stroke-join');
   const inputOpacity = document.querySelector<HTMLInputElement>('#input-opacity');
   const inputOpacityValue = document.querySelector<HTMLInputElement>('#input-opacity-value');
 
@@ -362,6 +391,12 @@ export function setupUIBindings(
       btnEllipse.setAttribute('aria-pressed', String(isEllipse));
     }
 
+    if (btnLine) {
+      const isLine = tool === 'line';
+      btnLine.classList.toggle('active', isLine);
+      btnLine.setAttribute('aria-pressed', String(isLine));
+    }
+
     if (btnText) {
       const isText = tool === 'text';
       btnText.classList.toggle('active', isText);
@@ -378,11 +413,13 @@ export function setupUIBindings(
               ? 'Rectángulo'
               : tool === 'ellipse'
                 ? 'Elipse'
-                : tool === 'text'
-                  ? 'Texto'
-                  : tool === 'hand'
-                    ? 'Mano'
-                    : 'Selección'
+                : tool === 'line'
+                  ? 'Línea'
+                  : tool === 'text'
+                    ? 'Texto'
+                    : tool === 'hand'
+                      ? 'Mano'
+                      : 'Selección'
       }`;
     }
     syncStatusBar();
@@ -458,6 +495,7 @@ export function setupUIBindings(
   const onPenClick = () => inputController.setTool('pen');
   const onRectangleClick = () => inputController.setTool('rectangle');
   const onEllipseClick = () => inputController.setTool('ellipse');
+  const onLineClick = () => inputController.setTool('line');
   const onTextClick = () => inputController.setTool('text');
 
   btnSelect?.addEventListener('click', onSelectClick);
@@ -466,6 +504,7 @@ export function setupUIBindings(
   btnPen?.addEventListener('click', onPenClick);
   btnRectangle?.addEventListener('click', onRectangleClick);
   btnEllipse?.addEventListener('click', onEllipseClick);
+  btnLine?.addEventListener('click', onLineClick);
   btnText?.addEventListener('click', onTextClick);
 
   // Inicializar estado visual de herramientas
@@ -918,6 +957,9 @@ export function setupUIBindings(
     readonly stroke?: FillType;
     readonly strokeWidth?: number;
     readonly opacity?: number;
+    readonly strokeDashArray?: readonly number[];
+    readonly strokeLineCap?: StrokeLineCap;
+    readonly strokeLineJoin?: StrokeLineJoin;
   }
   let initialStyleSnapshots: Map<string, StyleSnapshot> | null = null;
   let lastRememberedFill = '#38bdf8';
@@ -964,6 +1006,9 @@ export function setupUIBindings(
           stroke: ('stroke' in shape ? (shape as { stroke?: FillType }).stroke : undefined) ?? 'none',
           strokeWidth: ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1,
           opacity: shape.opacity ?? 1,
+          strokeDashArray: shape.strokeDashArray,
+          strokeLineCap: shape.strokeLineCap,
+          strokeLineJoin: shape.strokeLineJoin,
         });
       }
     }
@@ -1351,6 +1396,21 @@ export function setupUIBindings(
 
     if (inputStrokeWidth && (!isEditing || (typeof document !== 'undefined' && document.activeElement !== inputStrokeWidth))) {
       inputStrokeWidth.value = String(firstShape ? (('strokeWidth' in firstShape ? (firstShape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1) : (defaultStyle?.strokeWidth ?? 2));
+    }
+
+    if (selectStrokeDash && (typeof document === 'undefined' || document.activeElement !== selectStrokeDash)) {
+      const activeDash = firstShape ? firstShape.strokeDashArray : defaultStyle?.strokeDashArray;
+      selectStrokeDash.value = dashArrayToSelectValue(activeDash);
+    }
+
+    if (selectStrokeCap && (typeof document === 'undefined' || document.activeElement !== selectStrokeCap)) {
+      const activeCap = firstShape ? firstShape.strokeLineCap : defaultStyle?.strokeLineCap;
+      selectStrokeCap.value = activeCap ?? 'butt';
+    }
+
+    if (selectStrokeJoin && (typeof document === 'undefined' || document.activeElement !== selectStrokeJoin)) {
+      const activeJoin = firstShape ? firstShape.strokeLineJoin : defaultStyle?.strokeLineJoin;
+      selectStrokeJoin.value = activeJoin ?? 'miter';
     }
     const opacities = leafShapes.map((shape) => shape.opacity ?? 1);
     const isOpacityMixed = opacities.some((opacity) => opacity !== opacities[0]);
@@ -2095,9 +2155,121 @@ export function setupUIBindings(
     initialStyleSnapshots = null;
   };
 
+  const onStrokeDashChange = () => {
+    if (!selectStrokeDash) return;
+    const val = selectStrokeDash.value;
+    const dashArray = selectValueToDashArray(val);
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+
+    stateManager.setDrawingStyle({ strokeDashArray: dashArray });
+
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+
+    if (!initialStyleSnapshots) {
+      captureInitialStyle();
+    }
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { strokeDashArray: initialStyleSnapshots?.get(shape.id)?.strokeDashArray ?? shape.strokeDashArray },
+      after: { strokeDashArray: dashArray },
+    }));
+
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { strokeDashArray: dashArray },
+    })));
+
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) {
+      commandManager.recordCommand(command);
+    }
+    initialStyleSnapshots = null;
+  };
+
+  const onStrokeCapChange = () => {
+    if (!selectStrokeCap) return;
+    const cap = selectStrokeCap.value as StrokeLineCap;
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+
+    stateManager.setDrawingStyle({ strokeLineCap: cap });
+
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+
+    if (!initialStyleSnapshots) {
+      captureInitialStyle();
+    }
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { strokeLineCap: initialStyleSnapshots?.get(shape.id)?.strokeLineCap ?? shape.strokeLineCap ?? 'butt' },
+      after: { strokeLineCap: cap },
+    }));
+
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { strokeLineCap: cap },
+    })));
+
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) {
+      commandManager.recordCommand(command);
+    }
+    initialStyleSnapshots = null;
+  };
+
+  const onStrokeJoinChange = () => {
+    if (!selectStrokeJoin) return;
+    const join = selectStrokeJoin.value as StrokeLineJoin;
+
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+
+    stateManager.setDrawingStyle({ strokeLineJoin: join });
+
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+
+    if (!initialStyleSnapshots) {
+      captureInitialStyle();
+    }
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { strokeLineJoin: initialStyleSnapshots?.get(shape.id)?.strokeLineJoin ?? shape.strokeLineJoin ?? 'miter' },
+      after: { strokeLineJoin: join },
+    }));
+
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { strokeLineJoin: join },
+    })));
+
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) {
+      commandManager.recordCommand(command);
+    }
+    initialStyleSnapshots = null;
+  };
+
   inputFill?.addEventListener('change', onFillChange);
   inputStroke?.addEventListener('change', onStrokeChange);
   inputStrokeWidth?.addEventListener('change', onStrokeWidthChange);
+  selectStrokeDash?.addEventListener('change', onStrokeDashChange);
+  selectStrokeCap?.addEventListener('change', onStrokeCapChange);
+  selectStrokeJoin?.addEventListener('change', onStrokeJoinChange);
 
   // 5.0 Manejadores del Sistema de Degradados (Lineal / Radial)
   const onFillModeChange = () => {
@@ -4745,6 +4917,7 @@ export function setupUIBindings(
       btnPen?.removeEventListener('click', onPenClick);
       btnRectangle?.removeEventListener('click', onRectangleClick);
       btnEllipse?.removeEventListener('click', onEllipseClick);
+      btnLine?.removeEventListener('click', onLineClick);
       btnText?.removeEventListener('click', onTextClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
@@ -4811,6 +4984,9 @@ export function setupUIBindings(
       inputStrokeWidth?.removeEventListener('focus', onInputStart);
       inputStrokeWidth?.removeEventListener('input', onStrokeWidthInput);
       inputStrokeWidth?.removeEventListener('change', onStrokeWidthChange);
+      selectStrokeDash?.removeEventListener('change', onStrokeDashChange);
+      selectStrokeCap?.removeEventListener('change', onStrokeCapChange);
+      selectStrokeJoin?.removeEventListener('change', onStrokeJoinChange);
 
       inputOpacity?.removeEventListener('mousedown', onInputStart);
       inputOpacity?.removeEventListener('click', onInputStart);

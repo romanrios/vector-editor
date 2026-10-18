@@ -322,6 +322,12 @@
         </svg>
       </button>
 
+      <button id="tool-line" class="tool-btn" title="Línea (L)" aria-label="Línea (L)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="19" x2="19" y2="5"/>
+        </svg>
+      </button>
+
       <button id="tool-text" class="tool-btn" title="Texto (T)" aria-label="Texto (T)" aria-pressed="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="4 7 4 4 20 4 20 7"/>
@@ -513,6 +519,31 @@
               <input type="number" id="input-stroke-width" min="0" max="100" value="2">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
+          </div>
+          <div class="control-group" id="group-stroke-dash">
+            <label for="select-stroke-dash">Trazo</label>
+            <select id="select-stroke-dash" class="control-select" aria-label="Estilo de trazo">
+              <option value="solid">Continuo</option>
+              <option value="dashed">Discontinuo (6, 6)</option>
+              <option value="dotted">Punteado (2, 4)</option>
+              <option value="dash-dot">Trazo y punto (8, 4, 2, 4)</option>
+            </select>
+          </div>
+          <div class="control-group" id="group-stroke-cap">
+            <label for="select-stroke-cap">Remate</label>
+            <select id="select-stroke-cap" class="control-select" aria-label="Terminación de línea">
+              <option value="round">Redondeado</option>
+              <option value="butt">Plano (butt)</option>
+              <option value="square">Cuadrado</option>
+            </select>
+          </div>
+          <div class="control-group" id="group-stroke-join">
+            <label for="select-stroke-join">Esquinas</label>
+            <select id="select-stroke-join" class="control-select" aria-label="Unión de esquinas">
+              <option value="round">Redondeada</option>
+              <option value="miter">En inglete (miter)</option>
+              <option value="bevel">Biselada</option>
+            </select>
           </div>
           <div class="control-group" id="group-opacity">
             <label for="input-opacity">Opacidad</label>
