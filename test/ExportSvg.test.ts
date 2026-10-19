@@ -361,4 +361,96 @@ describe('Exportación a SVG (exportDocumentToSvg)', () => {
     });
     assert.match(svgWithCustomBg, /<rect x="0" y="0" width="500" height="300" fill="#18181b" \/>/);
   });
+
+  it('no duplica atributos stroke-linecap ni stroke-linejoin en trazados Bézier con estilo explícito', () => {
+    const linePath: Path = {
+      id: 'line-test',
+      name: 'Línea',
+      type: 'path',
+      x: 0,
+      y: 0,
+      stroke: '#38bdf8',
+      strokeWidth: 2,
+      strokeLineCap: 'butt',
+      strokeLineJoin: 'miter',
+      points: [
+        { x: 10, y: 10 },
+        { x: 200, y: 10 },
+      ],
+    };
+
+    const doc: Document = {
+      id: 'doc-1',
+      name: 'Doc',
+      type: 'document',
+      width: 400,
+      height: 400,
+      children: [
+        {
+          id: 'l1',
+          name: 'Capa',
+          type: 'layer',
+          children: [linePath],
+        },
+      ],
+    };
+
+    const svg = exportDocumentToSvg(doc);
+    // Verificar que stroke-linecap="butt" aparece exactamente una vez en el path
+    const matchesLineCap = svg.match(/stroke-linecap="butt"/g);
+    assert.strictEqual(matchesLineCap?.length, 1, 'stroke-linecap="butt" debe aparecer exactamente una vez');
+
+    // Verificar que no existe stroke-linecap="round" duplicado
+    assert.strictEqual(svg.includes('stroke-linecap="round"'), false, 'No debe existir un stroke-linecap="round" residual');
+
+    // Verificar que stroke-linejoin="miter" aparece exactamente una vez
+    const matchesLineJoin = svg.match(/stroke-linejoin="miter"/g);
+    assert.strictEqual(matchesLineJoin?.length, 1, 'stroke-linejoin="miter" debe aparecer exactamente una vez');
+    assert.strictEqual(svg.includes('stroke-linejoin="round"'), false, 'No debe existir un stroke-linejoin="round" residual');
+  });
+
+  it('exporta degradados lineales con userSpaceOnUse preservando ángulo y proporción en figuras rectangulares alargadas', () => {
+    const wideRect: Rectangle = {
+      id: 'wide-rect',
+      name: 'Rectángulo Ancho',
+      type: 'rectangle',
+      x: 0,
+      y: 1800,
+      width: 1000,
+      height: 100,
+      fill: {
+        type: 'linear',
+        x1: 0,
+        y1: 1,
+        x2: 1,
+        y2: 0,
+        stops: [
+          { id: 's1', offset: 0, color: '#ff0000', opacity: 1 },
+          { id: 's2', offset: 1, color: '#0000ff', opacity: 1 },
+        ],
+      },
+    };
+
+    const doc: Document = {
+      id: 'doc-1',
+      name: 'Doc',
+      type: 'document',
+      width: 1000,
+      height: 2000,
+      children: [
+        {
+          id: 'l1',
+          name: 'Capa',
+          type: 'layer',
+          children: [wideRect],
+        },
+      ],
+    };
+
+    const svg = exportDocumentToSvg(doc);
+    assert.ok(svg.includes('gradientUnits="userSpaceOnUse"'));
+    // x1 = 0 + 0*1000 = 0, y1 = 1800 + 1*100 = 1900
+    // x2 = 0 + 1*1000 = 1000, y2 = 1800 + 0*100 = 1800
+    assert.ok(svg.includes('x1="0" y1="1900" x2="1000" y2="1800"'));
+  });
 });

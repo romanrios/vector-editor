@@ -9,14 +9,17 @@ import type {
   Text,
   SelectableNode,
   Gradient,
+  Shape,
 } from '../types/scene-graph.ts';
 import { isGroup, isShape, isGradient, isLinearGradient } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
 import { getPathBaseAABB, getTextLineHeight, getWrappedTextLines } from './geometry.ts';
+import { getShapeBaseAABB } from './gradient.ts';
 
 interface ExportGradientEntry {
   readonly id: string;
   readonly gradient: Gradient;
+  readonly shape: Shape;
 }
 
 function collectGradientsFromChild(
@@ -46,10 +49,10 @@ function collectGradientsFromChild(
     }
   } else if (isShape(child)) {
     if (isGradient(child.fill)) {
-      entries.push({ id: `gradient-${child.id}-fill`, gradient: child.fill });
+      entries.push({ id: `gradient-${child.id}-fill`, gradient: child.fill, shape: child });
     }
     if (isGradient(child.stroke)) {
-      entries.push({ id: `gradient-${child.id}-stroke`, gradient: child.stroke });
+      entries.push({ id: `gradient-${child.id}-stroke`, gradient: child.stroke, shape: child });
     }
   }
   return entries;
@@ -245,11 +248,13 @@ function renderChildToSvg(
     if (child.strokeDashArray && child.strokeDashArray.length > 0) {
       commonAttrs.push(`stroke-dasharray="${child.strokeDashArray.map((v) => formatNum(v, precision)).join(' ')}"`);
     }
-    if (child.strokeLineCap) {
-      commonAttrs.push(`stroke-linecap="${escapeXml(child.strokeLineCap)}"`);
+    const lineCap = child.strokeLineCap ?? (child.type === 'path' ? 'round' : undefined);
+    if (lineCap) {
+      commonAttrs.push(`stroke-linecap="${escapeXml(lineCap)}"`);
     }
-    if (child.strokeLineJoin) {
-      commonAttrs.push(`stroke-linejoin="${escapeXml(child.strokeLineJoin)}"`);
+    const lineJoin = child.strokeLineJoin ?? (child.type === 'path' ? 'round' : undefined);
+    if (lineJoin) {
+      commonAttrs.push(`stroke-linejoin="${escapeXml(lineJoin)}"`);
     }
   } else {
     commonAttrs.push('stroke="none"');
@@ -307,8 +312,6 @@ function renderChildToSvg(
     const attrs = [
       ...commonAttrs,
       `d="${d}"`,
-      'stroke-linecap="round"',
-      'stroke-linejoin="round"',
     ];
 
     if (path.rotation) {
@@ -516,9 +519,14 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
     lines.push('  <defs>');
     for (const entry of allGradients) {
       const grad = entry.gradient;
+      const baseAABB = getShapeBaseAABB(entry.shape);
       if (isLinearGradient(grad)) {
+        const x1 = baseAABB.minX + grad.x1 * baseAABB.width;
+        const y1 = baseAABB.minY + grad.y1 * baseAABB.height;
+        const x2 = baseAABB.minX + grad.x2 * baseAABB.width;
+        const y2 = baseAABB.minY + grad.y2 * baseAABB.height;
         lines.push(
-          `    <linearGradient id="${entry.id}" gradientUnits="objectBoundingBox" x1="${formatNum(grad.x1 * 100, precision)}%" y1="${formatNum(grad.y1 * 100, precision)}%" x2="${formatNum(grad.x2 * 100, precision)}%" y2="${formatNum(grad.y2 * 100, precision)}%">`
+          `    <linearGradient id="${entry.id}" gradientUnits="userSpaceOnUse" x1="${formatNum(x1, precision)}" y1="${formatNum(y1, precision)}" x2="${formatNum(x2, precision)}" y2="${formatNum(y2, precision)}">`
         );
         for (const stop of grad.stops) {
           const stopOpacity = stop.opacity !== undefined ? ` stop-opacity="${formatNum(stop.opacity, 3)}"` : '';
@@ -528,10 +536,17 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
         }
         lines.push('    </linearGradient>');
       } else {
-        const fxAttr = grad.fx !== undefined ? ` fx="${formatNum(grad.fx * 100, precision)}%"` : '';
-        const fyAttr = grad.fy !== undefined ? ` fy="${formatNum(grad.fy * 100, precision)}%"` : '';
+        const cx = baseAABB.minX + grad.cx * baseAABB.width;
+        const cy = baseAABB.minY + grad.cy * baseAABB.height;
+        const maxDim = Math.max(baseAABB.width, baseAABB.height);
+        const r = Math.max(0.1, grad.r * maxDim);
+        const fx = grad.fx !== undefined ? baseAABB.minX + grad.fx * baseAABB.width : cx;
+        const fy = grad.fy !== undefined ? baseAABB.minY + grad.fy * baseAABB.height : cy;
+
+        const fxAttr = grad.fx !== undefined ? ` fx="${formatNum(fx, precision)}"` : '';
+        const fyAttr = grad.fy !== undefined ? ` fy="${formatNum(fy, precision)}"` : '';
         lines.push(
-          `    <radialGradient id="${entry.id}" gradientUnits="objectBoundingBox" cx="${formatNum(grad.cx * 100, precision)}%" cy="${formatNum(grad.cy * 100, precision)}%" r="${formatNum(grad.r * 100, precision)}%"${fxAttr}${fyAttr}>`
+          `    <radialGradient id="${entry.id}" gradientUnits="userSpaceOnUse" cx="${formatNum(cx, precision)}" cy="${formatNum(cy, precision)}" r="${formatNum(r, precision)}"${fxAttr}${fyAttr}>`
         );
         for (const stop of grad.stops) {
           const stopOpacity = stop.opacity !== undefined ? ` stop-opacity="${formatNum(stop.opacity, 3)}"` : '';

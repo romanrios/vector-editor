@@ -597,7 +597,7 @@ describe('Sistema Completo de Degradados (Lineales y Radiales)', () => {
 
       // Debe incluir <linearGradient> con id adecuado
       assert.ok(svg.includes('<linearGradient id="gradient-my-rect-fill"'));
-      assert.ok(svg.includes('gradientUnits="objectBoundingBox"'));
+      assert.ok(svg.includes('gradientUnits="userSpaceOnUse"'));
       assert.ok(svg.includes('<stop offset="0%" stop-color="#ff0000" stop-opacity="1" />'));
       assert.ok(svg.includes('<stop offset="100%" stop-color="#0000ff" stop-opacity="1" />'));
 
