@@ -11,6 +11,7 @@ export interface MenuBarControllerOptions {
   canvas?: HTMLCanvasElement | null;
   onCloseContextMenu?: () => void;
   onImportClick?: () => void;
+  onPlaceClick?: () => void;
   onExportClick?: () => void;
   onExportSvg?: () => void;
   onExportPng?: () => void;
@@ -65,6 +66,7 @@ export function setupMenuBarBindings(
   const menuDropdownHelp = document.querySelector<HTMLElement>('#menu-dropdown-help');
 
   const menuItemImport = document.querySelector<HTMLButtonElement>('#menu-item-import');
+  const menuItemPlace = document.querySelector<HTMLButtonElement>('#menu-item-place');
   const menuItemExportModal = document.querySelector<HTMLButtonElement>('#menu-item-export-modal');
   const menuItemExportSvg = document.querySelector<HTMLButtonElement>('#menu-item-export-svg');
   const menuItemExportPng = document.querySelector<HTMLButtonElement>('#menu-item-export-png');
@@ -121,6 +123,7 @@ export function setupMenuBarBindings(
       dropdown: menuDropdownFile,
       items: [
         menuItemImport,
+        menuItemPlace,
         menuItemExportModal,
         menuItemExportSvg,
         menuItemExportPng,
@@ -665,6 +668,11 @@ export function setupMenuBarBindings(
     options.onImportClick?.();
   };
 
+  const onMenuPlaceClick = () => {
+    closeAllMenus();
+    options.onPlaceClick?.();
+  };
+
   const onMenuExportModalClick = () => {
     closeAllMenus();
     options.openExportDialog?.(menuBtnFile);
@@ -890,6 +898,7 @@ export function setupMenuBarBindings(
   };
 
   menuItemImport?.addEventListener('click', onMenuImportClick);
+  menuItemPlace?.addEventListener('click', onMenuPlaceClick);
   menuItemExportModal?.addEventListener('click', onMenuExportModalClick);
   menuItemExportSvg?.addEventListener('click', onMenuExportSvgClick);
   menuItemExportPng?.addEventListener('click', onMenuExportPngClick);
@@ -958,6 +967,7 @@ export function setupMenuBarBindings(
       });
 
       menuItemImport?.removeEventListener('click', onMenuImportClick);
+      menuItemPlace?.removeEventListener('click', onMenuPlaceClick);
       menuItemExportModal?.removeEventListener('click', onMenuExportModalClick);
       menuItemExportSvg?.removeEventListener('click', onMenuExportSvgClick);
       menuItemExportPng?.removeEventListener('click', onMenuExportPngClick);

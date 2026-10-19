@@ -39,6 +39,10 @@
               <button id="menu-item-import" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Importar JSON…</span>
               </button>
+              <button id="menu-item-place" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Colocar archivo…</span>
+                <span class="menu-shortcut">Ctrl+Shift+P</span>
+              </button>
               <div class="menu-divider" role="separator" aria-hidden="true"></div>
               <button id="menu-item-export-modal" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Exportar…</span>
@@ -1285,6 +1289,10 @@
         <span class="menu-shortcut">Supr</span>
       </button>
     </div>
+
+    <!-- Inputs de archivo ocultos para importación de proyectos y colocación de recursos -->
+    <input type="file" id="file-import-input" accept=".json,application/json" style="display:none" aria-hidden="true" />
+    <input type="file" id="file-input-place" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" multiple style="display:none" aria-hidden="true" />
 
     <script type="module" src="/src/main.ts"></script>
   </body>

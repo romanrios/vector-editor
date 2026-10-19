@@ -8,6 +8,8 @@ import type {
   Rectangle,
   Ellipse,
   Text,
+  ImageNode,
+  AssetData,
   FillType,
   Gradient,
   GradientStop,
@@ -245,10 +247,11 @@ function parseLayerChild(
     child.type !== 'rectangle' &&
     child.type !== 'ellipse' &&
     child.type !== 'path' &&
-    child.type !== 'text'
+    child.type !== 'text' &&
+    child.type !== 'image'
   ) {
     throw new DocumentParseError(
-      `${childPath}.type debe ser 'rectangle', 'ellipse', 'path' o 'text' (o 'group')`
+      `${childPath}.type debe ser 'rectangle', 'ellipse', 'path' o 'text' (o 'image', 'group')`
     );
   }
 
@@ -359,6 +362,31 @@ function parseLayerChild(
 
     const { selected: _sel, isDirty: _dirty, ...rest } = child;
     return rest as unknown as Text;
+  } else if (child.type === 'image') {
+    if (typeof child.assetId !== 'string' || child.assetId.trim() === '') {
+      throw new DocumentParseError(`${childPath}.assetId debe ser un string no vacío`);
+    }
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.width) || child.width <= 0) {
+      throw new DocumentParseError(`${childPath}.width debe ser un número finito positivo`);
+    }
+    if (!isFiniteNumber(child.height) || child.height <= 0) {
+      throw new DocumentParseError(`${childPath}.height debe ser un número finito positivo`);
+    }
+    if (child.naturalWidth !== undefined && (!isFiniteNumber(child.naturalWidth) || child.naturalWidth <= 0)) {
+      throw new DocumentParseError(`${childPath}.naturalWidth debe ser un número finito positivo`);
+    }
+    if (child.naturalHeight !== undefined && (!isFiniteNumber(child.naturalHeight) || child.naturalHeight <= 0)) {
+      throw new DocumentParseError(`${childPath}.naturalHeight debe ser un número finito positivo`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as ImageNode;
   } else {
     // path
     if (!isFiniteNumber(child.x)) {
@@ -553,10 +581,47 @@ export async function parseDocument(jsonString: string): Promise<Document> {
     });
   }
 
-  const { selected: _sel, isDirty: _dirty, children: _ch, ...restDoc } = candidate;
+  let cleanAssets: Record<string, AssetData> | undefined;
+  if (candidate.assets !== undefined) {
+    if (!isObject(candidate.assets)) {
+      throw new DocumentParseError('assets debe ser un objeto');
+    }
+    cleanAssets = {};
+    for (const [assetId, asset] of Object.entries(candidate.assets)) {
+      const assetPath = `assets.${assetId}`;
+      if (!isObject(asset)) {
+        throw new DocumentParseError(`${assetPath} debe ser un objeto`);
+      }
+      if (typeof asset.id !== 'string' || asset.id.trim() === '') {
+        throw new DocumentParseError(`${assetPath}.id debe ser un string no vacío`);
+      }
+      if (typeof asset.mimeType !== 'string') {
+        throw new DocumentParseError(`${assetPath}.mimeType debe ser un string`);
+      }
+      if (typeof asset.data !== 'string') {
+        throw new DocumentParseError(`${assetPath}.data debe ser un string`);
+      }
+      if (!isFiniteNumber(asset.width) || asset.width <= 0) {
+        throw new DocumentParseError(`${assetPath}.width debe ser un número finito positivo`);
+      }
+      if (!isFiniteNumber(asset.height) || asset.height <= 0) {
+        throw new DocumentParseError(`${assetPath}.height debe ser un número finito positivo`);
+      }
+      cleanAssets[assetId] = {
+        id: asset.id,
+        mimeType: asset.mimeType,
+        data: asset.data,
+        width: asset.width,
+        height: asset.height,
+      };
+    }
+  }
+
+  const { selected: _sel, isDirty: _dirty, children: _ch, assets: _assets, ...restDoc } = candidate;
   return {
     ...(restDoc as unknown as Document),
     children: cleanLayers,
+    ...(cleanAssets !== undefined ? { assets: cleanAssets } : {}),
   };
 }
 

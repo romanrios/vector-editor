@@ -12,6 +12,7 @@ import type {
   Shape,
   Rectangle,
   Text,
+  AssetData,
   FillType,
   StrokeLineCap,
   StrokeLineJoin,
@@ -1549,6 +1550,30 @@ export class StateManager {
                 newShape = textBase;
               }
             }
+          } else if (child.type === 'image') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
+            const nextW = dimensions.width !== undefined ? dimensions.width : child.width;
+            const nextH = dimensions.height !== undefined ? dimensions.height : child.height;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+
+            if (
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextW !== child.width ||
+              nextH !== child.height ||
+              nextRot !== child.rotation
+            ) {
+              shapeChanged = true;
+              newShape = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                width: nextW,
+                height: nextH,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
+            }
           }
 
           if (shapeChanged) {
@@ -1947,5 +1972,38 @@ export class StateManager {
     }
 
     return updated;
+  }
+
+  /**
+   * Registra un recurso AssetData a nivel de documento inmutable.
+   * Si ya existe un activo con el mismo id y datos, no dispara mutación innecesaria.
+   */
+  public registerAsset(asset: AssetData): void {
+    const currentAssets = this._state.assets ?? {};
+    if (currentAssets[asset.id] === asset) {
+      return;
+    }
+    const nextAssets = {
+      ...currentAssets,
+      [asset.id]: asset,
+    };
+    this.setState({
+      ...this._state,
+      assets: nextAssets,
+    });
+  }
+
+  /**
+   * Obtiene un recurso AssetData registrado en el documento por su assetId.
+   */
+  public getAsset(assetId: string): AssetData | undefined {
+    return this._state.assets?.[assetId];
+  }
+
+  /**
+   * Obtiene todos los recursos registrados en el documento.
+   */
+  public getAssets(): Readonly<Record<string, AssetData>> {
+    return this._state.assets ?? {};
   }
 }

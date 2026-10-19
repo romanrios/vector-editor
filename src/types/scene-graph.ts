@@ -1,7 +1,7 @@
 /**
  * Tipos de nodos admitidos en el Scene Graph
  */
-export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path' | 'text';
+export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path' | 'text' | 'image';
 
 /**
  * Punto o vector bidimensional
@@ -200,9 +200,40 @@ export interface Text extends BaseNode {
 }
 
 /**
+ * Datos y metadatos de un recurso de medios externo (imagen raster o vector) almacenado
+ * a nivel de documento para evitar redundancia y copias pesadas en memoria al clonar nodos.
+ */
+export interface AssetData {
+  readonly id: string;
+  readonly mimeType: string;
+  readonly data: string; // Data-URL (base64) o URL accesible
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Propiedades geométricas y visuales para nodos de tipo Image (imágenes colocadas en el lienzo)
+ */
+export interface ImageNode extends BaseNode {
+  readonly type: 'image';
+  readonly assetId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly naturalWidth?: number;
+  readonly naturalHeight?: number;
+  readonly rotation?: number;
+  readonly opacity?: number;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
+  readonly strokeWidth?: number;
+}
+
+/**
  * Tipo discriminado para cualquier figura (Shape)
  */
-export type Shape = Rectangle | Ellipse | Path | Text;
+export type Shape = Rectangle | Ellipse | Path | Text | ImageNode;
 
 /**
  * Nodo contenedor Group (grupo), que alberga una colección de figuras y/o subgrupos
@@ -234,13 +265,14 @@ export interface Layer extends BaseNode {
 }
 
 /**
- * Nodo raíz Document, que alberga una colección de capas (Layer) y metadatos del lienzo
+ * Nodo raíz Document, que alberga una colección de capas (Layer), activos multimedia y metadatos del lienzo
  */
 export interface Document extends BaseNode {
   readonly type: 'document';
   readonly width: number;
   readonly height: number;
   readonly children: readonly Layer[];
+  readonly assets?: Readonly<Record<string, AssetData>>;
 }
 
 /**
@@ -288,7 +320,8 @@ export function isShape(node: SceneNode): node is Shape {
     node.type === 'rectangle' ||
     node.type === 'ellipse' ||
     node.type === 'path' ||
-    node.type === 'text'
+    node.type === 'text' ||
+    node.type === 'image'
   );
 }
 
@@ -310,6 +343,10 @@ export function isPath(node: SceneNode): node is Path {
 
 export function isText(node: SceneNode): node is Text {
   return node.type === 'text';
+}
+
+export function isImage(node: SceneNode): node is ImageNode {
+  return node.type === 'image';
 }
 
 export function isGradient(val: unknown): val is Gradient {

@@ -10,7 +10,7 @@ import { getPathBaseAABB, normalizeAngle } from './geometry.ts';
  * - Trazado: centro de su caja base (getPathBaseAABB)
  */
 export function getShapeCenter(shape: Shape): Vector2D {
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     return {
       x: shape.x + shape.width / 2,
       y: shape.y + shape.height / 2,
@@ -69,6 +69,15 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       ...(shape.boxWidth !== undefined ? { boxWidth: shape.boxWidth } : {}),
     };
   }
+  if (shape.type === 'image') {
+    return {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      rotation: shape.rotation ?? 0,
+    };
+  }
   return {
     x: shape.x,
     y: shape.y,
@@ -118,7 +127,7 @@ export function rotateShapesAboutPivot(
     const oldRot = shape.rotation ?? 0;
     const newRot = normalizeAngle(oldRot + deltaDeg);
 
-    if (shape.type === 'rectangle') {
+    if (shape.type === 'rectangle' || shape.type === 'image') {
       const newX = newCx - shape.width / 2;
       const newY = newCy - shape.height / 2;
 
@@ -281,7 +290,7 @@ export function scaleShapesAboutAnchor(
     const lx = Math.hypot(sx * cosTheta, sy * sinTheta);
     const ly = Math.hypot(sx * sinTheta, sy * cosTheta);
 
-    if (shape.type === 'rectangle') {
+    if (shape.type === 'rectangle' || shape.type === 'image') {
       const newWidth = shape.width * lx;
       const newHeight = shape.height * ly;
       const newX = newCx - newWidth / 2;

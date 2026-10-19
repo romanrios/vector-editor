@@ -15,9 +15,11 @@ import {
   type SelectableNode,
   type Shape,
   type Text,
+  type ImageNode,
   type Vector2D,
   type Gradient,
 } from '../types/scene-graph.ts';
+import { assetManager } from '../assets/AssetManager.ts';
 import type { StateManager } from '../state/StateManager.ts';
 import {
   getGroupAABB,
@@ -464,9 +466,66 @@ export class RenderEngine {
       this.renderPath(shape, zoom);
     } else if (shape.type === 'text') {
       this.renderText(shape);
+    } else if (shape.type === 'image') {
+      this.renderImage(shape);
     }
 
     this.ctx.restore();
+  }
+
+  /**
+   * Dibuja un nodo Image aplicando rotación centrada y opacidad.
+   * Si la imagen aún no está decodificada en memoria, inicia su pre-carga
+   * y dibuja un placeholder sutil; al completarse notifica markDirty()
+   * para disparar el redibujado en el siguiente frame del dirty-loop.
+   */
+  private renderImage(img: ImageNode): void {
+    this.ctx.save();
+
+    if (img.rotation) {
+      const cx = img.x + img.width / 2;
+      const cy = img.y + img.height / 2;
+      this.ctx.translate(cx, cy);
+      this.ctx.rotate((img.rotation * Math.PI) / 180);
+      this.ctx.translate(-cx, -cy);
+    }
+
+    const renderable = assetManager.getRenderable(img.assetId);
+
+    if (renderable && typeof this.ctx.drawImage === 'function') {
+      try {
+        this.ctx.drawImage(
+          renderable as CanvasImageSource,
+          img.x,
+          img.y,
+          img.width,
+          img.height
+        );
+      } catch {
+        this.renderImagePlaceholder(img);
+      }
+    } else {
+      const asset = this.stateManager.getAsset(img.assetId) ?? assetManager.getAsset(img.assetId);
+      if (asset) {
+        void assetManager.preloadAsset(asset, () => {
+          this.stateManager.markDirty();
+        });
+      }
+      this.renderImagePlaceholder(img);
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja un marco provisional sutil mientras la imagen se decodifica en segundo plano.
+   */
+  private renderImagePlaceholder(img: ImageNode): void {
+    this.ctx.fillStyle = '#f8fafc';
+    this.ctx.fillRect(img.x, img.y, img.width, img.height);
+    this.ctx.strokeStyle = '#cbd5e1';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(img.x, img.y, img.width, img.height);
   }
 
   /**
@@ -806,7 +865,7 @@ export class RenderEngine {
       baseY = aabb.minY;
       baseWidth = aabb.width;
       baseHeight = aabb.height;
-    } else if (shape.type === 'rectangle') {
+    } else if (shape.type === 'rectangle' || shape.type === 'image') {
       baseX = shape.x;
       baseY = shape.y;
       baseWidth = shape.width;
@@ -869,7 +928,7 @@ export class RenderEngine {
       baseHeight = aabb.height;
       cx = (baseX + baseWidth) / 2;
       cy = (baseY + baseHeight) / 2;
-    } else if (shape.type === 'rectangle') {
+    } else if (shape.type === 'rectangle' || shape.type === 'image') {
       baseX = shape.x;
       baseY = shape.y;
       baseWidth = shape.width;

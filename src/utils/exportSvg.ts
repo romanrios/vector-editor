@@ -7,6 +7,8 @@ import type {
   Rectangle,
   Ellipse,
   Text,
+  ImageNode,
+  AssetData,
   SelectableNode,
   Gradient,
   Shape,
@@ -174,7 +176,8 @@ function renderChildToSvg(
   child: LayerChildNode,
   selectedSet: Set<string> | null,
   precision: number,
-  indent: string
+  indent: string,
+  assets?: Readonly<Record<string, AssetData>>
 ): string[] {
   if (child.visible === false) {
     return [];
@@ -207,7 +210,7 @@ function renderChildToSvg(
 
     lines.push(`${indent}<g ${groupAttrs.join(' ')}>`);
     for (const nested of child.children) {
-      lines.push(...renderChildToSvg(nested, selectedSet, precision, `${indent}  `));
+      lines.push(...renderChildToSvg(nested, selectedSet, precision, `${indent}  `, assets));
     }
     lines.push(`${indent}</g>`);
     return lines;
@@ -378,6 +381,34 @@ function renderChildToSvg(
       }
       lines.push(`${indent}</text>`);
     }
+  } else if (child.type === 'image') {
+    const img = child as ImageNode;
+    const asset = assets?.[img.assetId];
+    const href = asset ? asset.data : '';
+    const attrs = [
+      `id="${escapeXml(img.id)}"`,
+      `x="${formatNum(img.x, precision)}"`,
+      `y="${formatNum(img.y, precision)}"`,
+      `width="${formatNum(img.width, precision)}"`,
+      `height="${formatNum(img.height, precision)}"`,
+      `href="${escapeXml(href)}"`,
+    ];
+
+    if (img.name) {
+      attrs.push(`data-name="${escapeXml(img.name)}"`);
+    }
+    if (typeof img.opacity === 'number' && img.opacity < 1 && img.opacity >= 0) {
+      attrs.push(`opacity="${formatNum(img.opacity, 3)}"`);
+    }
+    if (img.rotation) {
+      const cx = img.x + img.width / 2;
+      const cy = img.y + img.height / 2;
+      attrs.push(
+        `transform="rotate(${formatNum(img.rotation, precision)} ${formatNum(cx, precision)} ${formatNum(cy, precision)})"`
+      );
+    }
+
+    lines.push(`${indent}<image ${attrs.join(' ')} preserveAspectRatio="none" />`);
   }
 
   return lines;
@@ -439,8 +470,8 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
       let maxY = -Infinity;
 
       for (const node of selectedNodes) {
-        if (node.type === 'rectangle') {
-          const r = node as Rectangle;
+        if (node.type === 'rectangle' || node.type === 'image') {
+          const r = node as Rectangle | ImageNode;
           minX = Math.min(minX, r.x);
           minY = Math.min(minY, r.y);
           maxX = Math.max(maxX, r.x + r.width);
@@ -587,7 +618,7 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
 
     const layerContent: string[] = [];
     for (const child of layer.children) {
-      layerContent.push(...renderChildToSvg(child, selectedSet, precision, '    '));
+      layerContent.push(...renderChildToSvg(child, selectedSet, precision, '    ', doc.assets));
     }
 
     if (layerContent.length > 0) {

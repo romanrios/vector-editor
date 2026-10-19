@@ -1440,6 +1440,10 @@ export class SelectToolHandler implements ToolHandler {
       return null;
     }
 
+    const currentShape = this.stateManager.findNode(this.resizingShapeId);
+    const isImageNode = currentShape?.type === 'image';
+    const preserveRatio = isImageNode ? !shiftKey : shiftKey;
+
     const deltaX = mouseX - this.resizeOrigin.x;
     const deltaY = mouseY - this.resizeOrigin.y;
     const candidateDimensions = this.calculateResizedDimensions(
@@ -1447,7 +1451,7 @@ export class SelectToolHandler implements ToolHandler {
       this.activeResizeHandle,
       deltaX,
       deltaY,
-      shiftKey
+      preserveRatio
     );
     this.stateManager.updateShapeDimensions(this.resizingShapeId, candidateDimensions);
 
@@ -1476,14 +1480,14 @@ export class SelectToolHandler implements ToolHandler {
       this.activeResizeHandle,
       deltaX + snap.dx,
       deltaY + snap.dy,
-      shiftKey
+      preserveRatio
     );
     this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
     return finalDimensions;
   }
 
   public getShapeCentroid(shape: Shape): { x: number; y: number } {
-    if (shape.type === 'rectangle') {
+    if (shape.type === 'rectangle' || shape.type === 'image') {
       return {
         x: shape.x + shape.width / 2,
         y: shape.y + shape.height / 2,

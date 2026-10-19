@@ -832,7 +832,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       let before: ShapeDimensions;
       let after: ShapeDimensions;
 
-      if (shape.type === 'rectangle') {
+      if (shape.type === 'rectangle' || shape.type === 'image') {
         before = { ...positionBefore, width: shape.width, height: shape.height };
         after = {
           ...positionAfter,

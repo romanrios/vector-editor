@@ -7,8 +7,10 @@ import type {
   Rectangle,
   Ellipse,
   Text,
+  ImageNode,
   SelectableNode,
 } from '../types/scene-graph.ts';
+import { assetManager } from '../assets/AssetManager.ts';
 import { isGroup, isShape, isGradient, type FillType, type Shape } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
 import { getPathBaseAABB, getTextLineHeight, getTextLineRanges } from './geometry.ts';
@@ -122,8 +124,8 @@ export function calculateExportBounds(
       let maxY = -Infinity;
 
       for (const node of selectedNodes) {
-        if (node.type === 'rectangle') {
-          const r = node as Rectangle;
+        if (node.type === 'rectangle' || node.type === 'image') {
+          const r = node as Rectangle | ImageNode;
           minX = Math.min(minX, r.x);
           minY = Math.min(minY, r.y);
           maxX = Math.max(maxX, r.x + r.width);
@@ -152,8 +154,8 @@ export function calculateExportBounds(
         } else if (isGroup(node)) {
           const leaves = collectLeafShapes(node);
           for (const leaf of leaves) {
-            if (leaf.type === 'rectangle') {
-              const r = leaf as Rectangle;
+            if (leaf.type === 'rectangle' || leaf.type === 'image') {
+              const r = leaf as Rectangle | ImageNode;
               minX = Math.min(minX, r.x);
               minY = Math.min(minY, r.y);
               maxX = Math.max(maxX, r.x + r.width);
@@ -369,6 +371,23 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
         if (hasStroke && typeof ctx.strokeText === 'function') {
           ctx.strokeText(lines[i].text, text.x, lineY);
         }
+      }
+    }
+  } else if (shape.type === 'image') {
+    const img = shape as ImageNode;
+    if (img.rotation) {
+      const cx = img.x + img.width / 2;
+      const cy = img.y + img.height / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((img.rotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
+    const renderable = assetManager.getRenderable(img.assetId);
+    if (renderable && typeof ctx.drawImage === 'function') {
+      try {
+        ctx.drawImage(renderable as CanvasImageSource, img.x, img.y, img.width, img.height);
+      } catch {
+        // Fallback placeholder
       }
     }
   }

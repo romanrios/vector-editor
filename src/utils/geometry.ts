@@ -1,14 +1,14 @@
-import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D, ImageNode } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
 import { isNonePaint } from './color.ts';
 
 /**
- * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Rectangle.
+ * Calcula el Axis-Aligned Bounding Box (AABB) de un nodo Rectangle o ImageNode.
  * Si tiene rotación, calcula la envolvente exacta de sus cuatro esquinas rotadas.
  */
-export function getRectangleAABB(rect: Rectangle): AABB {
+export function getRectangleAABB(rect: Rectangle | ImageNode): AABB {
   if (!rect.rotation) {
     return {
       minX: rect.x,
@@ -845,7 +845,7 @@ export function getTextAABB(text: Text, ctx?: CanvasRenderingContext2D | null): 
  * Obtiene el AABB (Axis-Aligned Bounding Box) de cualquier figura (Shape).
  */
 export function getShapeAABB(shape: Shape): AABB {
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     return getRectangleAABB(shape);
   }
   if (shape.type === 'ellipse') {
@@ -1018,7 +1018,7 @@ export function isPointInText(
 export function isPointInShape(
   x: number,
   y: number,
-  shape: Rectangle | Ellipse | Text,
+  shape: Rectangle | Ellipse | Text | ImageNode,
   tolerance: number = 0,
   ctx?: CanvasRenderingContext2D | null
 ): boolean {
@@ -1026,14 +1026,14 @@ export function isPointInShape(
     return isPointInText(x, y, shape, tolerance, ctx);
   }
 
-  if (shape.type !== 'rectangle' && shape.type !== 'ellipse') {
+  if (shape.type !== 'rectangle' && shape.type !== 'ellipse' && shape.type !== 'image') {
     return false;
   }
 
   const t = Math.max(0, tolerance);
 
   // 1. Fase rápida: descarte mediante AABB ampliado con tolerancia
-  const aabb = shape.type === 'rectangle' ? getRectangleAABB(shape) : getEllipseAABB(shape);
+  const aabb = (shape.type === 'rectangle' || shape.type === 'image') ? getRectangleAABB(shape) : getEllipseAABB(shape);
   if (
     x < aabb.minX - t ||
     x > aabb.maxX + t ||
@@ -1049,8 +1049,8 @@ export function isPointInShape(
 
   const rotation = shape.rotation ?? 0;
   if (rotation !== 0) {
-    const cx = shape.type === 'rectangle' ? shape.x + shape.width / 2 : shape.x;
-    const cy = shape.type === 'rectangle' ? shape.y + shape.height / 2 : shape.y;
+    const cx = (shape.type === 'rectangle' || shape.type === 'image') ? shape.x + shape.width / 2 : shape.x;
+    const cy = (shape.type === 'rectangle' || shape.type === 'image') ? shape.y + shape.height / 2 : shape.y;
     const rad = (rotation * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
@@ -1063,7 +1063,7 @@ export function isPointInShape(
   }
 
   // 3. Evaluación según el tipo de figura en espacio local
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     const rx = Math.min(shape.x, shape.x + shape.width);
     const ry = Math.min(shape.y, shape.y + shape.height);
     const rw = Math.abs(shape.width);
@@ -1082,7 +1082,7 @@ export function isPointInShape(
       return false;
     }
 
-    const radius = shape.cornerRadius ?? 0;
+    const radius = ('cornerRadius' in shape && typeof shape.cornerRadius === 'number') ? shape.cornerRadius : 0;
     if (radius > 0) {
       const maxR = Math.min(rw / 2, rh / 2);
       const r = Math.min(radius, maxR);
@@ -1243,7 +1243,7 @@ export function getSelectionHandles(
   let hw = 0;
   let hh = 0;
 
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     hw = shape.width / 2;
     hh = shape.height / 2;
     cx = shape.x + hw;

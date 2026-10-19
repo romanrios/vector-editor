@@ -35,6 +35,7 @@ import { setupPropertiesPanelBindings, type PropertiesPanelController } from './
 import { setupLayersPanelBindings, type LayersPanelController } from './ui/LayersPanelController.ts';
 import { setupContextMenuBindings, type ContextMenuController } from './ui/ContextMenuController.ts';
 import { setupMenuBarBindings, type MenuBarController } from './ui/MenuBarController.ts';
+import { setupPlacementController, type PlacementController } from './ui/PlacementController.ts';
 import { toValidHexColor } from './ui/uiUtils.ts';
 
 function debug(...args: unknown[]): void {
@@ -75,6 +76,7 @@ export function setupUIBindings(
   let layersPanelController: LayersPanelController;
   let contextMenuController: ContextMenuController;
   let menuBarController: MenuBarController;
+  let placementController: PlacementController;
 
   toolbarController = setupToolbarBindings({
     inputController,
@@ -160,6 +162,9 @@ export function setupUIBindings(
       const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');
       fileImportInput?.click();
     },
+    onPlaceClick: () => {
+      placementController?.openFilePicker();
+    },
     onExportClick: () => {
       dialogsController?.openExportDialog();
     },
@@ -197,6 +202,20 @@ export function setupUIBindings(
     stateManager,
     viewportManager,
     canvas,
+  });
+
+  placementController = setupPlacementController({
+    stateManager,
+    commandManager,
+    viewportManager,
+    canvas,
+    onPlacementComplete: () => {
+      const sel = stateManager.getSelectedNodes();
+      propertiesPanelController?.syncPropertiesPanel(sel);
+      statusBarController?.syncStatusBar(sel);
+      layersPanelController?.renderLayersTree();
+      menuBarController?.syncMenuItems(sel);
+    },
   });
 
   // Suscripciones reactivas del estado y de la entrada
@@ -251,6 +270,7 @@ export function setupUIBindings(
       layersPanelController.cleanup();
       contextMenuController.cleanup();
       menuBarController.cleanup();
+      placementController.cleanup();
     },
   };
 }

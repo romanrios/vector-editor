@@ -54,7 +54,7 @@ export function createDefaultRadialGradient(
  * Obtiene la caja delimitadora (AABB) base no rotada de cualquier figura
  */
 export function getShapeBaseAABB(shape: Shape, ctx?: CanvasRenderingContext2D | null): AABB {
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     return {
       minX: shape.x,
       minY: shape.y,
@@ -83,7 +83,7 @@ export function getShapeBaseAABB(shape: Shape, ctx?: CanvasRenderingContext2D | 
  * Obtiene el centroide de rotación de la figura
  */
 export function getShapeCentroid(shape: Shape, _ctx?: CanvasRenderingContext2D | null): Vector2D {
-  if (shape.type === 'rectangle') {
+  if (shape.type === 'rectangle' || shape.type === 'image') {
     return { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
   } else if (shape.type === 'ellipse') {
     return { x: shape.x, y: shape.y };
