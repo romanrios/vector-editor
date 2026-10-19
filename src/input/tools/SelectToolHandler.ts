@@ -380,7 +380,7 @@ export class SelectToolHandler implements ToolHandler {
           this.activeResizeHandle = hitHandle.type;
           this.resizingShapeId = selectedNode.id;
 
-          if (selectedNode.type === 'rectangle') {
+          if (selectedNode.type === 'rectangle' || selectedNode.type === 'image') {
             this.initialDimensions = {
               x: selectedNode.x,
               y: selectedNode.y,

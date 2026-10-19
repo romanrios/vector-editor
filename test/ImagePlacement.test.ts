@@ -347,4 +347,167 @@ describe('ImageNode & Colocación de Imágenes Externas', () => {
 
     controller.cleanup();
   });
+
+  it('12. Redimensionado interactivo: arrastrar tirador de esquina en el canvas modifica ImageNode en tiempo real con Undo/Redo', async () => {
+    const { InputController } = await import('../src/input/InputController.ts');
+
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const mockCanvas = {
+      style: { cursor: 'default' },
+      getBoundingClientRect: () => ({
+        left: 0,
+        top: 0,
+        width: 1000,
+        height: 800,
+        right: 1000,
+        bottom: 800,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      }),
+      getContext: () => null,
+      addEventListener: (type: string, listener: (e: unknown) => void) => {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(listener);
+      },
+      removeEventListener: (type: string, listener: (e: unknown) => void) => {
+        if (!listeners[type]) return;
+        listeners[type] = listeners[type].filter((l) => l !== listener);
+      },
+      dispatchSimulatedEvent: (type: string, event: unknown) => {
+        if (listeners[type]) {
+          for (const listener of listeners[type]) {
+            listener(event);
+          }
+        }
+      },
+    } as unknown as HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
+
+    const img: ImageNode = {
+      id: 'img-interactive-resize',
+      type: 'image',
+      name: 'Interactive Image',
+      assetId: sampleAsset.id,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+    };
+
+    stateManager.addNode('layer-1', img);
+    stateManager.setSelection(['img-interactive-resize']);
+
+    const controller = new InputController(mockCanvas, stateManager, commandManager);
+
+    // 1. Esquina bottom-right en (300, 200). Mousedown en (300, 200)
+    mockCanvas.dispatchSimulatedEvent('mousedown', { clientX: 300, clientY: 200, button: 0 });
+    assert.equal(controller.isResizing, true, 'Debe activar modo redimensionado');
+    assert.equal(controller.currentResizeHandle, 'bottom-right');
+
+    // 2. Mousemove a (350, 250) (dx = +50). Para imagen, ratio 2:1 se preserva por defecto
+    mockCanvas.dispatchSimulatedEvent('mousemove', { clientX: 350, clientY: 250 });
+    let current = stateManager.findNode('img-interactive-resize') as ImageNode;
+    assert.equal(current.x, 100);
+    assert.equal(current.y, 100);
+    assert.ok(current.width > 200, 'Width debe aumentar');
+    assert.ok(current.height > 100, 'Height debe aumentar proporcionalmente');
+    assert.equal(commandManager.undoCount, 0, 'No debe registrar comando mientras arrastra');
+
+    // 3. Mouseup finaliza el redimensionado y registra ResizeCommand
+    mockCanvas.dispatchSimulatedEvent('mouseup', { clientX: 350, clientY: 250, button: 0 });
+    assert.equal(controller.isResizing, false);
+    assert.equal(commandManager.undoCount, 1, 'Debe haberse registrado un ResizeCommand');
+
+    // 4. Undo restaura dimensiones iniciales
+    commandManager.undo();
+    current = stateManager.findNode('img-interactive-resize') as ImageNode;
+    assert.equal(current.width, 200);
+    assert.equal(current.height, 100);
+
+    // 5. Redo vuelve a aplicar el tamaño redimensionado
+    commandManager.redo();
+    current = stateManager.findNode('img-interactive-resize') as ImageNode;
+    assert.ok(current.width > 200);
+
+    controller.destroy();
+  });
+
+  it('13. Rotación interactiva: arrastrar tirador de rotación en el canvas rota ImageNode con Undo/Redo', async () => {
+    const { InputController } = await import('../src/input/InputController.ts');
+
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const mockCanvas = {
+      style: { cursor: 'default' },
+      getBoundingClientRect: () => ({
+        left: 0,
+        top: 0,
+        width: 1000,
+        height: 800,
+        right: 1000,
+        bottom: 800,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      }),
+      getContext: () => null,
+      addEventListener: (type: string, listener: (e: unknown) => void) => {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(listener);
+      },
+      removeEventListener: (type: string, listener: (e: unknown) => void) => {
+        if (!listeners[type]) return;
+        listeners[type] = listeners[type].filter((l) => l !== listener);
+      },
+      dispatchSimulatedEvent: (type: string, event: unknown) => {
+        if (listeners[type]) {
+          for (const listener of listeners[type]) {
+            listener(event);
+          }
+        }
+      },
+    } as unknown as HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
+
+    const img: ImageNode = {
+      id: 'img-interactive-rotate',
+      type: 'image',
+      name: 'Rotatable Image',
+      assetId: sampleAsset.id,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+      rotation: 0,
+    };
+
+    stateManager.addNode('layer-1', img);
+    stateManager.setSelection(['img-interactive-rotate']);
+
+    const controller = new InputController(mockCanvas, stateManager, commandManager);
+
+    // Tirador de rotación: centro en x = 200, y = 100 - 30 = 70
+    mockCanvas.dispatchSimulatedEvent('mousedown', { clientX: 200, clientY: 70, button: 0 });
+    assert.equal(controller.isRotating, true, 'Debe activar modo rotación');
+
+    // Mover a la derecha para rotar aproximadamente 90 grados
+    mockCanvas.dispatchSimulatedEvent('mousemove', { clientX: 300, clientY: 150 });
+    let current = stateManager.findNode('img-interactive-rotate') as ImageNode;
+    assert.notEqual(current.rotation, 0, 'Debe haber rotado');
+
+    // Mouseup registra RotateCommand
+    mockCanvas.dispatchSimulatedEvent('mouseup', { clientX: 300, clientY: 150, button: 0 });
+    assert.equal(controller.isRotating, false);
+    assert.equal(commandManager.undoCount, 1);
+
+    // Undo restaura rotación a 0
+    commandManager.undo();
+    current = stateManager.findNode('img-interactive-rotate') as ImageNode;
+    assert.equal(current.rotation, 0);
+
+    // Redo re-aplica la rotación
+    commandManager.redo();
+    current = stateManager.findNode('img-interactive-rotate') as ImageNode;
+    assert.notEqual(current.rotation, 0);
+
+    controller.destroy();
+  });
 });
