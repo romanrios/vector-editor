@@ -26,6 +26,7 @@ function areDimensionsEqual(a: ShapeDimensions, b: ShapeDimensions): boolean {
   if (a.rotation !== b.rotation) return false;
   if (a.fontSize !== b.fontSize) return false;
   if (a.boxWidth !== b.boxWidth) return false;
+  if (a.cornerRadius !== b.cornerRadius) return false;
 
   if (a.points !== b.points) {
     if (!a.points || !b.points) return false;

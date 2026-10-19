@@ -1047,17 +1047,56 @@ export function isPointInShape(
 
   // 3. Evaluación según el tipo de figura en espacio local
   if (shape.type === 'rectangle') {
-    const minX = Math.min(shape.x, shape.x + shape.width) - t;
-    const maxX = Math.max(shape.x, shape.x + shape.width) + t;
-    const minY = Math.min(shape.y, shape.y + shape.height) - t;
-    const maxY = Math.max(shape.y, shape.y + shape.height) + t;
+    const rx = Math.min(shape.x, shape.x + shape.width);
+    const ry = Math.min(shape.y, shape.y + shape.height);
+    const rw = Math.abs(shape.width);
+    const rh = Math.abs(shape.height);
+    const minX = rx - t;
+    const maxX = rx + rw + t;
+    const minY = ry - t;
+    const maxY = ry + rh + t;
 
-    return (
-      localX >= minX - 1e-9 &&
-      localX <= maxX + 1e-9 &&
-      localY >= minY - 1e-9 &&
-      localY <= maxY + 1e-9
-    );
+    if (
+      localX < minX - 1e-9 ||
+      localX > maxX + 1e-9 ||
+      localY < minY - 1e-9 ||
+      localY > maxY + 1e-9
+    ) {
+      return false;
+    }
+
+    const radius = shape.cornerRadius ?? 0;
+    if (radius > 0) {
+      const maxR = Math.min(rw / 2, rh / 2);
+      const r = Math.min(radius, maxR);
+      const effR = r + t;
+      // Esquina superior izquierda
+      if (localX < rx + r && localY < ry + r) {
+        const cdx = localX - (rx + r);
+        const cdy = localY - (ry + r);
+        return cdx * cdx + cdy * cdy <= effR * effR + 1e-9;
+      }
+      // Esquina superior derecha
+      if (localX > rx + rw - r && localY < ry + r) {
+        const cdx = localX - (rx + rw - r);
+        const cdy = localY - (ry + r);
+        return cdx * cdx + cdy * cdy <= effR * effR + 1e-9;
+      }
+      // Esquina inferior izquierda
+      if (localX < rx + r && localY > ry + rh - r) {
+        const cdx = localX - (rx + r);
+        const cdy = localY - (ry + rh - r);
+        return cdx * cdx + cdy * cdy <= effR * effR + 1e-9;
+      }
+      // Esquina inferior derecha
+      if (localX > rx + rw - r && localY > ry + rh - r) {
+        const cdx = localX - (rx + rw - r);
+        const cdy = localY - (ry + rh - r);
+        return cdx * cdx + cdy * cdy <= effR * effR + 1e-9;
+      }
+    }
+
+    return true;
   }
 
   // Ellipse:

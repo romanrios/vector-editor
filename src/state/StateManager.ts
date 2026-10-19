@@ -10,6 +10,7 @@ import type {
   PathPointType,
   SelectableNode,
   Shape,
+  Rectangle,
   Text,
   FillType,
   StrokeLineCap,
@@ -1420,16 +1421,19 @@ export class StateManager {
                 ? dimensions.radiusY * 2
                 : child.height;
             const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+            const hasCornerRadius = 'cornerRadius' in dimensions;
+            const nextCornerRadius = hasCornerRadius ? dimensions.cornerRadius : child.cornerRadius;
 
             if (
               nextX !== child.x ||
               nextY !== child.y ||
               nextW !== child.width ||
               nextH !== child.height ||
-              nextRot !== child.rotation
+              nextRot !== child.rotation ||
+              (hasCornerRadius && nextCornerRadius !== child.cornerRadius)
             ) {
               shapeChanged = true;
-              newShape = {
+              const rectBase: Rectangle = {
                 ...child,
                 x: nextX,
                 y: nextY,
@@ -1437,6 +1441,16 @@ export class StateManager {
                 height: nextH,
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
               };
+              if (hasCornerRadius) {
+                if (nextCornerRadius !== undefined) {
+                  newShape = { ...rectBase, cornerRadius: nextCornerRadius };
+                } else {
+                  const { cornerRadius: _, ...rest } = rectBase;
+                  newShape = rest as Rectangle;
+                }
+              } else {
+                newShape = rectBase;
+              }
             }
           } else if (child.type === 'ellipse') {
             const nextX = dimensions.x !== undefined ? dimensions.x : child.x;

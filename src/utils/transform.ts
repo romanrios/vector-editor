@@ -46,6 +46,7 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       width: shape.width,
       height: shape.height,
       rotation: shape.rotation ?? 0,
+      cornerRadius: shape.cornerRadius ?? 0,
     };
   }
   if (shape.type === 'ellipse') {

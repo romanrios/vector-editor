@@ -17,6 +17,7 @@ export interface ShapeDimensions {
   readonly fontSize?: number;
   readonly lineHeight?: number;
   readonly boxWidth?: number;
+  readonly cornerRadius?: number;
 }
 
 /**

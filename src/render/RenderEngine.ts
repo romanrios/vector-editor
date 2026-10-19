@@ -484,8 +484,22 @@ export class RenderEngine {
     }
 
     this.ctx.beginPath();
-    if (rect.cornerRadius && typeof this.ctx.roundRect === 'function') {
-      this.ctx.roundRect(rect.x, rect.y, rect.width, rect.height, rect.cornerRadius);
+    if (rect.cornerRadius && rect.cornerRadius > 0) {
+      if (typeof this.ctx.roundRect === 'function') {
+        this.ctx.roundRect(rect.x, rect.y, rect.width, rect.height, rect.cornerRadius);
+      } else {
+        const r = Math.min(rect.cornerRadius, Math.abs(rect.width) / 2, Math.abs(rect.height) / 2);
+        const rx = rect.x;
+        const ry = rect.y;
+        const rw = rect.width;
+        const rh = rect.height;
+        this.ctx.moveTo(rx + r, ry);
+        this.ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, r);
+        this.ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, r);
+        this.ctx.arcTo(rx, ry + rh, rx, ry, r);
+        this.ctx.arcTo(rx, ry, rx + rw, ry, r);
+        this.ctx.closePath();
+      }
     } else {
       this.ctx.rect(rect.x, rect.y, rect.width, rect.height);
     }

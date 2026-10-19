@@ -2,7 +2,7 @@ import type { StateManager, ShapeStyleEntry } from '../state/StateManager.ts';
 import { getLeafShapes } from '../state/StateManager.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
 import type { InputController } from '../input/InputController.ts';
-import { TransformShapesCommand } from '../commands/TransformShapesCommand.ts';
+import { TransformShapesCommand, type ShapeTransformEntry } from '../commands/TransformShapesCommand.ts';
 import { BatchCommand } from '../commands/BatchCommand.ts';
 import { StyleShapesCommand, type ShapeStyleChangeEntry } from '../commands/StyleShapesCommand.ts';
 import { StyleCommand } from '../commands/StyleCommand.ts';
@@ -16,6 +16,7 @@ import {
   type Shape,
   type Text,
   type Path,
+  type Rectangle,
   type FillType,
   type FontStyle,
   type FontWeight,
@@ -88,6 +89,8 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   const inputObjectWidth = document.querySelector<HTMLInputElement>('#input-object-width');
   const inputObjectHeight = document.querySelector<HTMLInputElement>('#input-object-height');
   const inputObjectRotation = document.querySelector<HTMLInputElement>('#input-object-rotation');
+  const groupCornerRadius = document.querySelector<HTMLElement>('#group-corner-radius');
+  const inputCornerRadius = document.querySelector<HTMLInputElement>('#input-corner-radius');
 
   const inputFill = document.querySelector<HTMLInputElement>('#input-fill');
   const inputFillHex = document.querySelector<HTMLInputElement>('#input-fill-hex');
@@ -159,8 +162,21 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   let lastRememberedFill = '#38bdf8';
   let lastRememberedStroke = '#0284c7';
 
+  let initialCornerRadiusSnapshots: Map<string, number> | null = null;
+
   let initialTextTypographySnapshot: TextTypographySnapshot | null = null;
   let lastRememberedTextColor = '#000000';
+
+  const captureInitialCornerRadius = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
+    if (rects.length > 0) {
+      initialCornerRadiusSnapshots = new Map(rects.map((r) => [r.id, r.cornerRadius ?? 0]));
+    } else {
+      initialCornerRadiusSnapshots = null;
+    }
+  };
 
   const captureInitialTextTypography = () => {
     const selectedNodes = stateManager.getSelectedNodes();
@@ -406,7 +422,36 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
           inputObjectRotation.value = String(roundToFourDecimals(firstLeafRotation));
         }
       }
+
+      const rectLeafs = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
+      if (groupCornerRadius) {
+        if (rectLeafs.length > 0) {
+          groupCornerRadius.style.display = 'flex';
+          if (inputCornerRadius && (typeof document === 'undefined' || document.activeElement !== inputCornerRadius)) {
+            if (rectLeafs.length === 1) {
+              inputCornerRadius.value = String(roundToFourDecimals(rectLeafs[0].cornerRadius ?? 0));
+              inputCornerRadius.placeholder = '';
+            } else {
+              const firstRadius = rectLeafs[0].cornerRadius ?? 0;
+              const allSame = rectLeafs.every((r) => (r.cornerRadius ?? 0) === firstRadius);
+              if (allSame) {
+                inputCornerRadius.value = String(roundToFourDecimals(firstRadius));
+                inputCornerRadius.placeholder = '';
+              } else {
+                inputCornerRadius.value = '';
+                inputCornerRadius.placeholder = 'Mixto';
+              }
+            }
+          }
+        } else {
+          groupCornerRadius.style.display = 'none';
+        }
+      }
     } else {
+      if (groupCornerRadius) {
+        groupCornerRadius.style.display = 'none';
+      }
+      initialCornerRadiusSnapshots = null;
       if (selectionState) {
         selectionState.style.display = 'none';
       }
@@ -872,6 +917,82 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   inputObjectWidth?.addEventListener('blur', onObjectGeometryBlur);
   inputObjectHeight?.addEventListener('blur', onObjectGeometryBlur);
   inputObjectRotation?.addEventListener('blur', onObjectGeometryBlur);
+
+  const onCornerRadiusFocus = () => {
+    captureInitialCornerRadius();
+  };
+
+  const onCornerRadiusInput = () => {
+    if (!inputCornerRadius) return;
+    const parsed = parseFloat(inputCornerRadius.value);
+    if (isNaN(parsed) || parsed < 0) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
+    if (rects.length === 0) return;
+
+    if (!initialCornerRadiusSnapshots) {
+      captureInitialCornerRadius();
+    }
+
+    const targetRadius = Math.max(0, parsed);
+    stateManager.updateShapesDimensions(
+      rects.map((r) => ({
+        id: r.id,
+        dimensions: { cornerRadius: targetRadius },
+      }))
+    );
+  };
+
+  const onCornerRadiusChange = () => {
+    if (!inputCornerRadius) return;
+    const parsed = parseFloat(inputCornerRadius.value);
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
+    if (rects.length === 0) {
+      initialCornerRadiusSnapshots = null;
+      syncPropertiesPanel();
+      return;
+    }
+
+    const targetRadius = isNaN(parsed) || parsed < 0 ? 0 : roundToFourDecimals(parsed);
+    inputCornerRadius.value = String(targetRadius);
+
+    const entries: ShapeTransformEntry[] = rects.map((r) => {
+      const initialRadius = initialCornerRadiusSnapshots?.get(r.id) ?? r.cornerRadius ?? 0;
+      return {
+        id: r.id,
+        before: {
+          ...getShapeDimensions(r),
+          cornerRadius: initialRadius,
+        },
+        after: {
+          ...getShapeDimensions(r),
+          cornerRadius: targetRadius,
+        },
+      };
+    });
+
+    const transformCommand = new TransformShapesCommand(stateManager, entries);
+    if (!transformCommand.isAlreadyAtTarget) {
+      const command = leafShapes.length > 1
+        ? new BatchCommand([transformCommand], 'Change Corner Radius')
+        : transformCommand;
+      command.execute();
+      commandManager.recordCommand(command);
+    }
+    initialCornerRadiusSnapshots = null;
+  };
+
+  const onCornerRadiusBlur = () => {
+    syncPropertiesPanel();
+  };
+
+  inputCornerRadius?.addEventListener('focus', onCornerRadiusFocus);
+  inputCornerRadius?.addEventListener('input', onCornerRadiusInput);
+  inputCornerRadius?.addEventListener('change', onCornerRadiusChange);
+  inputCornerRadius?.addEventListener('blur', onCornerRadiusBlur);
 
   const onInputStart = () => {
     captureInitialStyle();
@@ -1991,6 +2112,11 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputObjectWidth?.removeEventListener('blur', onObjectGeometryBlur);
       inputObjectHeight?.removeEventListener('blur', onObjectGeometryBlur);
       inputObjectRotation?.removeEventListener('blur', onObjectGeometryBlur);
+
+      inputCornerRadius?.removeEventListener('focus', onCornerRadiusFocus);
+      inputCornerRadius?.removeEventListener('input', onCornerRadiusInput);
+      inputCornerRadius?.removeEventListener('change', onCornerRadiusChange);
+      inputCornerRadius?.removeEventListener('blur', onCornerRadiusBlur);
 
       inputFill?.removeEventListener('mousedown', onInputStart);
       inputFill?.removeEventListener('click', onInputStart);
