@@ -262,6 +262,10 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   public onMouseDown(event: MouseEvent, coords: Vector2D): void {
+    if (event.button !== 0 && event.button !== undefined) {
+      return;
+    }
+
     const { x, y } = coords;
 
     // 1. Manejadores de redimensionado y rotación:
@@ -880,6 +884,11 @@ export class SelectToolHandler implements ToolHandler {
     }
 
     if (!this._isDragging) {
+      this.resetDrag();
+      return;
+    }
+
+    if (event.button !== 0 && event.button !== undefined) {
       this.resetDrag();
       return;
     }

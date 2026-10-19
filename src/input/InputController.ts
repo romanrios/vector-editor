@@ -1,6 +1,7 @@
 import type { StateManager } from '../state/StateManager.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import {
+  isDocument,
   isGroup,
   isLayer,
   isShape,
@@ -993,6 +994,11 @@ export class InputController {
       return;
     }
 
+    // El clic derecho (button === 2) o botones secundarios no deben iniciar arrastre, redimensionado o creación de figuras
+    if (event.button !== 0 && event.button !== undefined) {
+      return;
+    }
+
     const coords = this.getLocalCoordinates(event);
     const { x, y } = coords;
 
@@ -1035,6 +1041,20 @@ export class InputController {
     this.selectToolHandler.onMouseDown(event, coords);
   }
 
+  public isNodeOrAncestorSelected(nodeId: string): boolean {
+    if (this.stateManager.isSelected(nodeId)) {
+      return true;
+    }
+    let currentParent = this.stateManager.findParent(nodeId);
+    while (currentParent && !isDocument(currentParent) && !isLayer(currentParent)) {
+      if (this.stateManager.isSelected(currentParent.id)) {
+        return true;
+      }
+      currentParent = this.stateManager.findParent(currentParent.id);
+    }
+    return false;
+  }
+
   public handleContextMenu(event: MouseEvent): void {
     event.preventDefault?.();
 
@@ -1047,7 +1067,11 @@ export class InputController {
     const targetNode = hitShape ? this.resolveNodeToSelect(hitShape) : null;
 
     if (targetNode) {
-      if (!this.stateManager.isSelected(targetNode.id)) {
+      const isAlreadyInSelection =
+        this.stateManager.isSelected(targetNode.id) ||
+        (hitShape ? this.isNodeOrAncestorSelected(hitShape.id) : false);
+
+      if (!isAlreadyInSelection) {
         if (event.shiftKey) {
           this.stateManager.toggleInSelection(targetNode.id);
         } else {
@@ -1143,6 +1167,11 @@ export class InputController {
       } else {
         this.restoreToolCursor();
       }
+      return;
+    }
+
+    // El clic derecho (button === 2) o botones secundarios no deben disparar acciones de finalización de herramientas
+    if (event.button !== 0 && event.button !== undefined) {
       return;
     }
 

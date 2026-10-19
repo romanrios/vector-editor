@@ -391,6 +391,70 @@ describe('Menú Contextual (Click Derecho en el Lienzo)', () => {
     inputController.destroy();
   });
 
+  it('preserva la multi-selección completa durante mousedown (botón 2), mouseup (botón 2) y contextmenu, permitiendo agrupar', () => {
+    const { elements, cleanup } = setupMockDOM();
+    try {
+      const doc = createSampleDocument();
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(doc, commandManager);
+      stateManager.setSelection(['rect-1', 'rect-2']);
+      const canvas = createMockCanvas();
+      const inputController = new InputController(canvas, stateManager, commandManager);
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      // 1. Simular secuencia de clic derecho en rect-1 (75, 75)
+      inputController.handleMouseDown({
+        clientX: 75,
+        clientY: 75,
+        button: 2,
+        shiftKey: false,
+      } as any);
+
+      assert.deepEqual(stateManager.getSelection(), ['rect-1', 'rect-2'], 'No colapsa selección en mousedown (botón 2)');
+
+      inputController.handleMouseUp({
+        clientX: 75,
+        clientY: 75,
+        button: 2,
+        shiftKey: false,
+      } as any);
+
+      assert.deepEqual(stateManager.getSelection(), ['rect-1', 'rect-2'], 'No colapsa selección en mouseup (botón 2)');
+
+      let prevented = false;
+      inputController.handleContextMenu({
+        clientX: 75,
+        clientY: 75,
+        button: 2,
+        shiftKey: false,
+        preventDefault: () => {
+          prevented = true;
+        },
+      } as any);
+
+      assert.equal(prevented, true);
+      assert.deepEqual(stateManager.getSelection(), ['rect-1', 'rect-2'], 'Conserva multi-selección intacta tras contextmenu');
+
+      // 2. Comprobar que la opción de agrupar en el menú contextual está habilitada
+      const ctxItemGroup = elements['#ctx-item-group'];
+      assert.equal(ctxItemGroup.disabled, false, 'Opción agrupar debe estar habilitada');
+      assert.equal(ctxItemGroup.getAttribute('aria-disabled'), 'false');
+
+      // 3. Ejecutar agrupar desde el menú contextual
+      ctxItemGroup.click();
+
+      const newSelection = stateManager.getSelection();
+      assert.equal(newSelection.length, 1, 'Ahora hay un grupo seleccionado');
+      const groupNode = stateManager.findNode(newSelection[0]);
+      assert.ok(groupNode && groupNode.type === 'group', 'El nodo seleccionado es un grupo');
+
+      bindings.cleanup();
+      inputController.destroy();
+    } finally {
+      cleanup();
+    }
+  });
+
   it('deselecciona al hacer click derecho en un área vacía (salvo con tecla Shift)', () => {
     const doc = createSampleDocument();
     const commandManager = new CommandManager();
