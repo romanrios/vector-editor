@@ -258,4 +258,93 @@ describe('ImageNode & Colocación de Imágenes Externas', () => {
     assert.ok(svgCode.includes('height="300"'));
     assert.ok(svgCode.includes('transform="rotate(15'));
   });
+
+  it('9. PlacementController.placeFiles coloca una imagen, la añade al Scene Graph y la selecciona con Undo/Redo', async () => {
+    const { setupPlacementController } = await import('../src/ui/PlacementController.ts');
+    const { ViewportManager } = await import('../src/utils/viewport.ts');
+
+    const viewportManager = new ViewportManager();
+    const controller = setupPlacementController({
+      stateManager,
+      commandManager,
+      viewportManager,
+    });
+
+    const file = new File(['fake-png-data'], 'test-photo.png', { type: 'image/png' });
+    await controller.placeFiles([file]);
+
+    const layer = stateManager.getState().children[0];
+    assert.equal(layer.children.length, 1, 'Debe haber 1 figura añadida a la capa activa');
+
+    const placedNode = layer.children[0] as ImageNode;
+    assert.equal(placedNode.type, 'image');
+    assert.equal(placedNode.name, 'test-photo');
+    assert.ok(placedNode.assetId);
+
+    // Debe quedar seleccionada automáticamente
+    assert.deepEqual(stateManager.getSelection(), [placedNode.id]);
+
+    // Deshacer (Undo) remueve la figura
+    commandManager.undo();
+    assert.equal(stateManager.getState().children[0].children.length, 0);
+
+    // Rehacer (Redo) vuelve a colocarla
+    commandManager.redo();
+    assert.equal(stateManager.getState().children[0].children.length, 1);
+    assert.equal(stateManager.getState().children[0].children[0].id, placedNode.id);
+
+    controller.cleanup();
+  });
+
+  it('10. PlacementController.placeFiles con múltiples archivos utiliza BatchCommand en una sola acción', async () => {
+    const { setupPlacementController } = await import('../src/ui/PlacementController.ts');
+    const { ViewportManager } = await import('../src/utils/viewport.ts');
+
+    const viewportManager = new ViewportManager();
+    const controller = setupPlacementController({
+      stateManager,
+      commandManager,
+      viewportManager,
+    });
+
+    const file1 = new File(['fake-1'], 'photo1.jpg', { type: 'image/jpeg' });
+    const file2 = new File(['fake-2'], 'photo2.jpg', { type: 'image/jpeg' });
+    await controller.placeFiles([file1, file2]);
+
+    const layer = stateManager.getState().children[0];
+    assert.equal(layer.children.length, 2, 'Deben haberse añadido 2 figuras');
+
+    // Deshacer una sola vez debe remover ambas figuras
+    commandManager.undo();
+    assert.equal(stateManager.getState().children[0].children.length, 0);
+
+    // Rehacer restaura ambas
+    commandManager.redo();
+    assert.equal(stateManager.getState().children[0].children.length, 2);
+
+    controller.cleanup();
+  });
+
+  it('11. PlacementController.placeFiles con archivo SVG importa figuras vectoriales editables', async () => {
+    const { setupPlacementController } = await import('../src/ui/PlacementController.ts');
+    const { ViewportManager } = await import('../src/utils/viewport.ts');
+
+    const viewportManager = new ViewportManager();
+    const controller = setupPlacementController({
+      stateManager,
+      commandManager,
+      viewportManager,
+    });
+
+    const svgContent = '<svg width="200" height="200"><rect x="10" y="10" width="80" height="50" fill="#ff0000" /></svg>';
+    const svgFile = new File([svgContent], 'vector.svg', { type: 'image/svg+xml' });
+    await controller.placeFiles([svgFile]);
+
+    const layer = stateManager.getState().children[0];
+    assert.equal(layer.children.length, 1);
+    const shape = layer.children[0];
+    assert.equal(shape.type, 'rectangle');
+
+    controller.cleanup();
+  });
 });

@@ -29,6 +29,7 @@ export interface PlacementController {
 export function setupPlacementController(options: PlacementControllerOptions): PlacementController {
   const { stateManager, commandManager, viewportManager } = options;
   const canvas = options.canvas ?? (typeof document !== 'undefined' ? document.querySelector<HTMLCanvasElement>('#viewport-canvas') : null);
+  const container = (canvas?.parentElement as HTMLElement) ?? (typeof document !== 'undefined' ? document.querySelector<HTMLElement>('#canvas-container') : null);
 
   // Input file oculto para el flujo de selección
   let fileInput = typeof document !== 'undefined' ? document.querySelector<HTMLInputElement>('#file-input-place') : null;
@@ -91,18 +92,21 @@ export function setupPlacementController(options: PlacementControllerOptions): P
           const offX = targetWorld.x - importResult.width / 2;
           const offY = targetWorld.y - importResult.height / 2;
 
-          const translatedShapes: LayerChildNode[] = importResult.shapes.map((s) => {
-            if (s.type === 'group') {
-              return s;
+          const offsetNode = (node: LayerChildNode): LayerChildNode => {
+            if (node.type === 'group') {
+              return {
+                ...node,
+                children: node.children.map(offsetNode),
+              };
             }
             return {
-              ...s,
-              x: s.x + offX,
-              y: s.y + offY,
-            } as LayerChildNode;
-          });
+              ...node,
+              x: node.x + offX,
+              y: node.y + offY,
+            };
+          };
 
-          return translatedShapes;
+          return importResult.shapes.map(offsetNode);
         }
       } catch {
         // Fallback a ImageNode si el parsing SVG nativo no prospera
@@ -186,10 +190,10 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     if (commands.length === 0) return;
 
     if (commands.length === 1) {
-      commandManager.recordCommand(commands[0]);
+      commandManager.executeCommand(commands[0]);
     } else {
       const batch = new BatchCommand(commands, 'Colocar archivos');
-      commandManager.recordCommand(batch);
+      commandManager.executeCommand(batch);
     }
 
     // Seleccionar los elementos recién colocados
@@ -217,7 +221,7 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     input.value = '';
   };
 
-  // 2. Drag & Drop sobre el canvas
+  // 2. Drag & Drop sobre el canvas y contenedor
   const onDragOver = (e: DragEvent) => {
     if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
       e.preventDefault();
@@ -225,22 +229,43 @@ export function setupPlacementController(options: PlacementControllerOptions): P
       if (canvas) {
         canvas.classList.add('canvas-dragover');
       }
+      if (container) {
+        container.classList.add('canvas-dragover');
+      }
     }
   };
 
   const onDragLeave = (e: DragEvent) => {
-    if (canvas && (!e.relatedTarget || !canvas.contains(e.relatedTarget as Node))) {
-      canvas.classList.remove('canvas-dragover');
+    const target = e.relatedTarget as Node | null;
+    const isOutside =
+      (!canvas || !canvas.contains(target)) &&
+      (!container || !container.contains(target));
+    if (isOutside) {
+      if (canvas) canvas.classList.remove('canvas-dragover');
+      if (container) container.classList.remove('canvas-dragover');
     }
   };
 
   const onDrop = (e: DragEvent) => {
-    if (canvas) {
-      canvas.classList.remove('canvas-dragover');
-    }
+    if (canvas) canvas.classList.remove('canvas-dragover');
+    if (container) container.classList.remove('canvas-dragover');
+
+    if (e.defaultPrevented) return;
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       e.preventDefault();
       void placeFiles(e.dataTransfer.files, { x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const onWindowDragOver = (e: DragEvent) => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault();
+    }
+  };
+
+  const onWindowDrop = (e: DragEvent) => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault();
     }
   };
 
@@ -282,17 +307,25 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     }
   };
 
-  if (fileInput) {
+  if (fileInput && typeof fileInput.addEventListener === 'function') {
     fileInput.addEventListener('change', onFileInputChange);
   }
 
-  if (canvas) {
+  if (canvas && typeof canvas.addEventListener === 'function') {
     canvas.addEventListener('dragover', onDragOver);
     canvas.addEventListener('dragleave', onDragLeave);
     canvas.addEventListener('drop', onDrop);
   }
 
-  if (typeof window !== 'undefined') {
+  if (container && container !== canvas && typeof container.addEventListener === 'function') {
+    container.addEventListener('dragover', onDragOver);
+    container.addEventListener('dragleave', onDragLeave);
+    container.addEventListener('drop', onDrop);
+  }
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('drop', onWindowDrop);
     window.addEventListener('paste', onPaste);
     window.addEventListener('keydown', onKeyDown);
   }
@@ -301,18 +334,25 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     placeFiles,
     openFilePicker,
     cleanup: () => {
-      if (fileInput) {
+      if (fileInput && typeof fileInput.removeEventListener === 'function') {
         fileInput.removeEventListener('change', onFileInputChange);
         if (createdFileInput && fileInput.parentNode) {
           fileInput.parentNode.removeChild(fileInput);
         }
       }
-      if (canvas) {
+      if (canvas && typeof canvas.removeEventListener === 'function') {
         canvas.removeEventListener('dragover', onDragOver);
         canvas.removeEventListener('dragleave', onDragLeave);
         canvas.removeEventListener('drop', onDrop);
       }
-      if (typeof window !== 'undefined') {
+      if (container && container !== canvas && typeof container.removeEventListener === 'function') {
+        container.removeEventListener('dragover', onDragOver);
+        container.removeEventListener('dragleave', onDragLeave);
+        container.removeEventListener('drop', onDrop);
+      }
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('dragover', onWindowDragOver);
+        window.removeEventListener('drop', onWindowDrop);
         window.removeEventListener('paste', onPaste);
         window.removeEventListener('keydown', onKeyDown);
       }

@@ -490,6 +490,10 @@ export class RenderEngine {
       this.ctx.translate(-cx, -cy);
     }
 
+    if (img.opacity !== undefined && img.opacity < 1) {
+      this.ctx.globalAlpha = Math.max(0, Math.min(1, (this.ctx.globalAlpha ?? 1) * img.opacity));
+    }
+
     const renderable = assetManager.getRenderable(img.assetId);
 
     if (renderable && typeof this.ctx.drawImage === 'function') {
@@ -512,6 +516,12 @@ export class RenderEngine {
         });
       }
       this.renderImagePlaceholder(img);
+    }
+
+    if (img.stroke && img.stroke !== 'none' && img.strokeWidth && img.strokeWidth > 0) {
+      this.ctx.strokeStyle = img.stroke as string;
+      this.ctx.lineWidth = img.strokeWidth;
+      this.ctx.strokeRect(img.x, img.y, img.width, img.height);
     }
 
     this.ctx.restore();

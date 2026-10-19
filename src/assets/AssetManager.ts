@@ -192,7 +192,16 @@ export class AssetManager {
    * cálculo de dimensiones intrínsecas y downsampling si excede MAX_ASSET_DIMENSION.
    */
   public async createAssetFromFile(file: File): Promise<{ asset: AssetData; width: number; height: number }> {
-    const mimeType = file.type || 'image/png';
+    let mimeType = file.type;
+    if (!mimeType) {
+      const ext = file.name ? file.name.split('.').pop()?.toLowerCase() : '';
+      if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'webp') mimeType = 'image/webp';
+      else if (ext === 'gif') mimeType = 'image/gif';
+      else if (ext === 'svg') mimeType = 'image/svg+xml';
+      else mimeType = 'image/png';
+    }
     const dataUrl = await this.readBlobAsDataUrl(file);
     return this.createAssetFromDataUrl(dataUrl, mimeType);
   }
@@ -252,13 +261,24 @@ export class AssetManager {
   /**
    * Lee un Blob o File como cadena Data-URL (Base64)
    */
-  private readBlobAsDataUrl(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('[AssetManager] Fallo al leer archivo Blob como DataURL'));
-      reader.readAsDataURL(blob);
-    });
+  private async readBlobAsDataUrl(blob: Blob): Promise<string> {
+    if (typeof FileReader !== 'undefined') {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('[AssetManager] Fallo al leer archivo Blob como DataURL'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    if (typeof blob.arrayBuffer === 'function') {
+      const buffer = await blob.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const mime = blob.type || 'image/png';
+      return `data:${mime};base64,${base64}`;
+    }
+
+    throw new Error('[AssetManager] Entorno sin soporte para FileReader ni Blob.arrayBuffer');
   }
 
   /**
@@ -289,6 +309,12 @@ export class AssetManager {
         reject(new Error(`[AssetManager] Error al medir imagen: ${String(e)}`));
       };
       img.src = url;
+
+      if (img.complete && (img.naturalWidth || img.width)) {
+        const w = img.naturalWidth || img.width || 800;
+        const h = img.naturalHeight || img.height || 600;
+        resolve({ img, width: w, height: h });
+      }
     });
   }
 
