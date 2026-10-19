@@ -25,6 +25,7 @@ import {
   getTextBaseAABB,
   getTextLineHeight,
   getTextLineRanges,
+  measureSingleLineTextWidth,
   getSelectionBounds,
   getShapeAABB,
   getVisiblePathHandles,
@@ -1242,6 +1243,13 @@ export class RenderEngine {
     // Convención de alineación vertical: 'top' fija (x, y) en el borde superior del texto.
     this.ctx.textBaseline = 'top';
 
+    if ('letterSpacing' in this.ctx) {
+      const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
+      try {
+        (this.ctx as any).letterSpacing = `${letterSpacing}px`;
+      } catch (_) {}
+    }
+
     // 3. Color de relleno (negro por defecto si no se indica)
     if (hasFill) {
       if (isGradient(text.fill)) {
@@ -1346,7 +1354,7 @@ export class RenderEngine {
         continue;
       }
 
-      const lineWidth = this.ctx.measureText(lineText).width;
+      const lineWidth = measureSingleLineTextWidth(text, lineText, this.ctx);
       let lineStartX = text.x;
       if (text.textAlign === 'center') {
         lineStartX = text.x - lineWidth / 2;
@@ -1357,8 +1365,10 @@ export class RenderEngine {
       const charStart = Math.max(0, selStartInLine - lineStart);
       const charEnd = Math.max(charStart, selEndInLine - lineStart);
 
-      const wBefore = this.ctx.measureText(lineText.slice(0, charStart)).width;
-      let wSelected = this.ctx.measureText(lineText.slice(charStart, charEnd)).width;
+      const wBefore = measureSingleLineTextWidth(text, lineText.slice(0, charStart), this.ctx);
+      let wSelected = charEnd > charStart
+        ? measureSingleLineTextWidth(text, lineText.slice(0, charEnd), this.ctx) - wBefore
+        : 0;
 
       if (isLineBreakSelected && wSelected === 0) {
         wSelected = Math.max(6, fontSize * 0.3);
@@ -1423,6 +1433,13 @@ export class RenderEngine {
       fontParts.push(fontFamily);
       this.ctx.font = fontParts.join(' ');
 
+      if ('letterSpacing' in this.ctx) {
+        const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
+        try {
+          (this.ctx as any).letterSpacing = `${letterSpacing}px`;
+        } catch (_) {}
+      }
+
       // Determinar en qué línea está el cursor
       const lines = getTextLineRanges(tempNode, this.ctx);
       let lineIdx = 0;
@@ -1436,7 +1453,7 @@ export class RenderEngine {
       const currentLine = lines[lineIdx]?.text ?? '';
       const lineStart = lines[lineIdx]?.start ?? 0;
       const col = Math.max(0, Math.min(currentLine.length, cursorIndex - lineStart));
-      const lineWidth = this.ctx.measureText(currentLine).width;
+      const lineWidth = measureSingleLineTextWidth(tempNode, currentLine, this.ctx);
 
       let lineStartX = text.x;
       if (text.textAlign === 'center') {
@@ -1445,7 +1462,7 @@ export class RenderEngine {
         lineStartX = text.x - lineWidth;
       }
 
-      const cursorOffset = this.ctx.measureText(currentLine.slice(0, col)).width;
+      const cursorOffset = measureSingleLineTextWidth(tempNode, currentLine.slice(0, col), this.ctx);
       const caretX = lineStartX + cursorOffset;
       const caretY = text.y + lineIdx * lineHeight;
 

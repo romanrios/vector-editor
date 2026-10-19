@@ -176,6 +176,8 @@ function setupMockEnvironment() {
     '#input-text-content': new MockElement('input-text-content', 'input'),
     '#select-font-family': new MockElement('select-font-family', 'select'),
     '#input-font-size': new MockElement('input-font-size', 'input'),
+    '#input-line-height': new MockElement('input-line-height', 'input'),
+    '#input-letter-spacing': new MockElement('input-letter-spacing', 'input'),
     '#select-font-weight': new MockElement('select-font-weight', 'select'),
     '#select-font-style': new MockElement('select-font-style', 'select'),
     '#select-text-align': new MockElement('select-text-align', 'select'),

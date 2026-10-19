@@ -16,6 +16,7 @@ export interface ShapeDimensions {
   readonly rotation?: number;
   readonly fontSize?: number;
   readonly lineHeight?: number;
+  readonly letterSpacing?: number;
   readonly boxWidth?: number;
   readonly cornerRadius?: number;
 }

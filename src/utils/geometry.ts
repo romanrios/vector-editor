@@ -372,6 +372,8 @@ export function measureSingleLineTextWidth(
   const activeCtx = ctx ?? getTextMeasureContext();
   const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
   const fontFamily = text.fontFamily ?? 'sans-serif';
+  const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
+  const spacingCount = Math.max(0, line.length - 1);
 
   if (activeCtx && typeof activeCtx.measureText === 'function') {
     const fontParts: string[] = [];
@@ -385,14 +387,29 @@ export function measureSingleLineTextWidth(
     fontParts.push(fontFamily);
     activeCtx.font = fontParts.join(' ');
 
+    if ('letterSpacing' in activeCtx) {
+      try {
+        (activeCtx as any).letterSpacing = `${letterSpacing}px`;
+      } catch (_) {}
+    }
+
     const metrics = activeCtx.measureText(line);
     if (metrics && typeof metrics.width === 'number' && metrics.width > 0) {
+      const isNativeBrowserCanvas =
+        typeof (globalThis as any).CanvasRenderingContext2D !== 'undefined' &&
+        activeCtx instanceof (globalThis as any).CanvasRenderingContext2D;
+
+      if (!isNativeBrowserCanvas && letterSpacing !== 0) {
+        return Math.max(0, metrics.width + spacingCount * letterSpacing);
+      }
       return metrics.width;
     }
   }
 
   // Fallback heurístico determinista para entornos sin motor tipográfico nativo
-  return line.length * (fontSize * 0.6);
+  const baseWidth = line.length * (fontSize * 0.6);
+  const extraSpacing = letterSpacing !== 0 ? spacingCount * letterSpacing : 0;
+  return Math.max(0, baseWidth + extraSpacing);
 }
 
 /**

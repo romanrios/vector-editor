@@ -1764,8 +1764,11 @@ export class SelectToolHandler implements ToolHandler {
       a.radiusX !== b.radiusX ||
       a.radiusY !== b.radiusY ||
       a.fontSize !== b.fontSize ||
+      a.lineHeight !== b.lineHeight ||
+      a.letterSpacing !== b.letterSpacing ||
       a.rotation !== b.rotation ||
-      a.boxWidth !== b.boxWidth
+      a.boxWidth !== b.boxWidth ||
+      a.cornerRadius !== b.cornerRadius
     );
   }
 

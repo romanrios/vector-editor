@@ -354,6 +354,9 @@ function renderChildToSvg(
     if (text.fontStyle && text.fontStyle !== 'normal') {
       attrs.push(`font-style="${escapeXml(text.fontStyle)}"`);
     }
+    if (text.letterSpacing !== undefined && text.letterSpacing !== 0) {
+      attrs.push(`letter-spacing="${formatNum(text.letterSpacing, precision)}px"`);
+    }
 
     if (text.rotation) {
       attrs.push(

@@ -350,6 +350,9 @@ function parseLayerChild(
     if (child.lineHeight !== undefined && (!isFiniteNumber(child.lineHeight) || child.lineHeight <= 0)) {
       throw new DocumentParseError(`${childPath}.lineHeight debe ser un número finito positivo`);
     }
+    if (child.letterSpacing !== undefined && !isFiniteNumber(child.letterSpacing)) {
+      throw new DocumentParseError(`${childPath}.letterSpacing debe ser un número finito`);
+    }
     if (child.boxWidth !== undefined && (!isFiniteNumber(child.boxWidth) || child.boxWidth <= 0)) {
       throw new DocumentParseError(`${childPath}.boxWidth debe ser un número finito positivo`);
     }

@@ -65,6 +65,7 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       rotation: shape.rotation ?? 0,
       fontSize: shape.fontSize ?? 16,
       ...(shape.lineHeight !== undefined ? { lineHeight: shape.lineHeight } : {}),
+      ...(shape.letterSpacing !== undefined ? { letterSpacing: shape.letterSpacing } : {}),
       ...(shape.boxWidth !== undefined ? { boxWidth: shape.boxWidth } : {}),
     };
   }
@@ -389,6 +390,8 @@ export function scaleShapesAboutAnchor(
       const newFontSize = Math.max(1, Math.round(oldFontSize * scaleFactor));
       const oldLineHeight = shape.lineHeight;
       const newLineHeight = oldLineHeight !== undefined ? Math.max(1, Math.round(oldLineHeight * scaleFactor)) : undefined;
+      const oldLetterSpacing = shape.letterSpacing;
+      const newLetterSpacing = oldLetterSpacing !== undefined ? Math.round(oldLetterSpacing * scaleFactor * 100) / 100 : undefined;
       const newX = newCx;
       const newY = newCy;
 
@@ -396,7 +399,8 @@ export function scaleShapesAboutAnchor(
         Math.abs(newX - shape.x) > 1e-10 ||
         Math.abs(newY - shape.y) > 1e-10 ||
         newFontSize !== oldFontSize ||
-        (oldLineHeight !== undefined && newLineHeight !== oldLineHeight);
+        (oldLineHeight !== undefined && newLineHeight !== oldLineHeight) ||
+        (oldLetterSpacing !== undefined && newLetterSpacing !== oldLetterSpacing);
 
       if (changed) {
         results.push({
@@ -406,6 +410,7 @@ export function scaleShapesAboutAnchor(
             y: newY,
             fontSize: newFontSize,
             ...(newLineHeight !== undefined ? { lineHeight: newLineHeight } : {}),
+            ...(newLetterSpacing !== undefined ? { letterSpacing: newLetterSpacing } : {}),
             rotation: rotDeg,
           },
         });

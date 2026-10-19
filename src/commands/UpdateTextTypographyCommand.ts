@@ -6,7 +6,10 @@ import type { Text } from '../types/scene-graph.ts';
  * Propiedades tipográficas y de contenido modificables en un nodo Text
  */
 export type TextPropertyUpdate = Partial<
-  Pick<Text, 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'fontStyle' | 'textAlign' | 'fill'>
+  Pick<
+    Text,
+    'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'fontStyle' | 'textAlign' | 'fill' | 'lineHeight' | 'letterSpacing'
+  >
 >;
 
 /**

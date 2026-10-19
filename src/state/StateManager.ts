@@ -1515,6 +1515,7 @@ export class StateManager {
             const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
             const nextFontSize = dimensions.fontSize !== undefined ? dimensions.fontSize : child.fontSize;
             const nextLineHeight = dimensions.lineHeight !== undefined ? dimensions.lineHeight : child.lineHeight;
+            const nextLetterSpacing = dimensions.letterSpacing !== undefined ? dimensions.letterSpacing : child.letterSpacing;
             const hasBoxWidth = 'boxWidth' in dimensions;
             const nextBoxWidth = hasBoxWidth ? dimensions.boxWidth : child.boxWidth;
 
@@ -1524,6 +1525,7 @@ export class StateManager {
               nextRot !== child.rotation ||
               (dimensions.fontSize !== undefined && nextFontSize !== child.fontSize) ||
               (dimensions.lineHeight !== undefined && nextLineHeight !== child.lineHeight) ||
+              (dimensions.letterSpacing !== undefined && nextLetterSpacing !== child.letterSpacing) ||
               (hasBoxWidth && nextBoxWidth !== child.boxWidth)
             ) {
               shapeChanged = true;
@@ -1534,6 +1536,7 @@ export class StateManager {
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
                 ...(nextFontSize !== undefined ? { fontSize: nextFontSize } : {}),
                 ...(nextLineHeight !== undefined ? { lineHeight: nextLineHeight } : {}),
+                ...(nextLetterSpacing !== undefined ? { letterSpacing: nextLetterSpacing } : {}),
               };
               if (hasBoxWidth) {
                 if (nextBoxWidth !== undefined) {

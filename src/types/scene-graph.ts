@@ -190,6 +190,7 @@ export interface Text extends BaseNode {
   readonly fontStyle?: FontStyle;
   readonly textAlign?: TextAlign;
   readonly lineHeight?: number;
+  readonly letterSpacing?: number;
   readonly fill?: FillType;
   readonly stroke?: FillType;
   readonly strokeWidth?: number;

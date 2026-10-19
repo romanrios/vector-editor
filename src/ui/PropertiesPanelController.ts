@@ -26,6 +26,7 @@ import {
 } from '../types/scene-graph.ts';
 import {
   getSelectionBounds,
+  getTextLineHeight,
   normalizeAngle,
   getPointType,
   type AlignmentMode,
@@ -73,6 +74,8 @@ interface TextTypographySnapshot {
   readonly fontStyle?: FontStyle;
   readonly textAlign?: TextAlign;
   readonly fill?: FillType;
+  readonly lineHeight?: number;
+  readonly letterSpacing?: number;
 }
 
 export function setupPropertiesPanelBindings(options: PropertiesPanelControllerOptions): PropertiesPanelController {
@@ -118,6 +121,8 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   const inputTextContent = document.querySelector<HTMLInputElement>('#input-text-content');
   const selectFontFamily = document.querySelector<HTMLSelectElement>('#select-font-family');
   const inputFontSize = document.querySelector<HTMLInputElement>('#input-font-size');
+  const inputLineHeight = document.querySelector<HTMLInputElement>('#input-line-height');
+  const inputLetterSpacing = document.querySelector<HTMLInputElement>('#input-letter-spacing');
   const selectFontWeight = document.querySelector<HTMLSelectElement>('#select-font-weight');
   const selectFontStyle = document.querySelector<HTMLSelectElement>('#select-font-style');
   const selectTextAlign = document.querySelector<HTMLSelectElement>('#select-text-align');
@@ -190,6 +195,8 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
         fontStyle: textNode.fontStyle ?? 'normal',
         textAlign: textNode.textAlign ?? 'left',
         fill: textNode.fill ?? '#000000',
+        lineHeight: textNode.lineHeight,
+        letterSpacing: textNode.letterSpacing,
       };
     } else {
       initialTextTypographySnapshot = null;
@@ -493,6 +500,20 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
 
       if (inputFontSize && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputFontSize))) {
         inputFontSize.value = String(singleTextNode.fontSize ?? 32);
+      }
+
+      if (inputLineHeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputLineHeight))) {
+        if (singleTextNode.lineHeight !== undefined) {
+          inputLineHeight.value = String(roundToFourDecimals(singleTextNode.lineHeight));
+        } else {
+          inputLineHeight.value = '';
+          const autoVal = roundToFourDecimals(getTextLineHeight(singleTextNode));
+          inputLineHeight.placeholder = `Auto (${autoVal})`;
+        }
+      }
+
+      if (inputLetterSpacing && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== inputLetterSpacing))) {
+        inputLetterSpacing.value = String(roundToFourDecimals(singleTextNode.letterSpacing ?? 0));
       }
 
       if (selectFontWeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== selectFontWeight))) {
@@ -1576,6 +1597,87 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     }
   };
 
+  const onLineHeightFocus = () => captureInitialTextTypography();
+  const onLineHeightInput = () => {
+    if (!inputLineHeight) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      if (!initialTextTypographySnapshot) captureInitialTextTypography();
+      const val = inputLineHeight.value.trim();
+      if (val === '') {
+        stateManager.updateShape<Text>(textNode.id, { lineHeight: undefined });
+      } else {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed) && parsed > 0) {
+          stateManager.updateShape<Text>(textNode.id, { lineHeight: parsed });
+        }
+      }
+    }
+  };
+
+  const onLineHeightChange = () => {
+    if (!inputLineHeight) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const val = inputLineHeight.value.trim();
+      let after: number | undefined;
+      if (val === '') {
+        after = undefined;
+      } else {
+        const parsed = parseFloat(val);
+        after = isNaN(parsed) || parsed <= 0 ? undefined : roundToFourDecimals(parsed);
+      }
+      if (after !== undefined) {
+        inputLineHeight.value = String(after);
+      } else {
+        inputLineHeight.value = '';
+        const autoVal = roundToFourDecimals(getTextLineHeight({ ...textNode, lineHeight: undefined }));
+        inputLineHeight.placeholder = `Auto (${autoVal})`;
+      }
+      const before = initialTextTypographySnapshot?.lineHeight ?? textNode.lineHeight;
+      stateManager.updateShape<Text>(textNode.id, { lineHeight: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { lineHeight: before }, { lineHeight: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
+  const onLetterSpacingFocus = () => captureInitialTextTypography();
+  const onLetterSpacingInput = () => {
+    if (!inputLetterSpacing) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      if (!initialTextTypographySnapshot) captureInitialTextTypography();
+      const parsed = parseFloat(inputLetterSpacing.value);
+      if (!isNaN(parsed)) {
+        stateManager.updateShape<Text>(textNode.id, { letterSpacing: parsed });
+      }
+    }
+  };
+
+  const onLetterSpacingChange = () => {
+    if (!inputLetterSpacing) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
+      const textNode = selectedNodes[0];
+      const parsed = parseFloat(inputLetterSpacing.value);
+      const after = isNaN(parsed) ? 0 : roundToFourDecimals(parsed);
+      inputLetterSpacing.value = String(after);
+      const before = initialTextTypographySnapshot?.letterSpacing ?? textNode.letterSpacing ?? 0;
+      stateManager.updateShape<Text>(textNode.id, { letterSpacing: after });
+      if (before !== after) {
+        const cmd = new UpdateTextTypographyCommand(stateManager, textNode.id, { letterSpacing: before }, { letterSpacing: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialTextTypographySnapshot = null;
+    }
+  };
+
   const onFontWeightChange = () => {
     if (!selectFontWeight) return;
     const selectedNodes = stateManager.getSelectedNodes();
@@ -1750,6 +1852,16 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   inputFontSize?.addEventListener('input', onFontSizeInput);
   inputFontSize?.addEventListener('change', onFontSizeChange);
   inputFontSize?.addEventListener('blur', onFontSizeChange);
+
+  inputLineHeight?.addEventListener('focus', onLineHeightFocus);
+  inputLineHeight?.addEventListener('input', onLineHeightInput);
+  inputLineHeight?.addEventListener('change', onLineHeightChange);
+  inputLineHeight?.addEventListener('blur', onLineHeightChange);
+
+  inputLetterSpacing?.addEventListener('focus', onLetterSpacingFocus);
+  inputLetterSpacing?.addEventListener('input', onLetterSpacingInput);
+  inputLetterSpacing?.addEventListener('change', onLetterSpacingChange);
+  inputLetterSpacing?.addEventListener('blur', onLetterSpacingChange);
 
   selectFontWeight?.addEventListener('change', onFontWeightChange);
   selectFontStyle?.addEventListener('change', onFontStyleChange);
@@ -2181,6 +2293,16 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputFontSize?.removeEventListener('input', onFontSizeInput);
       inputFontSize?.removeEventListener('change', onFontSizeChange);
       inputFontSize?.removeEventListener('blur', onFontSizeChange);
+
+      inputLineHeight?.removeEventListener('focus', onLineHeightFocus);
+      inputLineHeight?.removeEventListener('input', onLineHeightInput);
+      inputLineHeight?.removeEventListener('change', onLineHeightChange);
+      inputLineHeight?.removeEventListener('blur', onLineHeightChange);
+
+      inputLetterSpacing?.removeEventListener('focus', onLetterSpacingFocus);
+      inputLetterSpacing?.removeEventListener('input', onLetterSpacingInput);
+      inputLetterSpacing?.removeEventListener('change', onLetterSpacingChange);
+      inputLetterSpacing?.removeEventListener('blur', onLetterSpacingChange);
 
       selectFontWeight?.removeEventListener('change', onFontWeightChange);
       selectFontStyle?.removeEventListener('change', onFontStyleChange);

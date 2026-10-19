@@ -351,6 +351,13 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
         ctx.translate(-text.x, -text.y);
       }
 
+      if ('letterSpacing' in ctx) {
+        const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
+        try {
+          (ctx as any).letterSpacing = `${letterSpacing}px`;
+        } catch (_) {}
+      }
+
       const lineHeight = getTextLineHeight(text);
       const lines = getTextLineRanges(text, ctx);
 
