@@ -111,6 +111,8 @@ export class SelectToolHandler implements ToolHandler {
   private _isResizing: boolean = false;
   private resizeOrigin: { x: number; y: number } | null = null;
   private _lastResizeMousePos: { x: number; y: number } | null = null;
+  private _lastShiftKey: boolean = false;
+  private _lastAltKey: boolean = false;
   private activeResizeHandle: HandleType | null = null;
   private resizingShapeId: string | null = null;
   private initialDimensions: ShapeDimensions | null = null;
@@ -377,6 +379,8 @@ export class SelectToolHandler implements ToolHandler {
           this._isRotating = false;
           this.resizeOrigin = { x, y };
           this._lastResizeMousePos = { x, y };
+          this._lastShiftKey = Boolean(event.shiftKey);
+          this._lastAltKey = Boolean(event.altKey);
           this.activeResizeHandle = hitHandle.type;
           this.resizingShapeId = selectedNode.id;
 
@@ -412,9 +416,13 @@ export class SelectToolHandler implements ToolHandler {
             this.initialDimensions = {
               x: selectedNode.x,
               y: selectedNode.y,
+              baseX: aabb.minX,
+              baseY: aabb.minY,
               width: aabb.width,
               height: aabb.height,
               fontSize: selectedNode.fontSize ?? 16,
+              lineHeight: selectedNode.lineHeight,
+              letterSpacing: selectedNode.letterSpacing,
               rotation: selectedNode.rotation ?? 0,
               boxWidth: selectedNode.boxWidth,
             };
@@ -692,7 +700,9 @@ export class SelectToolHandler implements ToolHandler {
         this.initialDimensions
       ) {
         this._lastResizeMousePos = { x, y };
-        this.calculateSnappedResizeDimensions(x, y, Boolean(event.shiftKey));
+        this._lastShiftKey = Boolean(event.shiftKey);
+        this._lastAltKey = Boolean(event.altKey);
+        this.calculateSnappedResizeDimensions(x, y, Boolean(event.shiftKey), Boolean(event.altKey));
 
         const currentShape = this.stateManager.findNode(this.resizingShapeId) as Shape | null;
         this.canvas.style.cursor = this.getResizeCursor(
@@ -840,7 +850,8 @@ export class SelectToolHandler implements ToolHandler {
         const finalDimensions = this.calculateSnappedResizeDimensions(
           x,
           y,
-          Boolean(event.shiftKey)
+          Boolean(event.shiftKey),
+          Boolean(event.altKey)
         );
 
         if (finalDimensions && this.hasDimensionsChanged(this.initialDimensions, finalDimensions)) {
@@ -1058,6 +1069,8 @@ export class SelectToolHandler implements ToolHandler {
     this._isResizing = false;
     this.resizeOrigin = null;
     this._lastResizeMousePos = null;
+    this._lastShiftKey = false;
+    this._lastAltKey = false;
     this.activeResizeHandle = null;
     this.resizingShapeId = null;
     this.initialDimensions = null;
@@ -1079,6 +1092,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   public handleShiftToggle(shiftKey: boolean): void {
+    this._lastShiftKey = shiftKey;
     if (this._multiTransformState && this._multiTransformState.lastMouse) {
       this.applyMultiTransform(this._multiTransformState.lastMouse.x, this._multiTransformState.lastMouse.y, shiftKey);
       this.stateManager.markDirty();
@@ -1095,7 +1109,28 @@ export class SelectToolHandler implements ToolHandler {
       this.calculateSnappedResizeDimensions(
         this._lastResizeMousePos.x,
         this._lastResizeMousePos.y,
-        shiftKey
+        shiftKey,
+        this._lastAltKey
+      );
+      this.stateManager.markDirty();
+    }
+  }
+
+  public handleAltToggle(altKey: boolean): void {
+    this._lastAltKey = altKey;
+    if (
+      this._isResizing &&
+      this.resizingShapeId &&
+      this.resizeOrigin &&
+      this.activeResizeHandle &&
+      this.initialDimensions &&
+      this._lastResizeMousePos
+    ) {
+      this.calculateSnappedResizeDimensions(
+        this._lastResizeMousePos.x,
+        this._lastResizeMousePos.y,
+        this._lastShiftKey,
+        altKey
       );
       this.stateManager.markDirty();
     }
@@ -1429,7 +1464,8 @@ export class SelectToolHandler implements ToolHandler {
   public calculateSnappedResizeDimensions(
     mouseX: number,
     mouseY: number,
-    shiftKey: boolean
+    shiftKey: boolean,
+    altKey: boolean = false
   ): ShapeDimensions | null {
     if (
       !this.resizingShapeId ||
@@ -1442,7 +1478,8 @@ export class SelectToolHandler implements ToolHandler {
 
     const currentShape = this.stateManager.findNode(this.resizingShapeId);
     const isImageNode = currentShape?.type === 'image';
-    const preserveRatio = isImageNode ? !shiftKey : shiftKey;
+    const isTextNode = currentShape?.type === 'text';
+    const preserveRatio = isImageNode || isTextNode ? true : shiftKey;
 
     const deltaX = mouseX - this.resizeOrigin.x;
     const deltaY = mouseY - this.resizeOrigin.y;
@@ -1451,9 +1488,15 @@ export class SelectToolHandler implements ToolHandler {
       this.activeResizeHandle,
       deltaX,
       deltaY,
-      preserveRatio
+      preserveRatio,
+      altKey
     );
     this.stateManager.updateShapeDimensions(this.resizingShapeId, candidateDimensions);
+
+    if (altKey) {
+      this.setActiveGuides([]);
+      return candidateDimensions;
+    }
 
     const candidateShape = this.stateManager.findNode(this.resizingShapeId);
     if (!candidateShape || !isShape(candidateShape)) {
@@ -1480,7 +1523,8 @@ export class SelectToolHandler implements ToolHandler {
       this.activeResizeHandle,
       deltaX + snap.dx,
       deltaY + snap.dy,
-      preserveRatio
+      preserveRatio,
+      altKey
     );
     this.stateManager.updateShapeDimensions(this.resizingShapeId, finalDimensions);
     return finalDimensions;
@@ -1544,7 +1588,8 @@ export class SelectToolHandler implements ToolHandler {
     handle: HandleType,
     dx: number,
     dy: number,
-    preserveAspectRatio: boolean = false
+    preserveAspectRatio: boolean = false,
+    fromCenter: boolean = false
   ): ShapeDimensions {
     const rotation = initial.rotation ?? 0;
     const rad = (rotation * Math.PI) / 180;
@@ -1586,16 +1631,86 @@ export class SelectToolHandler implements ToolHandler {
         break;
     }
 
+    // 1. Redimensionado exclusivo para nodos de tipo Text:
+    // Escala proporcional a través de proyección diagonal continua,
+    // fijando la esquina opuesta (o el centro del cuadro de texto con Alt).
+    if (initial.fontSize !== undefined) {
+      const initX = initial.x ?? 0;
+      const initY = initial.y ?? 0;
+      const initW = Math.max(1, initial.width ?? 1);
+      const initH = Math.max(1, initial.height ?? 1);
+      const bX = initial.baseX ?? initX;
+      const bY = initial.baseY ?? initY;
+
+      // Anclaje en espacio local sin rotar
+      let uA: number;
+      let vA: number;
+      if (fromCenter) {
+        uA = bX + initW / 2;
+        vA = bY + initH / 2;
+      } else {
+        uA = dxSign > 0 ? bX : bX + initW;
+        vA = dySign > 0 ? bY : bY + initH;
+      }
+
+      // Anclaje en coordenadas de mundo (rotado respecto al punto de origen de texto)
+      const anchorWorldX = initX + (uA - initX) * cos - (vA - initY) * sin;
+      const anchorWorldY = initY + (uA - initX) * sin + (vA - initY) * cos;
+
+      // Progresión diagonal del escalado (producto punto del desplazamiento del cursor sobre la diagonal)
+      const diagLenSq = initW * initW + initH * initH;
+      const dot = dxSign * localDx * initW + dySign * localDy * initH;
+      const deltaScale = (fromCenter ? 2 : 1) * (dot / diagLenSq);
+
+      const rawScale = 1 + deltaScale;
+      const minScale = Math.max(4 / Math.max(1, initial.fontSize), 5 / initW, 5 / initH);
+      const scale = Math.max(minScale, rawScale);
+
+      const newFontSize = Math.max(4, Math.round(initial.fontSize * scale));
+      const effectiveScale = newFontSize / initial.fontSize;
+
+      // Nueva posición (x, y) del nodo Text manteniendo invariante el punto de anclaje en coordenadas de mundo
+      const newX = anchorWorldX + effectiveScale * (initX - anchorWorldX);
+      const newY = anchorWorldY + effectiveScale * (initY - anchorWorldY);
+
+      const newW = Math.max(5, initW * effectiveScale);
+      const newH = Math.max(5, initH * effectiveScale);
+
+      const result: ShapeDimensions = {
+        x: newX,
+        y: newY,
+        width: newW,
+        height: newH,
+        fontSize: newFontSize,
+        rotation,
+        ...(initial.boxWidth !== undefined
+          ? { boxWidth: Math.max(5, Math.round(initial.boxWidth * effectiveScale)) }
+          : {}),
+        ...(initial.lineHeight !== undefined
+          ? { lineHeight: Math.max(1, Math.round(initial.lineHeight * effectiveScale)) }
+          : {}),
+        ...(initial.letterSpacing !== undefined
+          ? { letterSpacing: Math.round(initial.letterSpacing * effectiveScale * 100) / 100 }
+          : {}),
+        ...(initial.baseX !== undefined
+          ? { baseX: uA + effectiveScale * (bX - uA), baseY: vA + effectiveScale * (bY - vA) }
+          : {}),
+      };
+
+      return result;
+    }
+
     const computeSize = (
       initW: number,
       initH: number
     ): { newW: number; newH: number; scaleX: number; scaleY: number } => {
       const safeInitW = Math.max(1, initW);
       const safeInitH = Math.max(1, initH);
+      const mult = fromCenter ? 2 : 1;
 
       if (!preserveAspectRatio) {
-        const newW = Math.max(5, initW + dxSign * localDx);
-        const newH = Math.max(5, initH + dySign * localDy);
+        const newW = Math.max(5, initW + mult * dxSign * localDx);
+        const newH = Math.max(5, initH + mult * dySign * localDy);
         return {
           newW,
           newH,
@@ -1604,8 +1719,8 @@ export class SelectToolHandler implements ToolHandler {
         };
       }
 
-      const rawNewW = initW + dxSign * localDx;
-      const rawNewH = initH + dySign * localDy;
+      const rawNewW = initW + mult * dxSign * localDx;
+      const rawNewH = initH + mult * dySign * localDy;
 
       let scale: number;
       if (initW < 1) {
@@ -1643,11 +1758,11 @@ export class SelectToolHandler implements ToolHandler {
 
       const { newW, newH, scaleX, scaleY } = computeSize(initW, initH);
 
-      const anchorX = dxSign > 0 ? minX : maxX;
-      const anchorY = dySign > 0 ? minY : maxY;
+      const anchorX = fromCenter ? (minX + maxX) / 2 : (dxSign > 0 ? minX : maxX);
+      const anchorY = fromCenter ? (minY + maxY) / 2 : (dySign > 0 ? minY : maxY);
 
-      const localShiftX = (dxSign * (newW - initW)) / 2;
-      const localShiftY = (dySign * (newH - initH)) / 2;
+      const localShiftX = fromCenter ? 0 : (dxSign * (newW - initW)) / 2;
+      const localShiftY = fromCenter ? 0 : (dySign * (newH - initH)) / 2;
 
       const tx = (localShiftX * cos - localShiftY * sin) - localShiftX;
       const ty = (localShiftX * sin + localShiftY * cos) - localShiftY;
@@ -1686,27 +1801,14 @@ export class SelectToolHandler implements ToolHandler {
 
       const { newW, newH } = computeSize(initW, initH);
 
-      const localShiftX = (dxSign * (newW - initW)) / 2;
-      const localShiftY = (dySign * (newH - initH)) / 2;
+      const localShiftX = fromCenter ? 0 : (dxSign * (newW - initW)) / 2;
+      const localShiftY = fromCenter ? 0 : (dySign * (newH - initH)) / 2;
 
       const initCenterX = initX + initW / 2;
       const initCenterY = initY + initH / 2;
 
       const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
       const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
-
-      if (initial.fontSize !== undefined) {
-        const scale = newH / Math.max(1, initH);
-        const newFontSize = Math.max(4, Math.round(initial.fontSize * scale));
-        return {
-          x: newCenterX - newW / 2,
-          y: newCenterY - newH / 2,
-          width: newW,
-          height: newH,
-          fontSize: newFontSize,
-          rotation,
-        };
-      }
 
       return {
         x: newCenterX - newW / 2,
@@ -1728,8 +1830,8 @@ export class SelectToolHandler implements ToolHandler {
 
       const { newW, newH } = computeSize(initW, initH);
 
-      const localShiftX = (dxSign * (newW - initW)) / 2;
-      const localShiftY = (dySign * (newH - initH)) / 2;
+      const localShiftX = fromCenter ? 0 : (dxSign * (newW - initW)) / 2;
+      const localShiftY = fromCenter ? 0 : (dySign * (newH - initH)) / 2;
 
       const newRx = newW / 2;
       const newRy = newH / 2;

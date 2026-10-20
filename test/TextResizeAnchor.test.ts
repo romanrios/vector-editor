@@ -1,0 +1,474 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { StateManager } from '../src/state/StateManager.ts';
+import { CommandManager } from '../src/commands/CommandManager.ts';
+import { InputController } from '../src/input/InputController.ts';
+import {
+  getTextBaseAABB,
+  setSharedMeasureContext,
+} from '../src/utils/geometry.ts';
+import type { Text } from '../src/types/scene-graph.ts';
+
+function createMockCanvas(options?: { charWidth?: number }): {
+  canvas: HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
+  mockCtx: CanvasRenderingContext2D;
+} {
+  const listeners: Record<string, ((e: unknown) => void)[]> = {};
+  const charWidth = options?.charWidth ?? 10;
+
+  const mockCtx = {
+    font: '16px sans-serif',
+    textAlign: 'left',
+    textBaseline: 'top',
+    fillStyle: '#000000',
+    strokeStyle: '#000000',
+    lineWidth: 1,
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    stroke: () => {},
+    fill: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    strokeRect: () => {},
+    fillRect: () => {},
+    measureText: (text: string) => {
+      const match = String(mockCtx.font).match(/(\d+(?:\.\d+)?)px/);
+      const fs = match ? parseFloat(match[1]) : 16;
+      const scale = fs / 16;
+      return { width: text.length * charWidth * scale };
+    },
+  } as unknown as CanvasRenderingContext2D;
+
+  const canvas = {
+    width: 800,
+    height: 600,
+    style: { cursor: 'default' },
+    getContext: () => mockCtx,
+    getBoundingClientRect: () => ({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }),
+    addEventListener: (type: string, listener: (e: unknown) => void) => {
+      if (!listeners[type]) listeners[type] = [];
+      listeners[type].push(listener);
+    },
+    removeEventListener: (type: string, listener: (e: unknown) => void) => {
+      if (!listeners[type]) return;
+      listeners[type] = listeners[type].filter((l) => l !== listener);
+    },
+    dispatchSimulatedEvent: (type: string, e: unknown) => {
+      if (listeners[type]) {
+        for (const l of listeners[type]) {
+          l(e);
+        }
+      }
+    },
+  } as unknown as HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
+
+  return { canvas, mockCtx };
+}
+
+describe('Escalado de Texto con Anclaje en Esquina Opuesta, Centro (Alt) y Progresión Diagonal', () => {
+  it('1. Al escalar desde bottom-left, el texto se ancla en la esquina superior derecha (top-right)', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    // Texto de ancho 80, alto 20 en (100, 100), fontSize 20
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    // Arrastrar bottom-left hacia la izquierda (-80) y abajo (+20): duplica la escala
+    const resized = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-left',
+      -80,
+      20,
+      false, // preserveRatio
+      false  // fromCenter
+    );
+
+    // La esquina superior derecha original es (100 + 80, 100) = (180, 100)
+    const expectedTopRightX = 180;
+    const expectedTopRightY = 100;
+
+    const actualTopRightX = (resized.x ?? 0) + (resized.width ?? 0);
+    const actualTopRightY = resized.y ?? 0;
+
+    assert.equal(actualTopRightX, expectedTopRightX, 'La coordenada X de la esquina top-right debe permanecer fija');
+    assert.equal(actualTopRightY, expectedTopRightY, 'La coordenada Y de la esquina top-right debe permanecer fija');
+    assert.ok((resized.fontSize ?? 0) > 20, 'El fontSize debe aumentar proporcionalmente');
+
+    controller.destroy();
+  });
+
+  it('2. Al escalar desde top-left, el texto se ancla en la esquina inferior derecha (bottom-right)', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    // Arrastrar top-left hacia la izquierda (-80) y arriba (-20)
+    const resized = controller.calculateResizedDimensions(
+      initialDims,
+      'top-left',
+      -80,
+      -20,
+      false,
+      false
+    );
+
+    // La esquina inferior derecha original es (100 + 80, 100 + 20) = (180, 120)
+    const expectedBottomRightX = 180;
+    const expectedBottomRightY = 120;
+
+    const actualBottomRightX = (resized.x ?? 0) + (resized.width ?? 0);
+    const actualBottomRightY = (resized.y ?? 0) + (resized.height ?? 0);
+
+    assert.equal(actualBottomRightX, expectedBottomRightX, 'La coordenada X de bottom-right debe permanecer fija');
+    assert.equal(actualBottomRightY, expectedBottomRightY, 'La coordenada Y de bottom-right debe permanecer fija');
+    assert.ok((resized.fontSize ?? 0) > 20);
+
+    controller.destroy();
+  });
+
+  it('3. Al escalar desde top-right, el texto se ancla en la esquina inferior izquierda (bottom-left)', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    // Arrastrar top-right hacia la derecha (+80) y arriba (-20)
+    const resized = controller.calculateResizedDimensions(
+      initialDims,
+      'top-right',
+      80,
+      -20,
+      false,
+      false
+    );
+
+    // La esquina inferior izquierda original es (100, 100 + 20) = (100, 120)
+    const expectedBottomLeftX = 100;
+    const expectedBottomLeftY = 120;
+
+    const actualBottomLeftX = resized.x ?? 0;
+    const actualBottomLeftY = (resized.y ?? 0) + (resized.height ?? 0);
+
+    assert.equal(actualBottomLeftX, expectedBottomLeftX, 'La coordenada X de bottom-left debe permanecer fija');
+    assert.equal(actualBottomLeftY, expectedBottomLeftY, 'La coordenada Y de bottom-left debe permanecer fija');
+
+    controller.destroy();
+  });
+
+  it('4. Al escalar desde bottom-right, el texto se ancla en la esquina superior izquierda (top-left)', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    // Arrastrar bottom-right hacia la derecha (+80) y abajo (+20)
+    const resized = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-right',
+      80,
+      20,
+      false,
+      false
+    );
+
+    assert.equal(resized.x, 100, 'La posición x debe permanecer invariante en top-left');
+    assert.equal(resized.y, 100, 'La posición y debe permanecer invariante en top-left');
+
+    controller.destroy();
+  });
+
+  it('5. La dirección que hace progresar el escalado es diagonal y sensible tanto a X como a Y', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    // Movimiento solo en X
+    const resOnlyX = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-right',
+      50,
+      0,
+      false,
+      false
+    );
+
+    // Movimiento solo en Y
+    const resOnlyY = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-right',
+      0,
+      50,
+      false,
+      false
+    );
+
+    // Movimiento diagonal en X e Y
+    const resDiag = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-right',
+      50,
+      50,
+      false,
+      false
+    );
+
+    // Con una caja cuadrada de 100x100, el avance de +50 en X debe ser igual al avance de +50 en Y
+    assert.equal(resOnlyX.fontSize, resOnlyY.fontSize, 'El escalado en X e Y debe ser simétrico');
+    assert.ok(resOnlyX.fontSize! > 20, 'Un arrastre horizontal debe progresar el escalado diagonal');
+    assert.ok(resOnlyY.fontSize! > 20, 'Un arrastre vertical debe progresar el escalado diagonal');
+    assert.ok(resDiag.fontSize! > resOnlyX.fontSize!, 'Un arrastre diagonal combinado debe avanzar más que en un solo eje');
+
+    controller.destroy();
+  });
+
+  it('6. Al mantener Alt (fromCenter = true), el centro del cuadro de texto se mantiene exactamente fijo', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    const initialCenterX = 100 + 80 / 2; // 140
+    const initialCenterY = 100 + 20 / 2; // 110
+
+    const corners: ('top-left' | 'top-right' | 'bottom-left' | 'bottom-right')[] = [
+      'top-left',
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+    ];
+
+    for (const corner of corners) {
+      const dx = corner.includes('right') ? 40 : -40;
+      const dy = corner.includes('bottom') ? 10 : -10;
+
+      const resized = controller.calculateResizedDimensions(
+        initialDims,
+        corner,
+        dx,
+        dy,
+        false,
+        true // fromCenter = true (tecla Alt)
+      );
+
+      const actualCenterX = (resized.x ?? 0) + (resized.width ?? 0) / 2;
+      const actualCenterY = (resized.y ?? 0) + (resized.height ?? 0) / 2;
+
+      assert.equal(
+        actualCenterX,
+        initialCenterX,
+        `El centro X debe permanecer invariante al escalar desde ${corner} con Alt`
+      );
+      assert.equal(
+        actualCenterY,
+        initialCenterY,
+        `El centro Y debe permanecer invariante al escalar desde ${corner} con Alt`
+      );
+    }
+
+    controller.destroy();
+  });
+
+  it('7. Al escalar texto rotado 90°, el ancla opuesta en coordenadas de mundo se mantiene fija', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const initialDims = {
+      x: 100,
+      y: 100,
+      width: 80,
+      height: 20,
+      fontSize: 20,
+      rotation: 90,
+    };
+
+    // A 90°, el eje X local apunta hacia abajo y el eje Y local apunta hacia la izquierda
+    // Al escalar desde bottom-left sin Alt, el ancla es top-right unrotated (180, 100)
+    // En mundo, (180, 100) rotado 90° respecto a (100, 100) es:
+    // wx = 100 - (100 - 100) = 100, wy = 100 + (180 - 100) = 180
+    const resized = controller.calculateResizedDimensions(
+      initialDims,
+      'bottom-left',
+      0, // desplazamiento en mundo
+      80,
+      false,
+      false
+    );
+
+    // Calculamos la posición de la esquina top-right en coordenadas de mundo del nuevo texto
+    const rad = (90 * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const newX = resized.x ?? 0;
+    const newY = resized.y ?? 0;
+    const newW = resized.width ?? 0;
+
+    const actualTopRightWorldX = newX + newW * cos;
+    const actualTopRightWorldY = newY + newW * sin;
+
+    assert.ok(Math.abs(actualTopRightWorldX - 100) < 1e-6, 'El ancla en X en mundo debe ser 100');
+    assert.ok(Math.abs(actualTopRightWorldY - 180) < 1e-6, 'El ancla en Y en mundo debe ser 180');
+
+    controller.destroy();
+  });
+
+  it('8. Arrastre interactivo de esquina izquierda registra ResizeCommand y permite Undo/Redo exacto', () => {
+    const { canvas, mockCtx } = createMockCanvas();
+    setSharedMeasureContext(mockCtx);
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+
+    const textNode: Text = {
+      id: 'text-drag-test',
+      type: 'text',
+      name: 'Interactive Drag',
+      x: 100,
+      y: 100,
+      text: 'Texto Test',
+      fontSize: 20,
+      rotation: 0,
+    };
+
+    stateManager.addShape('layer-default', textNode);
+    stateManager.setSelection(['text-drag-test']);
+
+    const initialAABB = getTextBaseAABB(textNode, mockCtx);
+    const initialTopRightX = initialAABB.maxX;
+
+    // 1. Simular mousedown sobre el manejador bottom-left (100, 120)
+    canvas.dispatchSimulatedEvent('mousedown', {
+      clientX: 100,
+      clientY: 120,
+      button: 0,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+
+    assert.equal(controller.isResizing, true, 'Debe encontrarse en modo redimensionado');
+
+    // 2. Simular mousemove arrastrando bottom-left hacia la izquierda (-40) y abajo (+10)
+    canvas.dispatchSimulatedEvent('mousemove', {
+      clientX: 60,
+      clientY: 130,
+      button: 0,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+
+    const draggingNode = stateManager.findNode('text-drag-test') as Text;
+    assert.ok(draggingNode.fontSize! > 20, 'El fontSize debe haber aumentado durante el arrastre');
+    const aabbDragging = getTextBaseAABB(draggingNode, mockCtx);
+    assert.ok(Math.abs(aabbDragging.maxX - initialTopRightX) < 1, 'La esquina superior derecha debe permanecer fija en el ancla original');
+
+    // 3. Simular mouseup
+    canvas.dispatchSimulatedEvent('mouseup', {
+      clientX: 60,
+      clientY: 130,
+      button: 0,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+
+    assert.equal(controller.isResizing, false, 'Debe haber finalizado el redimensionado');
+    assert.equal(commandManager.undoCount, 1, 'Debe haberse registrado un ResizeCommand');
+
+    // 4. Undo
+    commandManager.undo();
+    const undoneNode = stateManager.findNode('text-drag-test') as Text;
+    assert.equal(undoneNode.fontSize, 20, 'Undo debe restaurar el fontSize inicial');
+    assert.equal(undoneNode.x, 100, 'Undo debe restaurar x');
+    assert.equal(undoneNode.y, 100, 'Undo debe restaurar y');
+
+    // 5. Redo
+    commandManager.redo();
+    const redoneNode = stateManager.findNode('text-drag-test') as Text;
+    assert.ok(redoneNode.fontSize! > 20, 'Redo debe restaurar el tamaño escalado');
+
+    controller.destroy();
+  });
+});

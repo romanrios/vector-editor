@@ -157,11 +157,11 @@ vector-editor/
 
 ## Cobertura y Calidad de Pruebas
 
-El repositorio mantiene una suite de pruebas automatizadas con más de 780 tests unitarios que cubren:
+El repositorio mantiene una suite de pruebas automatizadas con más de 850 tests unitarios (actualmente 859 tests activos) que cubren:
 
 - **Integridad del Scene Graph**: Garantía de inmutabilidad (`Object.freeze`), persistencia estructural y aislamiento de la selección fuera del árbol del documento.
 - **Historial y Comandos**: Validación de operaciones unitarias y lotes compuestos (`BatchCommand`) con 1, 2 y 3 figuras en ciclos de Undo/Redo.
-- **Exportación Vectorial y Ráster**: Verificación matemática de etiquetas SVG, curvas Bézier, estilos, rotación y resolución en canvas off-screen (1x, 2x, 3x).
+- **Exportación e Importación Vectorial**: Verificación matemática de etiquetas SVG, curvas Bézier, estilos, gradientes (lineales y radiales con `userSpaceOnUse` y `objectBoundingBox`), rotación y resolución en canvas off-screen (1x, 2x, 3x).
 - **Precisión Matemática**: Cálculos de cajas OBB, proyección de deltas rotados y curvas de Bézier cúbicas.
 - **Sincronización de UI**: Integración y reactividad del panel de propiedades, la barra de estado y los menús ante variaciones de selección y carga de archivos.
 
@@ -169,29 +169,17 @@ El repositorio mantiene una suite de pruebas automatizadas con más de 780 tests
 
 ## Hoja de Ruta (Roadmap)
 
-El diseño modular del editor permite una evolución continua y estructurada. Las áreas de desarrollo planificadas abarcan:
+El diseño modular del editor permite una evolución continua y predecible. Gran parte de los objetivos iniciales de la arquitectura ya han sido alcanzados (grupos jerárquicos, operaciones booleanas, gradientes, tipografía con saltos de línea automáticos e importación/exportación SVG avanzada).
 
-### 1. Primitivas y Trazados Avanzados
-- Inclusión de nuevas primitivas vectoriales: polígonos regulares, estrellas paramétricas y segmentos de línea simple.
-- Cajas de texto enriquecido con control tipográfico vectorial.
-- Operaciones booleanas de trazados basados en curvas Bézier (unión, intersección, diferencia y exclusión).
+Para consultar la planificación técnica detallada de las próximas fases, visita el documento dedicado:
 
-### 2. Jerarquía de Escena y Organización
-- Soporte para grupos jerárquicos de figuras (`GroupNode`) con soporte para transformaciones compuestas anidadas.
-- Panel dedicado de capas con reordenamiento por arrastre (*drag and drop*), bloqueo y ocultación visual.
+👉 **[Consulta la Hoja de Ruta Completa en ROADMAP.md](./ROADMAP.md)**
 
-### 3. Estilos y Apariencia
-- Rellenos avanzados: degradados lineales y radiales con múltiples paradas de color.
-- Efectos de capa: sombras paralelas arrojadas, desenfoque gaussiano y modos de mezcla (*blend modes*).
-
-### 4. Asistencia y Precisión Geométrica
-- Guías de alineación magnética inteligentes (*smart guides*) con detección de centros y bordes.
-- Cuadrícula métrica configurable con atracción de coordenadas (*grid snapping*).
-- Herramientas de alineación y distribución espacial uniforme.
-
-### 5. Interoperabilidad y Exportación
-- Exportador a estándar SVG compatible con navegadores y editores vectoriales externos.
-- Generador de exportación rasterizada en formatos PNG y WebP con selección de resolución (1x, 2x, 3x).
+### Resumen de Próximas Fases:
+- **Fase 1: Herramientas Creativas Esenciales**: Herramienta Lápiz / Pincel a mano alzada (`B`), Cuentagotas de color y gradiente (`I`) y primitivas regulares (Polígonos y Estrellas).
+- **Fase 2: Manipulación Vectorial Avanzada**: Máscaras de recorte (*Clipping Masks* / `clipPath`), contornear trazado (*Stroke to Path*) y redondeo dinámico de vértices en trazados libres.
+- **Fase 3: Productividad y UX de Estudio**: Reglas graduadas métricas y guías de usuario arrastrables con imantación, autoguardado en `IndexedDB` y soporte para múltiples mesas de trabajo (*Multi-Artboards*).
+- **Fase 4: Rendimiento a Gran Escala**: Aceleración espacial (*R-Tree / BVH*) para documentos con miles de figuras y almacenamiento en caché de capas estáticas sobre `OffscreenCanvas`.
 
 ---
 

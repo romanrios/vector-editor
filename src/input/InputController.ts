@@ -1358,6 +1358,10 @@ export class InputController {
       }
     }
 
+    if (event.key === 'Alt') {
+      this.selectToolHandler.handleAltToggle(true);
+    }
+
     const key = event.key;
     const isArrowKey =
       key === 'ArrowUp' ||
@@ -1465,6 +1469,10 @@ export class InputController {
         this.lineToolHandler.updatePreview(false);
         this.stateManager.markDirty();
       }
+    }
+
+    if (event.key === 'Alt') {
+      this.selectToolHandler.handleAltToggle(false);
     }
 
     if (event.code === 'Space' || event.key === ' ') {
@@ -1609,14 +1617,16 @@ export class InputController {
     handle: HandleType,
     dx: number,
     dy: number,
-    preserveAspectRatio: boolean = false
+    preserveAspectRatio: boolean = false,
+    fromCenter: boolean = false
   ): ShapeDimensions {
     return this.selectToolHandler.calculateResizedDimensions(
       initial,
       handle,
       dx,
       dy,
-      preserveAspectRatio
+      preserveAspectRatio,
+      fromCenter
     );
   }
 }

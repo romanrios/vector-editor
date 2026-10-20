@@ -19,6 +19,8 @@ export interface ShapeDimensions {
   readonly letterSpacing?: number;
   readonly boxWidth?: number;
   readonly cornerRadius?: number;
+  readonly baseX?: number;
+  readonly baseY?: number;
 }
 
 /**
