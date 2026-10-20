@@ -192,6 +192,7 @@ export function rotateShapesAboutPivot(
           : undefined;
 
         newPoints[p] = {
+          ...pt,
           x: nx,
           y: ny,
           ...(handleIn ? { handleIn } : {}),
@@ -367,6 +368,7 @@ export function scaleShapesAboutAnchor(
           : undefined;
 
         newPoints[p] = {
+          ...pt,
           x: nx,
           y: ny,
           ...(handleIn ? { handleIn } : {}),

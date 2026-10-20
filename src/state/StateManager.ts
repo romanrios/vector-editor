@@ -1276,6 +1276,7 @@ export class StateManager {
             for (let p = 0; p < pLen; p++) {
               const pt = pts[p];
               updatedPoints[p] = {
+                ...pt,
                 x: pt.x + dx,
                 y: pt.y + dy,
                 handleIn: pt.handleIn ? { x: pt.handleIn.x + dx, y: pt.handleIn.y + dy } : undefined,

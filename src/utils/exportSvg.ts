@@ -136,34 +136,53 @@ function buildPathData(path: Path, precision: number): string {
   }
 
   const parts: string[] = [];
-  parts.push(`M ${formatNum(points[0].x, precision)} ${formatNum(points[0].y, precision)}`);
+  let subpathStartIdx = 0;
 
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
+  for (let i = 0; i < points.length; i++) {
     const curr = points[i];
+    if (i === 0 || curr.moveTo) {
+      if (i > 0) {
+        const prevStart = points[subpathStartIdx];
+        const last = points[i - 1];
+        const shouldClose = last.closeSubpath ?? path.closed;
+        if (shouldClose && i - subpathStartIdx > 1) {
+          const cp1x = last.handleOut ? last.handleOut.x : last.x;
+          const cp1y = last.handleOut ? last.handleOut.y : last.y;
+          const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+          const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+          parts.push(
+            `C ${formatNum(cp1x, precision)} ${formatNum(cp1y, precision)}, ${formatNum(cp2x, precision)} ${formatNum(cp2y, precision)}, ${formatNum(prevStart.x, precision)} ${formatNum(prevStart.y, precision)} Z`
+          );
+        }
+      }
+      subpathStartIdx = i;
+      parts.push(`M ${formatNum(curr.x, precision)} ${formatNum(curr.y, precision)}`);
+    } else {
+      const prev = points[i - 1];
+      const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
+      const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
+      const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
+      const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
 
-    const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
-    const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
-    const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
-    const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
-
-    parts.push(
-      `C ${formatNum(cp1x, precision)} ${formatNum(cp1y, precision)}, ${formatNum(cp2x, precision)} ${formatNum(cp2y, precision)}, ${formatNum(curr.x, precision)} ${formatNum(curr.y, precision)}`
-    );
+      parts.push(
+        `C ${formatNum(cp1x, precision)} ${formatNum(cp1y, precision)}, ${formatNum(cp2x, precision)} ${formatNum(cp2y, precision)}, ${formatNum(curr.x, precision)} ${formatNum(curr.y, precision)}`
+      );
+    }
   }
 
-  if (path.closed && points.length > 2) {
+  if (points.length > 0) {
+    const prevStart = points[subpathStartIdx];
     const last = points[points.length - 1];
-    const first = points[0];
-
-    const cp1x = last.handleOut ? last.handleOut.x : last.x;
-    const cp1y = last.handleOut ? last.handleOut.y : last.y;
-    const cp2x = first.handleIn ? first.handleIn.x : first.x;
-    const cp2y = first.handleIn ? first.handleIn.y : first.y;
-
-    parts.push(
-      `C ${formatNum(cp1x, precision)} ${formatNum(cp1y, precision)}, ${formatNum(cp2x, precision)} ${formatNum(cp2y, precision)}, ${formatNum(first.x, precision)} ${formatNum(first.y, precision)} Z`
-    );
+    const shouldClose = last.closeSubpath ?? path.closed;
+    if (shouldClose && points.length - subpathStartIdx > 1) {
+      const cp1x = last.handleOut ? last.handleOut.x : last.x;
+      const cp1y = last.handleOut ? last.handleOut.y : last.y;
+      const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+      const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+      parts.push(
+        `C ${formatNum(cp1x, precision)} ${formatNum(cp1y, precision)}, ${formatNum(cp2x, precision)} ${formatNum(cp2y, precision)}, ${formatNum(prevStart.x, precision)} ${formatNum(prevStart.y, precision)} Z`
+      );
+    }
   }
 
   return parts.join(' ');
@@ -316,6 +335,10 @@ function renderChildToSvg(
       ...commonAttrs,
       `d="${d}"`,
     ];
+
+    if (path.fillRule && path.fillRule !== 'nonzero') {
+      attrs.push(`fill-rule="${escapeXml(path.fillRule)}"`);
+    }
 
     if (path.rotation) {
       const baseAABB = getPathBaseAABB(path);

@@ -448,6 +448,9 @@ function parseLayerChild(
         y: pt.y,
         ...(cleanHandleIn ? { handleIn: cleanHandleIn } : {}),
         ...(cleanHandleOut ? { handleOut: cleanHandleOut } : {}),
+        ...(pt.pointType !== undefined ? { pointType: pt.pointType as any } : {}),
+        ...(pt.moveTo !== undefined ? { moveTo: Boolean(pt.moveTo) } : {}),
+        ...(pt.closeSubpath !== undefined ? { closeSubpath: Boolean(pt.closeSubpath) } : {}),
       });
     }
 

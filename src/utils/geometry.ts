@@ -189,34 +189,66 @@ export function getPathBaseAABB(path: Path): AABB {
   let maxY = -Infinity;
 
   const points = path.points;
-  for (let i = 1; i < points.length; i++) {
-    const p0 = points[i - 1];
-    const p3 = points[i];
-    const p1 = p0.handleOut ?? p0;
-    const p2 = p3.handleIn ?? p3;
+  let subpathStartIdx = 0;
 
-    const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
-    const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+  for (let i = 0; i < points.length; i++) {
+    const pt = points[i];
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
 
-    if (xExt.min < minX) minX = xExt.min;
-    if (xExt.max > maxX) maxX = xExt.max;
-    if (yExt.min < minY) minY = yExt.min;
-    if (yExt.max > maxY) maxY = yExt.max;
+    if (i === 0 || pt.moveTo) {
+      if (i > 0) {
+        const prevStart = points[subpathStartIdx];
+        const last = points[i - 1];
+        const shouldClose = last.closeSubpath ?? path.closed;
+        if (shouldClose && i - subpathStartIdx > 1) {
+          const p0 = last;
+          const p3 = prevStart;
+          const p1 = p0.handleOut ?? p0;
+          const p2 = p3.handleIn ?? p3;
+          const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
+          const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+          if (xExt.min < minX) minX = xExt.min;
+          if (xExt.max > maxX) maxX = xExt.max;
+          if (yExt.min < minY) minY = yExt.min;
+          if (yExt.max > maxY) maxY = yExt.max;
+        }
+      }
+      subpathStartIdx = i;
+    } else {
+      const p0 = points[i - 1];
+      const p3 = points[i];
+      const p1 = p0.handleOut ?? p0;
+      const p2 = p3.handleIn ?? p3;
+
+      const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
+      const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+
+      if (xExt.min < minX) minX = xExt.min;
+      if (xExt.max > maxX) maxX = xExt.max;
+      if (yExt.min < minY) minY = yExt.min;
+      if (yExt.max > maxY) maxY = yExt.max;
+    }
   }
 
-  if (path.closed && points.length > 2) {
-    const p0 = points[points.length - 1];
-    const p3 = points[0];
-    const p1 = p0.handleOut ?? p0;
-    const p2 = p3.handleIn ?? p3;
-
-    const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
-    const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
-
-    if (xExt.min < minX) minX = xExt.min;
-    if (xExt.max > maxX) maxX = xExt.max;
-    if (yExt.min < minY) minY = yExt.min;
-    if (yExt.max > maxY) maxY = yExt.max;
+  if (points.length > 0) {
+    const prevStart = points[subpathStartIdx];
+    const last = points[points.length - 1];
+    const shouldClose = last.closeSubpath ?? path.closed;
+    if (shouldClose && points.length - subpathStartIdx > 1) {
+      const p0 = last;
+      const p3 = prevStart;
+      const p1 = p0.handleOut ?? p0;
+      const p2 = p3.handleIn ?? p3;
+      const xExt = getCubicBezierSegmentExtrema1D(p0.x, p1.x, p2.x, p3.x);
+      const yExt = getCubicBezierSegmentExtrema1D(p0.y, p1.y, p2.y, p3.y);
+      if (xExt.min < minX) minX = xExt.min;
+      if (xExt.max > maxX) maxX = xExt.max;
+      if (yExt.min < minY) minY = yExt.min;
+      if (yExt.max > maxY) maxY = yExt.max;
+    }
   }
 
   return {
@@ -1347,32 +1379,48 @@ export function buildPath2D(path: Path): Path2D | null {
 
   const path2d = new Path2D();
   const points = path.points;
+  let subpathStartIdx = 0;
 
-  path2d.moveTo(points[0].x, points[0].y);
-
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
+  for (let i = 0; i < points.length; i++) {
     const curr = points[i];
-
-    const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
-    const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
-    const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
-    const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
-
-    path2d.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+    if (i === 0 || curr.moveTo) {
+      if (i > 0) {
+        const prevStart = points[subpathStartIdx];
+        const last = points[i - 1];
+        const shouldClose = last.closeSubpath ?? path.closed;
+        if (shouldClose && i - subpathStartIdx > 1) {
+          const cp1x = last.handleOut ? last.handleOut.x : last.x;
+          const cp1y = last.handleOut ? last.handleOut.y : last.y;
+          const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+          const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+          path2d.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
+          path2d.closePath();
+        }
+      }
+      subpathStartIdx = i;
+      path2d.moveTo(curr.x, curr.y);
+    } else {
+      const prev = points[i - 1];
+      const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
+      const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
+      const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
+      const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
+      path2d.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+    }
   }
 
-  if (path.closed && points.length > 2) {
+  if (points.length > 0) {
+    const prevStart = points[subpathStartIdx];
     const last = points[points.length - 1];
-    const first = points[0];
-
-    const cp1x = last.handleOut ? last.handleOut.x : last.x;
-    const cp1y = last.handleOut ? last.handleOut.y : last.y;
-    const cp2x = first.handleIn ? first.handleIn.x : first.x;
-    const cp2y = first.handleIn ? first.handleIn.y : first.y;
-
-    path2d.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, first.x, first.y);
-    path2d.closePath();
+    const shouldClose = last.closeSubpath ?? path.closed;
+    if (shouldClose && points.length - subpathStartIdx > 1) {
+      const cp1x = last.handleOut ? last.handleOut.x : last.x;
+      const cp1y = last.handleOut ? last.handleOut.y : last.y;
+      const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+      const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+      path2d.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
+      path2d.closePath();
+    }
   }
 
   return path2d;
@@ -1495,7 +1543,7 @@ export function isPointInPath(
     if (path2d) {
       // Si el trazado tiene relleno
       if (path.fill && path.fill !== 'transparent' && path.fill !== 'none') {
-        if (ctx.isPointInPath(path2d, testX, testY)) {
+        if (ctx.isPointInPath(path2d, testX, testY, path.fillRule ?? 'nonzero')) {
           return true;
         }
       }

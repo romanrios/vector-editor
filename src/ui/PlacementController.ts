@@ -2,7 +2,7 @@ import type { StateManager } from '../state/StateManager.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
 import type { ViewportManager } from '../utils/viewport.ts';
 import { screenToWorld } from '../utils/viewport.ts';
-import type { ImageNode, LayerChildNode } from '../types/scene-graph.ts';
+import type { Group, ImageNode, LayerChildNode, Path } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import { parseSvgString } from '../utils/svgImport.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
@@ -99,6 +99,21 @@ export function setupPlacementController(options: PlacementControllerOptions): P
                 children: node.children.map(offsetNode),
               };
             }
+            if (node.type === 'path') {
+              const p = node as Path;
+              return {
+                ...p,
+                x: p.x + offX,
+                y: p.y + offY,
+                points: p.points.map((pt) => ({
+                  ...pt,
+                  x: pt.x + offX,
+                  y: pt.y + offY,
+                  handleIn: pt.handleIn ? { x: pt.handleIn.x + offX, y: pt.handleIn.y + offY } : undefined,
+                  handleOut: pt.handleOut ? { x: pt.handleOut.x + offX, y: pt.handleOut.y + offY } : undefined,
+                })),
+              };
+            }
             return {
               ...node,
               x: node.x + offX,
@@ -106,7 +121,18 @@ export function setupPlacementController(options: PlacementControllerOptions): P
             };
           };
 
-          return importResult.shapes.map(offsetNode);
+          const placedShapes = importResult.shapes.map(offsetNode);
+          if (placedShapes.length > 1) {
+            const baseName = file.name ? file.name.replace(/\.[^/.]+$/, '') : 'Vector';
+            const groupNode: Group = {
+              id: `group-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              type: 'group',
+              name: baseName,
+              children: placedShapes,
+            };
+            return [groupNode];
+          }
+          return placedShapes;
         }
       } catch {
         // Fallback a ImageNode si el parsing SVG nativo no prospera
@@ -282,7 +308,18 @@ export function setupPlacementController(options: PlacementControllerOptions): P
       return;
     }
 
-    if (!e.clipboardData || !e.clipboardData.items) return;
+    if (!e.clipboardData) return;
+
+    const text = e.clipboardData.getData('text/plain') || '';
+    if (text.trim().startsWith('<svg') && text.includes('</svg>')) {
+      e.preventDefault();
+      const svgBlob = new Blob([text], { type: 'image/svg+xml' });
+      const svgFile = new File([svgBlob], 'Vector-Pegado.svg', { type: 'image/svg+xml' });
+      void placeFiles([svgFile]);
+      return;
+    }
+
+    if (!e.clipboardData.items) return;
 
     const imageFiles: File[] = [];
     for (let i = 0; i < e.clipboardData.items.length; i++) {

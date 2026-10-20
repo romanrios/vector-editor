@@ -39,6 +39,9 @@ function areDimensionsEqual(a: ShapeDimensions, b: ShapeDimensions): boolean {
       if (p1.x !== p2.x || p1.y !== p2.y) return false;
       if (p1.handleIn?.x !== p2.handleIn?.x || p1.handleIn?.y !== p2.handleIn?.y) return false;
       if (p1.handleOut?.x !== p2.handleOut?.x || p1.handleOut?.y !== p2.handleOut?.y) return false;
+      if (p1.moveTo !== p2.moveTo) return false;
+      if (p1.closeSubpath !== p2.closeSubpath) return false;
+      if (p1.pointType !== p2.pointType) return false;
     }
   }
 

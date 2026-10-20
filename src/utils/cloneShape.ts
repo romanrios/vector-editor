@@ -99,6 +99,7 @@ export function cloneNode<T extends SelectableNode>(
   if (node.type === 'path') {
     const points: readonly PathPoint[] = (node.points || []).map((pt) => {
       const clonedPt: PathPoint = {
+        ...pt,
         x: pt.x + dx,
         y: pt.y + dy,
         ...(pt.handleIn

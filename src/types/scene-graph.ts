@@ -28,6 +28,8 @@ export interface PathPoint {
   readonly handleIn?: Vector2D;
   readonly handleOut?: Vector2D;
   readonly pointType?: PathPointType;
+  readonly moveTo?: boolean;
+  readonly closeSubpath?: boolean;
 }
 
 /**
@@ -89,6 +91,7 @@ export interface Path extends BaseNode {
   readonly strokeWidth?: number;
   readonly rotation?: number;
   readonly opacity?: number;
+  readonly fillRule?: 'nonzero' | 'evenodd';
 }
 
 /**

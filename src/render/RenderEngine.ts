@@ -1219,31 +1219,48 @@ export class RenderEngine {
 
     const points = path.points;
     this.ctx.beginPath();
-    this.ctx.moveTo(points[0].x, points[0].y);
+    let subpathStartIdx = 0;
 
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
+    for (let i = 0; i < points.length; i++) {
       const curr = points[i];
-
-      const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
-      const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
-      const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
-      const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
-
-      this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+      if (i === 0 || curr.moveTo) {
+        if (i > 0) {
+          const prevStart = points[subpathStartIdx];
+          const last = points[i - 1];
+          const shouldClose = last.closeSubpath ?? path.closed;
+          if (shouldClose && i - subpathStartIdx > 1) {
+            const cp1x = last.handleOut ? last.handleOut.x : last.x;
+            const cp1y = last.handleOut ? last.handleOut.y : last.y;
+            const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+            const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+            this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
+            this.ctx.closePath();
+          }
+        }
+        subpathStartIdx = i;
+        this.ctx.moveTo(curr.x, curr.y);
+      } else {
+        const prev = points[i - 1];
+        const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
+        const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
+        const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
+        const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
+        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+      }
     }
 
-    if (path.closed && points.length > 2) {
+    if (points.length > 0) {
+      const prevStart = points[subpathStartIdx];
       const last = points[points.length - 1];
-      const first = points[0];
-
-      const cp1x = last.handleOut ? last.handleOut.x : last.x;
-      const cp1y = last.handleOut ? last.handleOut.y : last.y;
-      const cp2x = first.handleIn ? first.handleIn.x : first.x;
-      const cp2y = first.handleIn ? first.handleIn.y : first.y;
-
-      this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, first.x, first.y);
-      this.ctx.closePath();
+      const shouldClose = last.closeSubpath ?? path.closed;
+      if (shouldClose && points.length - subpathStartIdx > 1) {
+        const cp1x = last.handleOut ? last.handleOut.x : last.x;
+        const cp1y = last.handleOut ? last.handleOut.y : last.y;
+        const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
+        const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
+        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
+        this.ctx.closePath();
+      }
     }
 
     if (!isNonePaint(path.fill)) {
@@ -1253,7 +1270,7 @@ export class RenderEngine {
       } else {
         this.ctx.fillStyle = path.fill!;
       }
-      this.ctx.fill();
+      this.ctx.fill(path.fillRule ?? 'nonzero');
     }
 
     if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {

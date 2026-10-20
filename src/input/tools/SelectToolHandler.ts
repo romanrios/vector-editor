@@ -1660,6 +1660,7 @@ export class SelectToolHandler implements ToolHandler {
       const newPoints: PathPoint[] = initial.points.map((pt) => {
         const scaledMain = scaleCoord(pt);
         return {
+          ...pt,
           x: scaledMain.x,
           y: scaledMain.y,
           handleIn: pt.handleIn ? scaleCoord(pt.handleIn) : undefined,
