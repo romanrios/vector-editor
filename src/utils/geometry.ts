@@ -3122,3 +3122,195 @@ export function syncOppositeHandle(
   return mirrorHandleCollinear(anchor, draggedHandle, oppositeInitial);
 }
 
+/**
+ * Calcula la distancia perpendicular desde un punto p al segmento de línea recta (lineStart, lineEnd).
+ */
+export function perpendicularDistance(
+  p: Vector2D,
+  lineStart: Vector2D,
+  lineEnd: Vector2D
+): number {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq < 1e-12) {
+    return Math.hypot(p.x - lineStart.x, p.y - lineStart.y);
+  }
+
+  const t = Math.max(0, Math.min(1, ((p.x - lineStart.x) * dx + (p.y - lineStart.y) * dy) / lenSq));
+  const projX = lineStart.x + t * dx;
+  const projY = lineStart.y + t * dy;
+
+  return Math.hypot(p.x - projX, p.y - projY);
+}
+
+/**
+ * Algoritmo Ramer-Douglas-Peucker (RDP) para simplificación y reducción de ruido en polilíneas.
+ * Reduce el número de puntos conservando la curvatura y forma general del trazo libre.
+ *
+ * @param points Secuencia de puntos muestreados durante el arrastre libre
+ * @param epsilon Umbral de tolerancia de distancia máxima
+ */
+export function simplifyPointsRDP(
+  points: readonly Vector2D[],
+  epsilon: number
+): Vector2D[] {
+  if (points.length <= 2) {
+    return points.map((p) => ({ x: p.x, y: p.y }));
+  }
+
+  let maxDist = 0;
+  let maxIdx = 0;
+  const first = points[0];
+  const last = points[points.length - 1];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const dist = perpendicularDistance(points[i], first, last);
+    if (dist > maxDist) {
+      maxDist = dist;
+      maxIdx = i;
+    }
+  }
+
+  if (maxDist > epsilon) {
+    const left = simplifyPointsRDP(points.slice(0, maxIdx + 1), epsilon);
+    const right = simplifyPointsRDP(points.slice(maxIdx), epsilon);
+    return left.slice(0, -1).concat(right);
+  } else {
+    return [
+      { x: first.x, y: first.y },
+      { x: last.x, y: last.y },
+    ];
+  }
+}
+
+/**
+ * Ajusta una curva suave de Bézier cúbica continua (C1) a partir de una secuencia de puntos 2D,
+ * utilizando la formulación de derivadas y tangentes continuas de Catmull-Rom.
+ * Genera puntos de ancla con manejadores handleIn y handleOut tangenciales.
+ *
+ * @param points Puntos 2D simplificados
+ * @param tension Factor de curvatura / tensión (0.5 por defecto)
+ * @returns Array de PathPoint listos para un nodo Path
+ */
+export function fitCurveCatmullRom(
+  points: readonly Vector2D[],
+  tension: number = 0.5
+): PathPoint[] {
+  const n = points.length;
+  if (n === 0) {
+    return [];
+  }
+
+  if (n === 1) {
+    return [
+      {
+        x: points[0].x,
+        y: points[0].y,
+        pointType: 'corner',
+      },
+    ];
+  }
+
+  if (n === 2) {
+    return [
+      {
+        x: points[0].x,
+        y: points[0].y,
+        pointType: 'corner',
+      },
+      {
+        x: points[1].x,
+        y: points[1].y,
+        pointType: 'corner',
+      },
+    ];
+  }
+
+  const result: PathPoint[] = new Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const curr = points[i];
+
+    if (i === 0) {
+      const next = points[1];
+      const tx = (next.x - curr.x) * tension;
+      const ty = (next.y - curr.y) * tension;
+      result[i] = {
+        x: curr.x,
+        y: curr.y,
+        handleOut: {
+          x: curr.x + tx / 3,
+          y: curr.y + ty / 3,
+        },
+        pointType: 'corner',
+      };
+    } else if (i === n - 1) {
+      const prev = points[n - 2];
+      const tx = (curr.x - prev.x) * tension;
+      const ty = (curr.y - prev.y) * tension;
+      result[i] = {
+        x: curr.x,
+        y: curr.y,
+        handleIn: {
+          x: curr.x - tx / 3,
+          y: curr.y - ty / 3,
+        },
+        pointType: 'corner',
+      };
+    } else {
+      const prev = points[i - 1];
+      const next = points[i + 1];
+      const tx = ((next.x - prev.x) / 2) * tension;
+      const ty = ((next.y - prev.y) / 2) * tension;
+      result[i] = {
+        x: curr.x,
+        y: curr.y,
+        handleIn: {
+          x: curr.x - tx / 3,
+          y: curr.y - ty / 3,
+        },
+        handleOut: {
+          x: curr.x + tx / 3,
+          y: curr.y + ty / 3,
+        },
+        pointType: 'smooth',
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Obtiene el Axis-Aligned Bounding Box (AABB) de una colección de puntos Vector2D.
+ */
+export function getPointsAABB(points: readonly Vector2D[]): AABB {
+  if (points.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+

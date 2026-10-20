@@ -21,6 +21,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const btnDirectSelect = document.querySelector<HTMLButtonElement>('#tool-direct-select');
   const btnHand = document.querySelector<HTMLButtonElement>('#tool-hand');
   const btnPen = document.querySelector<HTMLButtonElement>('#tool-pen');
+  const btnPencil = document.querySelector<HTMLButtonElement>('#tool-pencil');
   const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
   const btnLine = document.querySelector<HTMLButtonElement>('#tool-line');
@@ -51,6 +52,12 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       const isPen = tool === 'pen';
       btnPen.classList.toggle('active', isPen);
       btnPen.setAttribute('aria-pressed', String(isPen));
+    }
+
+    if (btnPencil) {
+      const isPencil = tool === 'pencil';
+      btnPencil.classList.toggle('active', isPencil);
+      btnPencil.setAttribute('aria-pressed', String(isPencil));
     }
 
     if (btnRectangle) {
@@ -111,6 +118,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const onDirectSelectClick = () => inputController.setTool('direct-select');
   const onHandClick = () => inputController.setTool('hand');
   const onPenClick = () => inputController.setTool('pen');
+  const onPencilClick = () => inputController.setTool('pencil');
   const onRectangleClick = () => inputController.setTool('rectangle');
   const onEllipseClick = () => inputController.setTool('ellipse');
   const onLineClick = () => inputController.setTool('line');
@@ -120,6 +128,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
   btnHand?.addEventListener('click', onHandClick);
   btnPen?.addEventListener('click', onPenClick);
+  btnPencil?.addEventListener('click', onPencilClick);
   btnRectangle?.addEventListener('click', onRectangleClick);
   btnEllipse?.addEventListener('click', onEllipseClick);
   btnLine?.addEventListener('click', onLineClick);
@@ -145,6 +154,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnDirectSelect?.removeEventListener('click', onDirectSelectClick);
       btnHand?.removeEventListener('click', onHandClick);
       btnPen?.removeEventListener('click', onPenClick);
+      btnPencil?.removeEventListener('click', onPencilClick);
       btnRectangle?.removeEventListener('click', onRectangleClick);
       btnEllipse?.removeEventListener('click', onEllipseClick);
       btnLine?.removeEventListener('click', onLineClick);

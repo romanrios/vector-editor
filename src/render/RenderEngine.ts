@@ -1732,9 +1732,14 @@ export class RenderEngine {
     } else if (preview.type === 'line' && preview.x2 !== undefined && preview.y2 !== undefined) {
       this.ctx.moveTo(preview.x, preview.y);
       this.ctx.lineTo(preview.x2, preview.y2);
+    } else if (preview.type === 'pencil' && preview.points && preview.points.length > 0) {
+      this.ctx.moveTo(preview.points[0].x, preview.points[0].y);
+      for (let i = 1; i < preview.points.length; i++) {
+        this.ctx.lineTo(preview.points[i].x, preview.points[i].y);
+      }
     }
 
-    if (preview.type !== 'line' && !isNonePaint(preview.fill)) {
+    if (preview.type !== 'line' && preview.type !== 'pencil' && !isNonePaint(preview.fill)) {
       this.ctx.fillStyle = preview.fill!;
       this.ctx.fill();
     }

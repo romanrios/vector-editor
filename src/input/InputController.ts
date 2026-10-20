@@ -56,8 +56,9 @@ import {
 import { CreationToolHandler } from './tools/CreationToolHandler.ts';
 import { LineToolHandler } from './tools/LineToolHandler.ts';
 import { TextToolHandler } from './tools/TextToolHandler.ts';
+import { PencilToolHandler } from './tools/PencilToolHandler.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text' | 'pencil';
 export interface CanvasContextMenuData {
   readonly clientX: number;
   readonly clientY: number;
@@ -89,6 +90,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
   { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
   { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
+  { key: 'B / N', description: 'Herramienta Lápiz (trazo libre)', category: 'Herramientas' },
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
   { key: 'L', description: 'Herramienta Línea', category: 'Herramientas' },
@@ -136,7 +138,7 @@ export {
  * Representa el estado y dimensiones de la vista previa de creación de figura por arrastre
  */
 export interface ShapePreview {
-  readonly type: 'rectangle' | 'ellipse' | 'marquee' | 'line';
+  readonly type: 'rectangle' | 'ellipse' | 'marquee' | 'line' | 'pencil';
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -145,6 +147,7 @@ export interface ShapePreview {
   readonly y2?: number;
   readonly radiusX?: number;
   readonly radiusY?: number;
+  readonly points?: readonly Vector2D[];
   readonly fill?: string;
   readonly stroke?: string;
   readonly strokeWidth?: number;
@@ -226,6 +229,7 @@ export class InputController {
   public readonly creationToolHandler: CreationToolHandler;
   public readonly lineToolHandler: LineToolHandler;
   public readonly textToolHandler: TextToolHandler;
+  public readonly pencilToolHandler: PencilToolHandler;
 
   // Event Emitter para observabilidad externa desacoplada del DOM
   private readonly eventListeners: Map<string, Set<(data: any) => void>> = new Map();
@@ -330,6 +334,14 @@ export class InputController {
       (x, y) => this.hitTest(x, y)
     );
 
+    // 8. Inicializar PencilToolHandler
+    this.pencilToolHandler = new PencilToolHandler(
+      this.stateManager,
+      this.commandManager,
+      this.canvas,
+      () => this.viewportManager
+    );
+
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
     this.onDoubleClickHandler = (e: MouseEvent) => this.handleDoubleClick(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
@@ -384,6 +396,9 @@ export class InputController {
     if (this._currentTool === 'text' && tool !== 'text') {
       this.textToolHandler.onDeactivate(tool);
     }
+    if (this._currentTool === 'pencil' && tool !== 'pencil') {
+      this.pencilToolHandler.onDeactivate(tool);
+    }
 
     this._currentTool = tool;
 
@@ -391,6 +406,8 @@ export class InputController {
       this.directSelectToolHandler.onActivate();
     } else if (tool === 'pen') {
       this.penToolHandler.onActivate();
+    } else if (tool === 'pencil') {
+      this.pencilToolHandler.onActivate();
     } else if (tool === 'rectangle' || tool === 'ellipse') {
       this.creationToolHandler.onActivate();
     } else if (tool === 'line') {
@@ -494,10 +511,17 @@ export class InputController {
     if (this._currentTool === 'line') {
       return this.lineToolHandler.shapePreview;
     }
+    if (this._currentTool === 'pencil') {
+      return this.pencilToolHandler.shapePreview;
+    }
     if (this._currentTool === 'select') {
       return this.selectToolHandler.shapePreview;
     }
     return null;
+  }
+
+  public get isDrawingPencil(): boolean {
+    return this.pencilToolHandler.isDrawing;
   }
 
   public get isMarqueeSelecting(): boolean {
@@ -740,6 +764,7 @@ export class InputController {
       this.canvas.style.cursor = 'grab';
     } else if (
       this._currentTool === 'pen' ||
+      this._currentTool === 'pencil' ||
       this._currentTool === 'rectangle' ||
       this._currentTool === 'ellipse' ||
       this._currentTool === 'line'
@@ -1022,6 +1047,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'pencil') {
+      this.pencilToolHandler.onMouseDown(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseDown(event, coords);
       return;
@@ -1138,6 +1168,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'pencil') {
+      this.pencilToolHandler.onMouseMove(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseMove(event, coords);
       return;
@@ -1197,6 +1232,11 @@ export class InputController {
 
     if (this._currentTool === 'line') {
       this.lineToolHandler.onMouseUp(event, coords);
+      return;
+    }
+
+    if (this._currentTool === 'pencil') {
+      this.pencilToolHandler.onMouseUp(event, coords);
       return;
     }
 
@@ -1410,6 +1450,8 @@ export class InputController {
 
     if (keyLower === 'p') {
       this.setTool('pen');
+    } else if (keyLower === 'b' || keyLower === 'n') {
+      this.setTool('pencil');
     } else if (keyLower === 'v') {
       this.setTool('select');
     } else if (keyLower === 'a') {
@@ -1431,6 +1473,8 @@ export class InputController {
         this.creationToolHandler.cancelCreation();
       } else if (this._currentTool === 'line') {
         this.lineToolHandler.cancelCreation();
+      } else if (this._currentTool === 'pencil') {
+        this.pencilToolHandler.cancelDrawing();
       } else if (this._currentTool === 'pen') {
         this.penToolHandler.finishActivePath();
       } else if (

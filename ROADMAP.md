@@ -24,11 +24,11 @@ A la fecha, el editor cuenta con una base sólida, modular y probada con **859 t
 
 El objetivo de esta fase es dotar al editor de herramientas interactivas estándar de creación y muestreo visual.
 
-- [ ] **1.1. Herramienta Lápiz / Pincel a mano alzada (Pencil Tool - `B` / `N`)**:
+- [x] **1.1. Herramienta Lápiz / Pincel a mano alzada (Pencil Tool - `B` / `N`)**:
   - Captura continua de trazo libre sobre el canvas con ratón o stylus/touch.
   - Algoritmo de simplificación geométrica (Ramer-Douglas-Peucker) y ajuste de curvas suaves (interpolación Bézier cúbica o algoritmo de Chaikin).
   - Generación de un nodo `Path` estándar con puntos de ancla optimizados.
-  - Historial reversible encapsulado en `CreateShapeCommand`.
+  - Historial reversible encapsulado en `AddShapeCommand`.
 
 - [ ] **1.2. Herramienta Cuentagotas (Eyedropper Tool - `I`)**:
   - Muestreo del color de relleno, borde o gradiente al hacer clic sobre cualquier figura del canvas.
