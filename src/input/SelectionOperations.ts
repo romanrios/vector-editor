@@ -26,6 +26,10 @@ import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
 import { ReorderCommand } from '../commands/ReorderCommand.ts';
 import { GroupCommand } from '../commands/GroupCommand.ts';
 import { UngroupCommand } from '../commands/UngroupCommand.ts';
+import { MakeClipMaskCommand } from '../commands/MakeClipMaskCommand.ts';
+import { ReleaseClipMaskCommand } from '../commands/ReleaseClipMaskCommand.ts';
+import { OutlineStrokeCommand } from '../commands/OutlineStrokeCommand.ts';
+import { canOutlineStroke } from '../utils/strokeToPath.ts';
 import { StyleCommand } from '../commands/StyleCommand.ts';
 import { BooleanOperationCommand } from '../commands/BooleanOperationCommand.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
@@ -873,6 +877,52 @@ export class SelectionOperations {
   }
 
   /**
+   * Crea una máscara de recorte con los elementos actualmente seleccionados (o convierte un grupo).
+   * La figura superior en z-order actúa como máscara delimitadora.
+   * Registra UNA sola entrada en el historial mediante MakeClipMaskCommand.
+   */
+  public makeClipMask(): Group | null {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length < 1) {
+      return null;
+    }
+    if (selectedNodes.length === 1 && !isGroup(selectedNodes[0])) {
+      return null;
+    }
+
+    try {
+      const command = new MakeClipMaskCommand(this.stateManager, selectedNodes);
+      this.commandManager.executeCommand(command);
+      return command.newGroup ?? (selectedNodes[0] as Group);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Libera las máscaras de recorte actualmente seleccionadas.
+   * Registra UNA sola entrada en el historial mediante ReleaseClipMaskCommand.
+   */
+  public releaseClipMask(): boolean {
+    const selectedClipGroups = this.stateManager
+      .getSelectedNodes()
+      .filter(isGroup)
+      .filter((g) => g.isClipMask === true);
+
+    if (selectedClipGroups.length === 0) {
+      return false;
+    }
+
+    try {
+      const command = new ReleaseClipMaskCommand(this.stateManager, selectedClipGroups);
+      this.commandManager.executeCommand(command);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Ejecuta una operación booleana (Unión, Sustracción, Intersección o Exclusión)
    * sobre las figuras cerradas seleccionadas en el Scene Graph.
    */
@@ -889,5 +939,28 @@ export class SelectionOperations {
     const command = new BooleanOperationCommand(this.stateManager, op, selectedNodes);
     this.commandManager.executeCommand(command);
     return true;
+  }
+
+  /**
+   * Contornea el trazo (Stroke to Path / Outline Stroke) de las figuras vectoriales seleccionadas.
+   * Convierte bordes en trazados cerrados (fill) reversibles en el historial mediante OutlineStrokeCommand.
+   */
+  public outlineStroke(): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes().filter(
+      (n) => !this.stateManager.isEffectivelyLocked(n.id)
+    );
+    const leafShapes = getLeafShapes(selectedNodes);
+    const targetShapes = leafShapes.filter(canOutlineStroke);
+    if (targetShapes.length === 0) {
+      return false;
+    }
+
+    try {
+      const command = new OutlineStrokeCommand(this.stateManager, selectedNodes);
+      this.commandManager.executeCommand(command);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

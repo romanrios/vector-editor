@@ -59,7 +59,7 @@ import { TextToolHandler } from './tools/TextToolHandler.ts';
 import { PencilToolHandler } from './tools/PencilToolHandler.ts';
 import { EyedropperToolHandler, type EyedropperPreview, type EyedropperSampleResult } from './tools/EyedropperToolHandler.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper';
 export interface CanvasContextMenuData {
   readonly clientX: number;
   readonly clientY: number;
@@ -96,6 +96,8 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'I', description: 'Herramienta Cuentagotas (muestreo de color)', category: 'Herramientas' },
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
+  { key: 'Y', description: 'Herramienta Polígono regular', category: 'Herramientas' },
+  { key: 'S', description: 'Herramienta Estrella', category: 'Herramientas' },
   { key: 'L', description: 'Herramienta Línea', category: 'Herramientas' },
   { key: 'T', description: 'Herramienta Texto', category: 'Herramientas' },
   { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
@@ -114,6 +116,9 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Ctrl+Shift+[', description: 'Enviar figuras al fondo', category: 'Objeto' },
   { key: 'Ctrl+G / Cmd+G', description: 'Agrupar figuras seleccionadas', category: 'Objeto' },
   { key: 'Ctrl+Shift+G / Cmd+Shift+G', description: 'Desagrupar figuras seleccionadas', category: 'Objeto' },
+  { key: 'Ctrl+7 / Cmd+7', description: 'Crear máscara de recorte', category: 'Objeto' },
+  { key: 'Ctrl+Alt+7 / Cmd+Alt+7', description: 'Soltar máscara de recorte', category: 'Objeto' },
+  { key: 'Ctrl+Shift+O / Cmd+Shift+O', description: 'Contornear trazado (Stroke to Path)', category: 'Objeto' },
   { key: 'Ctrl++ / Cmd++', description: 'Acercar zoom', category: 'Navegación' },
   { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
   { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
@@ -141,7 +146,7 @@ export {
  * Representa el estado y dimensiones de la vista previa de creación de figura por arrastre
  */
 export interface ShapePreview {
-  readonly type: 'rectangle' | 'ellipse' | 'marquee' | 'line' | 'pencil';
+  readonly type: 'rectangle' | 'ellipse' | 'marquee' | 'line' | 'pencil' | 'polygon' | 'star';
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -397,9 +402,14 @@ export class InputController {
       this.directSelectToolHandler.onDeactivate(tool);
     }
     if (
-      (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') &&
+      (this._currentTool === 'rectangle' ||
+        this._currentTool === 'ellipse' ||
+        this._currentTool === 'polygon' ||
+        this._currentTool === 'star') &&
       tool !== 'rectangle' &&
-      tool !== 'ellipse'
+      tool !== 'ellipse' &&
+      tool !== 'polygon' &&
+      tool !== 'star'
     ) {
       this.creationToolHandler.onDeactivate(tool);
     }
@@ -426,7 +436,12 @@ export class InputController {
       this.pencilToolHandler.onActivate();
     } else if (tool === 'eyedropper') {
       this.eyedropperToolHandler.onActivate();
-    } else if (tool === 'rectangle' || tool === 'ellipse') {
+    } else if (
+      tool === 'rectangle' ||
+      tool === 'ellipse' ||
+      tool === 'polygon' ||
+      tool === 'star'
+    ) {
       this.creationToolHandler.onActivate();
     } else if (tool === 'line') {
       this.lineToolHandler.onActivate();
@@ -526,7 +541,12 @@ export class InputController {
   }
 
   public get shapePreview(): ShapePreview | null {
-    if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+    if (
+      this._currentTool === 'rectangle' ||
+      this._currentTool === 'ellipse' ||
+      this._currentTool === 'polygon' ||
+      this._currentTool === 'star'
+    ) {
       return this.creationToolHandler.shapePreview;
     }
     if (this._currentTool === 'line') {
@@ -793,6 +813,8 @@ export class InputController {
       this._currentTool === 'eyedropper' ||
       this._currentTool === 'rectangle' ||
       this._currentTool === 'ellipse' ||
+      this._currentTool === 'polygon' ||
+      this._currentTool === 'star' ||
       this._currentTool === 'line'
     ) {
       this.canvas.style.cursor = 'crosshair';
@@ -889,6 +911,23 @@ export class InputController {
     }
 
     if (isGroup(node)) {
+      if (node.isClipMask) {
+        const maskShape = node.clipChildId
+          ? node.children.find((c) => c.id === node.clipChildId)
+          : node.children[node.children.length - 1];
+        if (maskShape && isShape(maskShape)) {
+          let insideMask = false;
+          if (maskShape.type === 'path') {
+            insideMask = isPointInPath(x, y, maskShape as Path, ctx, 8 / zoom);
+          } else {
+            insideMask = isPointInShape(x, y, maskShape, 4 / zoom);
+          }
+          if (!insideMask) {
+            return null;
+          }
+        }
+      }
+
       for (let i = node.children.length - 1; i >= 0; i--) {
         const hit = this.hitTestNode(node.children[i], x, y, ctx, zoom);
         if (hit) {
@@ -1063,7 +1102,12 @@ export class InputController {
       return;
     }
 
-    if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+    if (
+      this._currentTool === 'rectangle' ||
+      this._currentTool === 'ellipse' ||
+      this._currentTool === 'polygon' ||
+      this._currentTool === 'star'
+    ) {
       this.creationToolHandler.onMouseDown(event, coords, this._currentTool);
       return;
     }
@@ -1189,7 +1233,12 @@ export class InputController {
       return;
     }
 
-    if (this._currentTool === 'rectangle' || this._currentTool === 'ellipse') {
+    if (
+      this._currentTool === 'rectangle' ||
+      this._currentTool === 'ellipse' ||
+      this._currentTool === 'polygon' ||
+      this._currentTool === 'star'
+    ) {
       this.creationToolHandler.onMouseMove(event, coords, this._currentTool);
       return;
     }
@@ -1260,7 +1309,10 @@ export class InputController {
 
     if (
       this.creationToolHandler.isCreatingShape &&
-      (this._currentTool === 'rectangle' || this._currentTool === 'ellipse')
+      (this._currentTool === 'rectangle' ||
+        this._currentTool === 'ellipse' ||
+        this._currentTool === 'polygon' ||
+        this._currentTool === 'star')
     ) {
       this.creationToolHandler.onMouseUp(event, coords, this._currentTool);
       return;
@@ -1381,6 +1433,22 @@ export class InputController {
         return;
       }
 
+      if (key === '7' || event.code === 'Digit7' || event.code === 'Numpad7') {
+        event.preventDefault?.();
+        if (event.altKey) {
+          this.releaseClipMask();
+        } else {
+          this.makeClipMask();
+        }
+        return;
+      }
+
+      if (keyLower === 'o' && event.shiftKey) {
+        event.preventDefault?.();
+        this.outlineStroke();
+        return;
+      }
+
       const isBringToFront = event.shiftKey && (key === ']' || key === '}' || event.code === 'BracketRight');
       const isSendToBack = event.shiftKey && (key === '[' || key === '{' || event.code === 'BracketLeft');
 
@@ -1431,7 +1499,10 @@ export class InputController {
     if (event.key === 'Shift') {
       this.selectToolHandler.handleShiftToggle(true);
       if (this.creationToolHandler.isCreatingShape) {
-        this.creationToolHandler.updateShapePreview(this._currentTool as 'rectangle' | 'ellipse', true);
+        this.creationToolHandler.updateShapePreview(
+          this._currentTool as 'rectangle' | 'ellipse' | 'polygon' | 'star',
+          true
+        );
         this.stateManager.markDirty();
       } else if (this._currentTool === 'line' && this.lineToolHandler.isCreating) {
         this.lineToolHandler.updatePreview(true);
@@ -1503,6 +1574,10 @@ export class InputController {
       this.setTool('rectangle');
     } else if (keyLower === 'e') {
       this.setTool('ellipse');
+    } else if (keyLower === 'y') {
+      this.setTool('polygon');
+    } else if (keyLower === 's') {
+      this.setTool('star');
     } else if (keyLower === 'l') {
       this.setTool('line');
     } else if (keyLower === 'h') {
@@ -1550,7 +1625,10 @@ export class InputController {
     if (event.key === 'Shift') {
       this.selectToolHandler.handleShiftToggle(false);
       if (this.creationToolHandler.isCreatingShape) {
-        this.creationToolHandler.updateShapePreview(this._currentTool as 'rectangle' | 'ellipse', false);
+        this.creationToolHandler.updateShapePreview(
+          this._currentTool as 'rectangle' | 'ellipse' | 'polygon' | 'star',
+          false
+        );
         this.stateManager.markDirty();
       } else if (this._currentTool === 'line' && this.lineToolHandler.isCreating) {
         this.lineToolHandler.updatePreview(false);
@@ -1628,6 +1706,18 @@ export class InputController {
     return this._selectionOperations.ungroupSelection();
   }
 
+  public makeClipMask(): Group | null {
+    return this._selectionOperations.makeClipMask();
+  }
+
+  public releaseClipMask(): boolean {
+    return this._selectionOperations.releaseClipMask();
+  }
+
+  public outlineStroke(): boolean {
+    return this._selectionOperations.outlineStroke();
+  }
+
   public applyStyle(style: Partial<{ fill: string; stroke: string; strokeWidth: number }>): boolean {
     return this._selectionOperations.applyStyle(style);
   }
@@ -1642,6 +1732,10 @@ export class InputController {
 
   public setSelectedPathPointType(type: PathPointType): boolean {
     return this.directSelectToolHandler.setSelectedAnchorsType(type);
+  }
+
+  public setSelectedPathPointCornerRadius(radius?: number): boolean {
+    return this.directSelectToolHandler.setSelectedAnchorsCornerRadius(radius);
   }
 
   public moveSelection(dx: number, dy: number, timestamp?: number): boolean {

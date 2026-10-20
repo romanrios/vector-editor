@@ -5,6 +5,7 @@ import { ViewportManager } from '../utils/viewport.ts';
 import { isGroup, type SelectableNode } from '../types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from '../utils/geometry.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
+import { canOutlineStroke } from '../utils/strokeToPath.ts';
 
 export interface MenuBarControllerOptions {
   viewportManager: ViewportManager;
@@ -83,6 +84,9 @@ export function setupMenuBarBindings(
   const menuItemSendToBack = document.querySelector<HTMLButtonElement>('#menu-item-send-to-back');
   const menuItemGroup = document.querySelector<HTMLButtonElement>('#menu-item-group');
   const menuItemUngroup = document.querySelector<HTMLButtonElement>('#menu-item-ungroup');
+  const menuItemMakeClipMask = document.querySelector<HTMLButtonElement>('#menu-item-make-clip-mask');
+  const menuItemReleaseClipMask = document.querySelector<HTMLButtonElement>('#menu-item-release-clip-mask');
+  const menuItemOutlineStroke = document.querySelector<HTMLButtonElement>('#menu-item-outline-stroke');
 
   // Submenús Alinear y Distribuir en Menú Objeto
   const menuItemAlign = document.querySelector<HTMLButtonElement>('#menu-item-align');
@@ -152,6 +156,9 @@ export function setupMenuBarBindings(
         menuItemSendToBack,
         menuItemGroup,
         menuItemUngroup,
+        menuItemMakeClipMask,
+        menuItemReleaseClipMask,
+        menuItemOutlineStroke,
         menuItemAlign,
         menuItemDistribute,
       ],
@@ -314,6 +321,20 @@ export function setupMenuBarBindings(
       menuItemUngroup.setAttribute('aria-disabled', String(!canUngroup));
     }
 
+    const canMakeClipMask =
+      selectedNodes.length >= 2 ||
+      (selectedNodes.length === 1 && isGroup(selectedNodes[0]) && selectedNodes[0].children.length >= 2);
+    const canReleaseClipMask = selectedNodes.some((n) => isGroup(n) && n.isClipMask === true);
+
+    if (menuItemMakeClipMask) {
+      menuItemMakeClipMask.disabled = !canMakeClipMask;
+      menuItemMakeClipMask.setAttribute('aria-disabled', String(!canMakeClipMask));
+    }
+    if (menuItemReleaseClipMask) {
+      menuItemReleaseClipMask.disabled = !canReleaseClipMask;
+      menuItemReleaseClipMask.setAttribute('aria-disabled', String(!canReleaseClipMask));
+    }
+
     const canAlign = selectedNodes.length >= 2;
     const canDistribute = selectedNodes.length >= 3;
 
@@ -355,6 +376,12 @@ export function setupMenuBarBindings(
     const leafShapes = getLeafShapes(selectedNodes);
     const closedShapes = leafShapes.filter(isClosedShape);
     const canPathfinder = closedShapes.length >= 2;
+    const canOutlineStrokeValue = leafShapes.some(canOutlineStroke);
+
+    if (menuItemOutlineStroke) {
+      menuItemOutlineStroke.disabled = !canOutlineStrokeValue;
+      menuItemOutlineStroke.setAttribute('aria-disabled', String(!canOutlineStrokeValue));
+    }
 
     if (menuItemPathfinder) {
       menuItemPathfinder.disabled = !canPathfinder;
@@ -802,6 +829,40 @@ export function setupMenuBarBindings(
     }
   };
 
+  const onMenuMakeClipMaskClick = () => {
+    const selected = stateManager.getSelectedNodes();
+    const canMake =
+      selected.length >= 2 || (selected.length === 1 && isGroup(selected[0]) && selected[0].children.length >= 2);
+    if (canMake) {
+      closeAllMenus();
+      inputController.makeClipMask();
+      syncMenuItems();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
+  const onMenuReleaseClipMaskClick = () => {
+    if (stateManager.getSelectedNodes().some((n) => isGroup(n) && n.isClipMask === true)) {
+      closeAllMenus();
+      inputController.releaseClipMask();
+      syncMenuItems();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
+  const onMenuOutlineStrokeClick = () => {
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    if (leafShapes.some(canOutlineStroke)) {
+      closeAllMenus();
+      inputController.outlineStroke();
+      syncMenuItems();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
   const createAlignHandler = (mode: AlignmentMode) => () => {
     if (stateManager.getSelection().length >= 2) {
       closeAllMenus();
@@ -915,6 +976,9 @@ export function setupMenuBarBindings(
   menuItemSendToBack?.addEventListener('click', onMenuSendToBackClick);
   menuItemGroup?.addEventListener('click', onMenuGroupClick);
   menuItemUngroup?.addEventListener('click', onMenuUngroupClick);
+  menuItemMakeClipMask?.addEventListener('click', onMenuMakeClipMaskClick);
+  menuItemReleaseClipMask?.addEventListener('click', onMenuReleaseClipMaskClick);
+  menuItemOutlineStroke?.addEventListener('click', onMenuOutlineStrokeClick);
 
   menuItemAlignLeft?.addEventListener('click', onAlignLeft);
   menuItemAlignCenterH?.addEventListener('click', onAlignCenterH);
@@ -984,6 +1048,9 @@ export function setupMenuBarBindings(
       menuItemSendToBack?.removeEventListener('click', onMenuSendToBackClick);
       menuItemGroup?.removeEventListener('click', onMenuGroupClick);
       menuItemUngroup?.removeEventListener('click', onMenuUngroupClick);
+      menuItemMakeClipMask?.removeEventListener('click', onMenuMakeClipMaskClick);
+      menuItemReleaseClipMask?.removeEventListener('click', onMenuReleaseClipMaskClick);
+      menuItemOutlineStroke?.removeEventListener('click', onMenuOutlineStrokeClick);
 
       menuItemAlignLeft?.removeEventListener('click', onAlignLeft);
       menuItemAlignCenterH?.removeEventListener('click', onAlignCenterH);

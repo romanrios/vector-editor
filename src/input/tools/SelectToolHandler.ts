@@ -11,6 +11,9 @@ import {
   type LayerChildNode,
   type Path,
   type PathPoint,
+  type Rectangle,
+  type Polygon,
+  type Star,
   type SelectableNode,
   type Shape,
   type Vector2D,
@@ -52,6 +55,12 @@ import {
   gradientToWorldPoint,
   projectPointOnSegment,
 } from '../../utils/gradient.ts';
+import {
+  getShapeCornerRadiusHandles,
+  hitTestCornerRadiusHandle,
+  calculateRadiusFromHandleDrag,
+  type CornerRadiusHandle,
+} from '../../utils/cornerSmoothing.ts';
 import type { ViewportManager } from '../../utils/viewport.ts';
 import type { SelectionOperations, PreparedClone } from '../SelectionOperations.ts';
 import type { ToolHandler } from './ToolHandler.ts';
@@ -135,6 +144,14 @@ export class SelectToolHandler implements ToolHandler {
     currentGradient: Gradient;
     readonly handleType: 'gradient-start' | 'gradient-end' | 'gradient-center' | 'gradient-radius' | 'gradient-stop';
     readonly stopId?: string;
+    readonly startMouse: Vector2D;
+  } | null = null;
+
+  // Estado de manipulación interactiva de radios de esquina
+  private _activeCornerRadiusDrag: {
+    readonly handle: CornerRadiusHandle;
+    readonly shapeId: string;
+    readonly initialRadius: number;
     readonly startMouse: Vector2D;
   } | null = null;
 
@@ -260,6 +277,7 @@ export class SelectToolHandler implements ToolHandler {
     if (this._isResizing) {
       this.resetResize();
     }
+    this._activeCornerRadiusDrag = null;
     this.resetDrag();
   }
 
@@ -433,6 +451,23 @@ export class SelectToolHandler implements ToolHandler {
           this.canvas.style.cursor = this.getResizeCursor(hitHandle.type, selectedNode.rotation ?? 0);
           return;
         }
+
+        // Comprobar si se hizo clic sobre un tirador de radio de esquina (Corner Radius Handle)
+        const crHandles = getShapeCornerRadiusHandles(selectedNode, zoom);
+        const hitCRHandle = hitTestCornerRadiusHandle(crHandles, x, y, 8 / zoom);
+        if (hitCRHandle) {
+          this._activeCornerRadiusDrag = {
+            handle: hitCRHandle,
+            shapeId: selectedNode.id,
+            initialRadius: hitCRHandle.currentRadius,
+            startMouse: { x, y },
+          };
+          this._isDragging = false;
+          this._isResizing = false;
+          this._isRotating = false;
+          this.canvas.style.cursor = 'crosshair';
+          return;
+        }
       }
     }
 
@@ -517,6 +552,21 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseMove(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeCornerRadiusDrag) {
+      const { handle, shapeId } = this._activeCornerRadiusDrag;
+      const newRadius = calculateRadiusFromHandleDrag(handle, x, y);
+      const node = this.stateManager.findNode(shapeId);
+      if (node && isShape(node)) {
+        if (node.type === 'star' && handle.isInner) {
+          this.stateManager.updateShapeDimensions(shapeId, { innerCornerRadius: newRadius });
+        } else {
+          this.stateManager.updateShapeDimensions(shapeId, { cornerRadius: newRadius });
+        }
+      }
+      this.canvas.style.cursor = 'crosshair';
+      return;
+    }
 
     if (this._activeGradientDrag) {
       const { shapeId, property, currentGradient, handleType, stopId } = this._activeGradientDrag;
@@ -762,6 +812,13 @@ export class SelectToolHandler implements ToolHandler {
           this.canvas.style.cursor = this.getResizeCursor(hoveredHandle.type, selectedShape.rotation ?? 0);
           return;
         }
+
+        const crHandles = getShapeCornerRadiusHandles(selectedShape, zoom);
+        const hoveredCRHandle = hitTestCornerRadiusHandle(crHandles, x, y, 8 / zoom);
+        if (hoveredCRHandle) {
+          this.canvas.style.cursor = 'crosshair';
+          return;
+        }
       }
     }
 
@@ -777,6 +834,29 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseUp(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeCornerRadiusDrag) {
+      const { handle, shapeId, initialRadius } = this._activeCornerRadiusDrag;
+      this._activeCornerRadiusDrag = null;
+      const node = this.stateManager.findNode(shapeId);
+      const finalRadius = node && isShape(node)
+        ? (node.type === 'star' && handle.isInner ? (node as Star).innerCornerRadius ?? 0 : (node as Rectangle | Polygon | Star | Path).cornerRadius ?? 0)
+        : initialRadius;
+
+      if (finalRadius !== initialRadius) {
+        const cmd = new ResizeCommand(
+          this.stateManager,
+          shapeId,
+          handle.isInner ? { innerCornerRadius: initialRadius } : { cornerRadius: initialRadius },
+          handle.isInner ? { innerCornerRadius: finalRadius } : { cornerRadius: finalRadius }
+        );
+        this.commandManager.recordCommand(cmd);
+      }
+
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
 
     if (this._activeGradientDrag) {
       const { shapeId, property, initialGradient, currentGradient } = this._activeGradientDrag;
@@ -1564,7 +1644,7 @@ export class SelectToolHandler implements ToolHandler {
         y: shape.y + shape.height / 2,
       };
     }
-    if (shape.type === 'ellipse') {
+    if (shape.type === 'ellipse' || shape.type === 'polygon' || shape.type === 'star') {
       return {
         x: shape.x,
         y: shape.y,
@@ -1875,6 +1955,55 @@ export class SelectToolHandler implements ToolHandler {
       };
     }
 
+    if (initial.radius !== undefined) {
+      const initCenterX = initial.x ?? 0;
+      const initCenterY = initial.y ?? 0;
+      const initR = initial.radius;
+      const initSize = initR * 2;
+      const { newW, newH } = computeSize(initSize, initSize);
+      const newR = Math.max(2, Math.min(newW, newH) / 2);
+
+      const localShiftX = fromCenter ? 0 : (dxSign * (newR * 2 - initSize)) / 2;
+      const localShiftY = fromCenter ? 0 : (dySign * (newR * 2 - initSize)) / 2;
+
+      const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
+      const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
+
+      return {
+        x: newCenterX,
+        y: newCenterY,
+        radius: newR,
+        sides: initial.sides,
+        rotation,
+      };
+    }
+
+    if (initial.outerRadius !== undefined && initial.innerRadius !== undefined) {
+      const initCenterX = initial.x ?? 0;
+      const initCenterY = initial.y ?? 0;
+      const initOuter = initial.outerRadius;
+      const initSize = initOuter * 2;
+      const { newW, newH } = computeSize(initSize, initSize);
+      const newOuter = Math.max(2, Math.min(newW, newH) / 2);
+      const ratio = initOuter > 0 ? initial.innerRadius / initOuter : 0.5;
+      const newInner = Math.max(1, newOuter * ratio);
+
+      const localShiftX = fromCenter ? 0 : (dxSign * (newOuter * 2 - initSize)) / 2;
+      const localShiftY = fromCenter ? 0 : (dySign * (newOuter * 2 - initSize)) / 2;
+
+      const newCenterX = initCenterX + localShiftX * cos - localShiftY * sin;
+      const newCenterY = initCenterY + localShiftX * sin + localShiftY * cos;
+
+      return {
+        x: newCenterX,
+        y: newCenterY,
+        outerRadius: newOuter,
+        innerRadius: newInner,
+        starPoints: initial.starPoints,
+        rotation,
+      };
+    }
+
     return initial;
   }
 
@@ -1902,7 +2031,12 @@ export class SelectToolHandler implements ToolHandler {
       a.letterSpacing !== b.letterSpacing ||
       a.rotation !== b.rotation ||
       a.boxWidth !== b.boxWidth ||
-      a.cornerRadius !== b.cornerRadius
+      a.cornerRadius !== b.cornerRadius ||
+      a.radius !== b.radius ||
+      a.sides !== b.sides ||
+      a.outerRadius !== b.outerRadius ||
+      a.innerRadius !== b.innerRadius ||
+      a.starPoints !== b.starPoints
     );
   }
 

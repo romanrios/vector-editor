@@ -380,9 +380,9 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
           name: 'Capa 1',
           children: [
             {
-              id: 'poly-1',
-              type: 'polygon',
-              name: 'Polígono',
+              id: 'unknown-1',
+              type: 'unknown-shape',
+              name: 'Figura Desconocida',
             },
           ],
         },
@@ -394,7 +394,7 @@ describe('Serializer (serializeDocument & downloadJson)', () => {
       },
       (err: unknown) => {
         assert.ok(err instanceof DocumentParseError);
-        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.type debe ser 'rectangle', 'ellipse', 'path' o 'text'/);
+        assert.match((err as Error).message, /children\[0\]\.children\[0\]\.type debe ser/);
         return true;
       }
     );

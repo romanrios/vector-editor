@@ -7,6 +7,8 @@ import type {
   PathPoint,
   Rectangle,
   Ellipse,
+  Polygon,
+  Star,
   Text,
   ImageNode,
   AssetData,
@@ -227,6 +229,14 @@ function parseLayerChild(
       throw new DocumentParseError(`${childPath}.zIndex debe ser un número finito`);
     }
 
+    if (child.isClipMask !== undefined && typeof child.isClipMask !== 'boolean') {
+      throw new DocumentParseError(`${childPath}.isClipMask debe ser un booleano`);
+    }
+
+    if (child.clipChildId !== undefined && typeof child.clipChildId !== 'string') {
+      throw new DocumentParseError(`${childPath}.clipChildId debe ser un string`);
+    }
+
     const cleanGroupChildren: LayerChildNode[] = [];
     for (let c = 0; c < child.children.length; c++) {
       const grandChild = child.children[c];
@@ -246,12 +256,14 @@ function parseLayerChild(
   if (
     child.type !== 'rectangle' &&
     child.type !== 'ellipse' &&
+    child.type !== 'polygon' &&
+    child.type !== 'star' &&
     child.type !== 'path' &&
     child.type !== 'text' &&
     child.type !== 'image'
   ) {
     throw new DocumentParseError(
-      `${childPath}.type debe ser 'rectangle', 'ellipse', 'path' o 'text' (o 'image', 'group')`
+      `${childPath}.type debe ser 'rectangle', 'ellipse', 'polygon', 'star', 'path' o 'text' (o 'image', 'group')`
     );
   }
 
@@ -316,6 +328,41 @@ function parseLayerChild(
 
     const { selected: _sel, isDirty: _dirty, ...rest } = child;
     return rest as unknown as Ellipse;
+  } else if (child.type === 'polygon') {
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.radius) || child.radius <= 0) {
+      throw new DocumentParseError(`${childPath}.radius debe ser un número finito positivo`);
+    }
+    if (!isFiniteNumber(child.sides) || child.sides < 3) {
+      throw new DocumentParseError(`${childPath}.sides debe ser un número finito >= 3`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as Polygon;
+  } else if (child.type === 'star') {
+    if (!isFiniteNumber(child.x)) {
+      throw new DocumentParseError(`${childPath}.x debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.y)) {
+      throw new DocumentParseError(`${childPath}.y debe ser un número finito`);
+    }
+    if (!isFiniteNumber(child.outerRadius) || child.outerRadius <= 0) {
+      throw new DocumentParseError(`${childPath}.outerRadius debe ser un número finito positivo`);
+    }
+    if (!isFiniteNumber(child.innerRadius) || child.innerRadius <= 0) {
+      throw new DocumentParseError(`${childPath}.innerRadius debe ser un número finito positivo`);
+    }
+    if (!isFiniteNumber(child.points) || child.points < 3) {
+      throw new DocumentParseError(`${childPath}.points debe ser un número finito >= 3`);
+    }
+
+    const { selected: _sel, isDirty: _dirty, ...rest } = child;
+    return rest as unknown as Star;
   } else if (child.type === 'text') {
     if (!isFiniteNumber(child.x)) {
       throw new DocumentParseError(`${childPath}.x debe ser un número finito`);

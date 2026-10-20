@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D, ImageNode } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D, ImageNode, Polygon, Star } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
@@ -874,6 +874,170 @@ export function getTextAABB(text: Text, ctx?: CanvasRenderingContext2D | null): 
 }
 
 /**
+ * Calcula los vértices base de un Polígono regular sin rotación (con el vértice superior a 12 en punto / -90°).
+ */
+export function getPolygonBaseVertices(polygon: Polygon): Vector2D[] {
+  const n = Math.max(3, Math.round(polygon.sides || 3));
+  const r = Math.max(0, polygon.radius);
+  const cx = polygon.x;
+  const cy = polygon.y;
+  const vertices: Vector2D[] = new Array(n);
+  const startAngle = -Math.PI / 2;
+  const step = (Math.PI * 2) / n;
+
+  for (let i = 0; i < n; i++) {
+    const angle = startAngle + i * step;
+    vertices[i] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  }
+
+  return vertices;
+}
+
+/**
+ * Calcula los vértices finales de un Polígono regular aplicando su rotación.
+ */
+export function getPolygonVertices(polygon: Polygon): Vector2D[] {
+  const n = Math.max(3, Math.round(polygon.sides || 3));
+  const r = Math.max(0, polygon.radius);
+  const cx = polygon.x;
+  const cy = polygon.y;
+  const rotRad = ((polygon.rotation ?? 0) * Math.PI) / 180;
+  const startAngle = -Math.PI / 2 + rotRad;
+  const step = (Math.PI * 2) / n;
+  const vertices: Vector2D[] = new Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const angle = startAngle + i * step;
+    vertices[i] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  }
+
+  return vertices;
+}
+
+/**
+ * Calcula los vértices base de una Estrella regular sin rotación (con la primera punta exterior a 12 en punto / -90°).
+ */
+export function getStarBaseVertices(star: Star): Vector2D[] {
+  const p = Math.max(3, Math.round(star.points || 3));
+  const rOut = Math.max(0, star.outerRadius);
+  const rIn = Math.max(0, star.innerRadius);
+  const cx = star.x;
+  const cy = star.y;
+  const totalVertices = p * 2;
+  const vertices: Vector2D[] = new Array(totalVertices);
+  const startAngle = -Math.PI / 2;
+  const step = Math.PI / p;
+
+  for (let i = 0; i < totalVertices; i++) {
+    const r = i % 2 === 0 ? rOut : rIn;
+    const angle = startAngle + i * step;
+    vertices[i] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  }
+
+  return vertices;
+}
+
+/**
+ * Calcula los vértices finales de una Estrella regular aplicando su rotación.
+ */
+export function getStarVertices(star: Star): Vector2D[] {
+  const p = Math.max(3, Math.round(star.points || 3));
+  const rOut = Math.max(0, star.outerRadius);
+  const rIn = Math.max(0, star.innerRadius);
+  const cx = star.x;
+  const cy = star.y;
+  const rotRad = ((star.rotation ?? 0) * Math.PI) / 180;
+  const startAngle = -Math.PI / 2 + rotRad;
+  const step = Math.PI / p;
+  const totalVertices = p * 2;
+  const vertices: Vector2D[] = new Array(totalVertices);
+
+  for (let i = 0; i < totalVertices; i++) {
+    const r = i % 2 === 0 ? rOut : rIn;
+    const angle = startAngle + i * step;
+    vertices[i] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  }
+
+  return vertices;
+}
+
+/**
+ * Calcula el AABB de un polígono regular (respetando rotación si la tiene).
+ */
+export function getPolygonAABB(polygon: Polygon): AABB {
+  const vertices = getPolygonVertices(polygon);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i];
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+
+  if (minX === Infinity) {
+    return { minX: polygon.x, minY: polygon.y, maxX: polygon.x, maxY: polygon.y, width: 0, height: 0 };
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
+ * Calcula el AABB de una estrella regular (respetando rotación si la tiene).
+ */
+export function getStarAABB(star: Star): AABB {
+  const vertices = getStarVertices(star);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i];
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+
+  if (minX === Infinity) {
+    return { minX: star.x, minY: star.y, maxX: star.x, maxY: star.y, width: 0, height: 0 };
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
  * Obtiene el AABB (Axis-Aligned Bounding Box) de cualquier figura (Shape).
  */
 export function getShapeAABB(shape: Shape): AABB {
@@ -882,6 +1046,12 @@ export function getShapeAABB(shape: Shape): AABB {
   }
   if (shape.type === 'ellipse') {
     return getEllipseAABB(shape);
+  }
+  if (shape.type === 'polygon') {
+    return getPolygonAABB(shape);
+  }
+  if (shape.type === 'star') {
+    return getStarAABB(shape);
   }
   if (shape.type === 'text') {
     return getTextAABB(shape);
@@ -917,6 +1087,17 @@ export function getGroupAABB(group: Group): AABB {
     };
     groupAABBCache.set(group, emptyAABB);
     return emptyAABB;
+  }
+
+  if (group.isClipMask === true && group.children.length > 0) {
+    const maskChild = group.clipChildId
+      ? group.children.find((c) => c.id === group.clipChildId)
+      : group.children[group.children.length - 1];
+    if (maskChild) {
+      const maskAABB = getNodeAABB(maskChild);
+      groupAABBCache.set(group, maskAABB);
+      return maskAABB;
+    }
   }
 
   let minX = Infinity;
@@ -1047,10 +1228,43 @@ export function isPointInText(
  *   ((localX - cx) / (rx + t))^2 + ((localY - cy) / (ry + t))^2 <= 1, manejando radios cero sin dividir por cero.
  * - Para Text: delega en isPointInText evaluando colisión contra la caja de texto.
  */
+function distToSegmentSquared(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) {
+    const dpx = px - x1;
+    const dpy = py - y1;
+    return dpx * dpx + dpy * dpy;
+  }
+  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  const dpx = px - projX;
+  const dpy = py - projY;
+  return dpx * dpx + dpy * dpy;
+}
+
+export function isPointInPolygonVertices(px: number, py: number, vertices: readonly Vector2D[]): boolean {
+  let inside = false;
+  const n = vertices.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = vertices[i].x;
+    const yi = vertices[i].y;
+    const xj = vertices[j].x;
+    const yj = vertices[j].y;
+    const intersect = ((yi > py) !== (yj > py)) &&
+      (px < ((xj - xi) * (py - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export function isPointInShape(
   x: number,
   y: number,
-  shape: Rectangle | Ellipse | Text | ImageNode,
+  shape: Shape,
   tolerance: number = 0,
   ctx?: CanvasRenderingContext2D | null
 ): boolean {
@@ -1058,11 +1272,41 @@ export function isPointInShape(
     return isPointInText(x, y, shape, tolerance, ctx);
   }
 
-  if (shape.type !== 'rectangle' && shape.type !== 'ellipse' && shape.type !== 'image') {
+  const t = Math.max(0, tolerance);
+
+  if (shape.type === 'polygon' || shape.type === 'star') {
+    const aabb = shape.type === 'polygon' ? getPolygonAABB(shape) : getStarAABB(shape);
+    if (
+      x < aabb.minX - t ||
+      x > aabb.maxX + t ||
+      y < aabb.minY - t ||
+      y > aabb.maxY + t
+    ) {
+      return false;
+    }
+
+    const vertices = shape.type === 'polygon' ? getPolygonVertices(shape) : getStarVertices(shape);
+    if (isPointInPolygonVertices(x, y, vertices)) {
+      return true;
+    }
+
+    if (t > 0) {
+      const tSq = t * t;
+      const n = vertices.length;
+      for (let i = 0; i < n; i++) {
+        const v1 = vertices[i];
+        const v2 = vertices[(i + 1) % n];
+        if (distToSegmentSquared(x, y, v1.x, v1.y, v2.x, v2.y) <= tSq) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 
-  const t = Math.max(0, tolerance);
+  if (shape.type !== 'rectangle' && shape.type !== 'ellipse' && shape.type !== 'image') {
+    return false;
+  }
 
   // 1. Fase rápida: descarte mediante AABB ampliado con tolerancia
   const aabb = (shape.type === 'rectangle' || shape.type === 'image') ? getRectangleAABB(shape) : getEllipseAABB(shape);
@@ -1283,6 +1527,16 @@ export function getSelectionHandles(
   } else if (shape.type === 'ellipse') {
     hw = shape.radiusX;
     hh = shape.radiusY;
+    cx = shape.x;
+    cy = shape.y;
+  } else if (shape.type === 'polygon') {
+    hw = shape.radius;
+    hh = shape.radius;
+    cx = shape.x;
+    cy = shape.y;
+  } else if (shape.type === 'star') {
+    hw = shape.outerRadius;
+    hh = shape.outerRadius;
     cx = shape.x;
     cy = shape.y;
   } else if (shape.type === 'path') {
@@ -3312,5 +3566,168 @@ export function getPointsAABB(points: readonly Vector2D[]): AABB {
     width: maxX - minX,
     height: maxY - minY,
   };
+}
+
+/**
+ * Traza el contorno geométrico de una figura en el contexto de Canvas 2D
+ * y aplica el recorte mediante ctx.clip() en coordenadas del mundo.
+ */
+export function traceShapeClip(ctx: CanvasRenderingContext2D, shape: Shape): void {
+  ctx.beginPath();
+
+  if (shape.type === 'rectangle') {
+    const rect = shape as Rectangle;
+    if (!rect.rotation) {
+      if (rect.cornerRadius && rect.cornerRadius > 0 && typeof ctx.roundRect === 'function') {
+        ctx.roundRect(rect.x, rect.y, rect.width, rect.height, rect.cornerRadius);
+      } else {
+        ctx.rect(rect.x, rect.y, rect.width, rect.height);
+      }
+    } else {
+      const rad = (rect.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      const hw = rect.width / 2;
+      const hh = rect.height / 2;
+
+      const corners = [
+        { x: cx - hw * cos - -hh * sin, y: cy - hw * sin + -hh * cos },
+        { x: cx + hw * cos - -hh * sin, y: cy + hw * sin + -hh * cos },
+        { x: cx + hw * cos - hh * sin, y: cy + hw * sin + hh * cos },
+        { x: cx - hw * cos - hh * sin, y: cy - hw * sin + hh * cos },
+      ];
+      ctx.moveTo(corners[0].x, corners[0].y);
+      ctx.lineTo(corners[1].x, corners[1].y);
+      ctx.lineTo(corners[2].x, corners[2].y);
+      ctx.lineTo(corners[3].x, corners[3].y);
+      ctx.closePath();
+    }
+    ctx.clip();
+  } else if (shape.type === 'ellipse') {
+    const ellipse = shape as Ellipse;
+    const rad = ((ellipse.rotation ?? 0) * Math.PI) / 180;
+    if (typeof ctx.ellipse === 'function') {
+      ctx.ellipse(
+        ellipse.x,
+        ellipse.y,
+        Math.abs(ellipse.radiusX),
+        Math.abs(ellipse.radiusY),
+        rad,
+        0,
+        2 * Math.PI
+      );
+    } else {
+      ctx.arc(ellipse.x, ellipse.y, Math.max(Math.abs(ellipse.radiusX), Math.abs(ellipse.radiusY)), 0, 2 * Math.PI);
+    }
+    ctx.clip();
+  } else if (shape.type === 'polygon') {
+    const poly = shape as Polygon;
+    const verts = getPolygonVertices(poly);
+    if (verts.length > 0) {
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        ctx.lineTo(verts[i].x, verts[i].y);
+      }
+      ctx.closePath();
+    }
+    ctx.clip();
+  } else if (shape.type === 'star') {
+    const star = shape as Star;
+    const verts = getStarVertices(star);
+    if (verts.length > 0) {
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        ctx.lineTo(verts[i].x, verts[i].y);
+      }
+      ctx.closePath();
+    }
+    ctx.clip();
+  } else if (shape.type === 'path') {
+    const path = shape as Path;
+    const points = path.points;
+    if (!points || points.length === 0) {
+      ctx.clip();
+      return;
+    }
+
+    let transformPt = (pt: { x: number; y: number }) => pt;
+    if (path.rotation) {
+      const baseAABB = getPathBaseAABB(path);
+      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
+      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
+      const rad = (path.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      transformPt = (pt: { x: number; y: number }) => {
+        const dx = pt.x - cx;
+        const dy = pt.y - cy;
+        return {
+          x: cx + dx * cos - dy * sin,
+          y: cy + dx * sin + dy * cos,
+        };
+      };
+    }
+
+    let subpathStartIdx = 0;
+    for (let i = 0; i < points.length; i++) {
+      const curr = points[i];
+      const tCurr = transformPt(curr);
+      if (i === 0 || curr.moveTo) {
+        if (i > 0) {
+          const prevStart = points[subpathStartIdx];
+          const last = points[i - 1];
+          const shouldClose = last.closeSubpath ?? path.closed;
+          if (shouldClose && i - subpathStartIdx > 1) {
+            const pStart = transformPt(prevStart);
+            const pLast = transformPt(last);
+            const cp1 = last.handleOut ? transformPt(last.handleOut) : pLast;
+            const cp2 = prevStart.handleIn ? transformPt(prevStart.handleIn) : pStart;
+            ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, pStart.x, pStart.y);
+            ctx.closePath();
+          }
+        }
+        subpathStartIdx = i;
+        ctx.moveTo(tCurr.x, tCurr.y);
+      } else {
+        const prev = points[i - 1];
+        const pPrev = transformPt(prev);
+        const cp1 = prev.handleOut ? transformPt(prev.handleOut) : pPrev;
+        const cp2 = curr.handleIn ? transformPt(curr.handleIn) : tCurr;
+        ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, tCurr.x, tCurr.y);
+      }
+    }
+
+    if (points.length > 0) {
+      const prevStart = points[subpathStartIdx];
+      const last = points[points.length - 1];
+      const shouldClose = last.closeSubpath ?? path.closed;
+      if (shouldClose && points.length - subpathStartIdx > 1) {
+        const pStart = transformPt(prevStart);
+        const pLast = transformPt(last);
+        const cp1 = last.handleOut ? transformPt(last.handleOut) : pLast;
+        const cp2 = prevStart.handleIn ? transformPt(prevStart.handleIn) : pStart;
+        ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, pStart.x, pStart.y);
+        ctx.closePath();
+      }
+    }
+
+    const fillRule = path.fillRule ?? 'nonzero';
+    try {
+      ctx.clip(fillRule);
+    } catch {
+      ctx.clip();
+    }
+  } else if (shape.type === 'text') {
+    const text = shape as Text;
+    const aabb = getTextBaseAABB(text, ctx);
+    ctx.rect(aabb.minX, aabb.minY, aabb.width, aabb.height);
+    ctx.clip();
+  } else if (shape.type === 'image') {
+    const img = shape as ImageNode;
+    ctx.rect(img.x, img.y, img.width, img.height);
+    ctx.clip();
+  }
 }
 

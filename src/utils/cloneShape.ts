@@ -6,6 +6,9 @@ import {
   type Path,
   type PathPoint,
   type Text,
+  type ImageNode,
+  type Polygon,
+  type Star,
   type Group,
   type SelectableNode,
   type LayerChildNode,
@@ -57,6 +60,14 @@ export function cloneNode<T extends SelectableNode>(
       cloneNode(child, { dx, dy })
     );
 
+    let clonedClipChildId: string | undefined;
+    if (node.isClipMask && node.clipChildId) {
+      const maskIdx = node.children.findIndex((c) => c.id === node.clipChildId);
+      if (maskIdx !== -1 && clonedChildren[maskIdx]) {
+        clonedClipChildId = clonedChildren[maskIdx].id;
+      }
+    }
+
     const clonedGroup: Group = {
       id,
       type: 'group',
@@ -65,6 +76,8 @@ export function cloneNode<T extends SelectableNode>(
       ...(node.visible !== undefined ? { visible: node.visible } : {}),
       ...(node.locked !== undefined ? { locked: node.locked } : {}),
       ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
+      ...(node.isClipMask !== undefined ? { isClipMask: node.isClipMask } : {}),
+      ...(clonedClipChildId !== undefined ? { clipChildId: clonedClipChildId } : {}),
     };
 
     return deepFreeze(clonedGroup) as unknown as T;
@@ -132,6 +145,39 @@ export function cloneNode<T extends SelectableNode>(
       y: node.y + dy,
     };
     return deepFreeze(text) as unknown as T;
+  }
+
+  if (node.type === 'image') {
+    const img: ImageNode = {
+      ...node,
+      id,
+      name,
+      x: node.x + dx,
+      y: node.y + dy,
+    };
+    return deepFreeze(img) as unknown as T;
+  }
+
+  if (node.type === 'polygon') {
+    const poly: Polygon = {
+      ...node,
+      id,
+      name,
+      x: node.x + dx,
+      y: node.y + dy,
+    };
+    return deepFreeze(poly) as unknown as T;
+  }
+
+  if (node.type === 'star') {
+    const star: Star = {
+      ...node,
+      id,
+      name,
+      x: node.x + dx,
+      y: node.y + dy,
+    };
+    return deepFreeze(star) as unknown as T;
   }
 
   throw new Error(`[cloneNode] Tipo de nodo no soportado: ${(node as SelectableNode).type}`);

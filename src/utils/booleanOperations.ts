@@ -6,7 +6,7 @@ import type {
   Shape,
   Vector2D,
 } from '../types/scene-graph.ts';
-import { evaluateCubicBezier, getPathBaseAABB } from './geometry.ts';
+import { evaluateCubicBezier, getPathBaseAABB, getPolygonVertices, getStarVertices } from './geometry.ts';
 import { generateClonedShapeId } from './cloneShape.ts';
 
 export type BooleanOp = 'union' | 'subtract' | 'intersect' | 'exclude';
@@ -89,7 +89,7 @@ function rotatePoint(p: Vector2D, center: Vector2D, rad: number): Vector2D {
  * Determina si una figura es cerrada y por tanto candidata a operaciones booleanas.
  */
 export function isClosedShape(shape: Shape): boolean {
-  if (shape.type === 'rectangle' || shape.type === 'ellipse') {
+  if (shape.type === 'rectangle' || shape.type === 'ellipse' || shape.type === 'polygon' || shape.type === 'star') {
     return true;
   }
   if (shape.type === 'path') {
@@ -99,7 +99,7 @@ export function isClosedShape(shape: Shape): boolean {
 }
 
 /**
- * Convierte cualquier figura cerrada (Rectangle, Ellipse o Path cerrado) a un polígono
+ * Convierte cualquier figura cerrada (Rectangle, Ellipse, Polygon, Star o Path cerrado) a un polígono
  * aproximado en coordenadas absolutas de mundo con orientación CCW.
  */
 export function shapeToPolygon(shape: Shape): Vector2D[] {
@@ -108,6 +108,12 @@ export function shapeToPolygon(shape: Shape): Vector2D[] {
   }
   if (shape.type === 'ellipse') {
     return ellipseToPolygon(shape);
+  }
+  if (shape.type === 'polygon') {
+    return ensureCCW(getPolygonVertices(shape));
+  }
+  if (shape.type === 'star') {
+    return ensureCCW(getStarVertices(shape));
   }
   if (shape.type === 'path' && shape.closed) {
     return pathToPolygon(shape);

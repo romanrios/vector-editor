@@ -7,14 +7,19 @@ import { BatchCommand } from '../commands/BatchCommand.ts';
 import { StyleShapesCommand, type ShapeStyleChangeEntry } from '../commands/StyleShapesCommand.ts';
 import { StyleCommand } from '../commands/StyleCommand.ts';
 import { UpdateTextTypographyCommand } from '../commands/UpdateTextTypographyCommand.ts';
+import { UpdateParametricShapeCommand } from '../commands/UpdateParametricShapeCommand.ts';
 import { ResizeArtboardCommand } from '../commands/ResizeArtboardCommand.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import {
   isGroup,
   isText,
+  isPolygon,
+  isStar,
   type SelectableNode,
   type Shape,
   type Text,
+  type Polygon,
+  type Star,
   type Path,
   type Rectangle,
   type FillType,
@@ -33,6 +38,7 @@ import {
   type DistributionAxis,
 } from '../utils/geometry.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
+import { canOutlineStroke } from '../utils/strokeToPath.ts';
 import { getShapeDimensions, rotateShapesAboutPivot } from '../utils/transform.ts';
 import { getPresetById, findPresetForSize } from '../utils/artboardPresets.ts';
 import { getPaintState, parseHexColor, isNonePaint, normalizeColor, type PaintState } from '../utils/color.ts';
@@ -108,6 +114,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   const selectStrokeDash = document.querySelector<HTMLSelectElement>('#select-stroke-dash');
   const selectStrokeCap = document.querySelector<HTMLSelectElement>('#select-stroke-cap');
   const selectStrokeJoin = document.querySelector<HTMLSelectElement>('#select-stroke-join');
+  const btnOutlineStroke = document.querySelector<HTMLButtonElement>('#btn-outline-stroke');
 
   const inputOpacity = document.querySelector<HTMLInputElement>('#input-opacity');
   const inputOpacityValue = document.querySelector<HTMLInputElement>('#input-opacity-value');
@@ -118,6 +125,15 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   const checkArtboardRatio = document.querySelector<HTMLInputElement>('#check-artboard-ratio');
 
   const sectionTypography = document.querySelector<HTMLDetailsElement>('#section-typography');
+  const sectionPolygon = document.querySelector<HTMLDetailsElement>('#section-polygon');
+  const inputPolygonSides = document.querySelector<HTMLInputElement>('#input-polygon-sides');
+  const inputPolygonRadius = document.querySelector<HTMLInputElement>('#input-polygon-radius');
+
+  const sectionStar = document.querySelector<HTMLDetailsElement>('#section-star');
+  const inputStarPoints = document.querySelector<HTMLInputElement>('#input-star-points');
+  const inputStarOuterRadius = document.querySelector<HTMLInputElement>('#input-star-outer-radius');
+  const inputStarInnerRadius = document.querySelector<HTMLInputElement>('#input-star-inner-radius');
+
   const inputTextContent = document.querySelector<HTMLInputElement>('#input-text-content');
   const selectFontFamily = document.querySelector<HTMLSelectElement>('#select-font-family');
   const inputFontSize = document.querySelector<HTMLInputElement>('#input-font-size');
@@ -172,12 +188,46 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   let initialTextTypographySnapshot: TextTypographySnapshot | null = null;
   let lastRememberedTextColor = '#000000';
 
+  interface ParametricShapeSnapshot {
+    readonly sides?: number;
+    readonly radius?: number;
+    readonly points?: number;
+    readonly outerRadius?: number;
+    readonly innerRadius?: number;
+  }
+  let initialParametricShapeSnapshot: ParametricShapeSnapshot | null = null;
+
+  const captureInitialParametricShape = () => {
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1) {
+      const node = selectedNodes[0];
+      if (isPolygon(node)) {
+        initialParametricShapeSnapshot = {
+          sides: node.sides,
+          radius: node.radius,
+        };
+        return;
+      }
+      if (isStar(node)) {
+        initialParametricShapeSnapshot = {
+          points: node.points,
+          outerRadius: node.outerRadius,
+          innerRadius: node.innerRadius,
+        };
+        return;
+      }
+    }
+    initialParametricShapeSnapshot = null;
+  };
+
   const captureInitialCornerRadius = () => {
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
-    if (rects.length > 0) {
-      initialCornerRadiusSnapshots = new Map(rects.map((r) => [r.id, r.cornerRadius ?? 0]));
+    const cornerShapes = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
+      s.type === 'rectangle' || s.type === 'polygon' || s.type === 'star' || s.type === 'path'
+    );
+    if (cornerShapes.length > 0) {
+      initialCornerRadiusSnapshots = new Map(cornerShapes.map((r) => [r.id, r.cornerRadius ?? 0]));
     } else {
       initialCornerRadiusSnapshots = null;
     }
@@ -353,9 +403,19 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     const firstLeafRotation = leafShapes.length > 0 ? leafShapes[0].rotation ?? 0 : null;
     const isSingleTextSelected = selectedNodes.length === 1 && isText(selectedNodes[0]);
     const singleTextNode = isSingleTextSelected ? (selectedNodes[0] as Text) : null;
+    const isSinglePolygonSelected = selectedNodes.length === 1 && isPolygon(selectedNodes[0]);
+    const singlePolygonNode = isSinglePolygonSelected ? (selectedNodes[0] as Polygon) : null;
+    const isSingleStarSelected = selectedNodes.length === 1 && isStar(selectedNodes[0]);
+    const singleStarNode = isSingleStarSelected ? (selectedNodes[0] as Star) : null;
 
     if (sectionTypography) {
       sectionTypography.style.display = isSingleTextSelected ? 'block' : 'none';
+    }
+    if (sectionPolygon) {
+      sectionPolygon.style.display = isSinglePolygonSelected ? 'block' : 'none';
+    }
+    if (sectionStar) {
+      sectionStar.style.display = isSingleStarSelected ? 'block' : 'none';
     }
     if (sectionAppearance) {
       sectionAppearance.style.display = 'block';
@@ -430,17 +490,19 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
         }
       }
 
-      const rectLeafs = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
+      const cornerLeafs = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
+        s.type === 'rectangle' || s.type === 'polygon' || s.type === 'star' || s.type === 'path'
+      );
       if (groupCornerRadius) {
-        if (rectLeafs.length > 0) {
+        if (cornerLeafs.length > 0) {
           groupCornerRadius.style.display = 'flex';
           if (inputCornerRadius && (typeof document === 'undefined' || document.activeElement !== inputCornerRadius)) {
-            if (rectLeafs.length === 1) {
-              inputCornerRadius.value = String(roundToFourDecimals(rectLeafs[0].cornerRadius ?? 0));
+            if (cornerLeafs.length === 1) {
+              inputCornerRadius.value = String(roundToFourDecimals(cornerLeafs[0].cornerRadius ?? 0));
               inputCornerRadius.placeholder = '';
             } else {
-              const firstRadius = rectLeafs[0].cornerRadius ?? 0;
-              const allSame = rectLeafs.every((r) => (r.cornerRadius ?? 0) === firstRadius);
+              const firstRadius = cornerLeafs[0].cornerRadius ?? 0;
+              const allSame = cornerLeafs.every((r) => (r.cornerRadius ?? 0) === firstRadius);
               if (allSame) {
                 inputCornerRadius.value = String(roundToFourDecimals(firstRadius));
                 inputCornerRadius.placeholder = '';
@@ -471,6 +533,12 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       if (sectionTypography) {
         sectionTypography.style.display = 'none';
       }
+      if (sectionPolygon) {
+        sectionPolygon.style.display = 'none';
+      }
+      if (sectionStar) {
+        sectionStar.style.display = 'none';
+      }
       if (sectionPathPoint) {
         sectionPathPoint.style.display = 'none';
       }
@@ -485,6 +553,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       }
       initialStyleSnapshots = null;
       initialTextTypographySnapshot = null;
+      initialParametricShapeSnapshot = null;
     }
 
     if (isSingleTextSelected && singleTextNode) {
@@ -567,6 +636,34 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
 
       if (btnTextColorNone) {
         btnTextColorNone.setAttribute('aria-pressed', String(isNone));
+      }
+    }
+
+    if (isSinglePolygonSelected && singlePolygonNode) {
+      const isParamEditing = initialParametricShapeSnapshot !== null;
+
+      if (inputPolygonSides && (!isParamEditing || (typeof document !== 'undefined' && document.activeElement !== inputPolygonSides))) {
+        inputPolygonSides.value = String(singlePolygonNode.sides);
+      }
+
+      if (inputPolygonRadius && (!isParamEditing || (typeof document !== 'undefined' && document.activeElement !== inputPolygonRadius))) {
+        inputPolygonRadius.value = String(roundToFourDecimals(singlePolygonNode.radius));
+      }
+    }
+
+    if (isSingleStarSelected && singleStarNode) {
+      const isParamEditing = initialParametricShapeSnapshot !== null;
+
+      if (inputStarPoints && (!isParamEditing || (typeof document !== 'undefined' && document.activeElement !== inputStarPoints))) {
+        inputStarPoints.value = String(singleStarNode.points);
+      }
+
+      if (inputStarOuterRadius && (!isParamEditing || (typeof document !== 'undefined' && document.activeElement !== inputStarOuterRadius))) {
+        inputStarOuterRadius.value = String(roundToFourDecimals(singleStarNode.outerRadius));
+      }
+
+      if (inputStarInnerRadius && (!isParamEditing || (typeof document !== 'undefined' && document.activeElement !== inputStarInnerRadius))) {
+        inputStarInnerRadius.value = String(roundToFourDecimals(singleStarNode.innerRadius));
       }
     }
 
@@ -700,6 +797,14 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     if (selectStrokeJoin && (typeof document === 'undefined' || document.activeElement !== selectStrokeJoin)) {
       const activeJoin = firstShape ? firstShape.strokeLineJoin : defaultStyle?.strokeLineJoin;
       selectStrokeJoin.value = activeJoin ?? 'miter';
+    }
+
+    if (btnOutlineStroke) {
+      const canOutline = leafShapes.some(canOutlineStroke);
+      btnOutlineStroke.disabled = !canOutline;
+      btnOutlineStroke.setAttribute('aria-disabled', String(!canOutline));
+      btnOutlineStroke.style.opacity = canOutline ? '1' : '0.45';
+      btnOutlineStroke.style.pointerEvents = canOutline ? 'auto' : 'none';
     }
 
     const opacities = leafShapes.map((shape) => shape.opacity ?? 1);
@@ -857,6 +962,28 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
             ...(point.handleOut ? { handleOut: { x: mapX(point.handleOut.x), y: mapY(point.handleOut.y) } } : {}),
           })),
         };
+      } else if (shape.type === 'polygon') {
+        const radiusScale = Math.sqrt(scaleX * scaleY);
+        before = { ...positionBefore, radius: shape.radius, sides: shape.sides };
+        after = {
+          ...positionAfter,
+          radius: Math.max(1, roundToFourDecimals(shape.radius * radiusScale)),
+          sides: shape.sides,
+        };
+      } else if (shape.type === 'star') {
+        const radiusScale = Math.sqrt(scaleX * scaleY);
+        before = {
+          ...positionBefore,
+          outerRadius: shape.outerRadius,
+          innerRadius: shape.innerRadius,
+          starPoints: shape.points,
+        };
+        after = {
+          ...positionAfter,
+          outerRadius: Math.max(1, roundToFourDecimals(shape.outerRadius * radiusScale)),
+          innerRadius: Math.max(0.5, roundToFourDecimals(shape.innerRadius * radiusScale)),
+          starPoints: shape.points,
+        };
       } else {
         const fontSize = shape.fontSize ?? 16;
         before = {
@@ -949,8 +1076,10 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     if (isNaN(parsed) || parsed < 0) return;
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
-    if (rects.length === 0) return;
+    const cornerShapes = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
+      s.type === 'rectangle' || s.type === 'polygon' || s.type === 'star' || s.type === 'path'
+    );
+    if (cornerShapes.length === 0) return;
 
     if (!initialCornerRadiusSnapshots) {
       captureInitialCornerRadius();
@@ -958,7 +1087,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
 
     const targetRadius = Math.max(0, parsed);
     stateManager.updateShapesDimensions(
-      rects.map((r) => ({
+      cornerShapes.map((r) => ({
         id: r.id,
         dimensions: { cornerRadius: targetRadius },
       }))
@@ -970,8 +1099,10 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     const parsed = parseFloat(inputCornerRadius.value);
     const selectedNodes = stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
-    const rects = leafShapes.filter((s): s is Rectangle => s.type === 'rectangle');
-    if (rects.length === 0) {
+    const cornerShapes = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
+      s.type === 'rectangle' || s.type === 'polygon' || s.type === 'star' || s.type === 'path'
+    );
+    if (cornerShapes.length === 0) {
       initialCornerRadiusSnapshots = null;
       syncPropertiesPanel();
       return;
@@ -980,7 +1111,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     const targetRadius = isNaN(parsed) || parsed < 0 ? 0 : roundToFourDecimals(parsed);
     inputCornerRadius.value = String(targetRadius);
 
-    const entries: ShapeTransformEntry[] = rects.map((r) => {
+    const entries: ShapeTransformEntry[] = cornerShapes.map((r) => {
       const initialRadius = initialCornerRadiusSnapshots?.get(r.id) ?? r.cornerRadius ?? 0;
       return {
         id: r.id,
@@ -1847,6 +1978,191 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   inputTextContent?.addEventListener('change', onTextContentChange);
   inputTextContent?.addEventListener('blur', onTextContentChange);
 
+  // Polygon Sides
+  const onPolygonSidesFocus = () => captureInitialParametricShape();
+  const onPolygonSidesInput = () => {
+    if (!inputPolygonSides) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (!initialParametricShapeSnapshot) captureInitialParametricShape();
+      const parsed = parseInt(inputPolygonSides.value, 10);
+      if (!isNaN(parsed) && parsed >= 3) {
+        stateManager.updateShape<Polygon>(node.id, { sides: Math.min(100, parsed) });
+      }
+    }
+  };
+  const onPolygonSidesChange = () => {
+    if (!inputPolygonSides) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      const parsed = parseInt(inputPolygonSides.value, 10);
+      const after = isNaN(parsed) || parsed < 3 ? 3 : Math.min(100, parsed);
+      inputPolygonSides.value = String(after);
+      const before = initialParametricShapeSnapshot?.sides ?? node.sides ?? 5;
+      stateManager.updateShape<Polygon>(node.id, { sides: after });
+      if (before !== after) {
+        const cmd = new UpdateParametricShapeCommand(stateManager, node.id, { sides: before }, { sides: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialParametricShapeSnapshot = null;
+    }
+  };
+
+  // Polygon Radius
+  const onPolygonRadiusFocus = () => captureInitialParametricShape();
+  const onPolygonRadiusInput = () => {
+    if (!inputPolygonRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (!initialParametricShapeSnapshot) captureInitialParametricShape();
+      const parsed = parseFloat(inputPolygonRadius.value);
+      if (!isNaN(parsed) && parsed > 0) {
+        stateManager.updateShape<Polygon>(node.id, { radius: parsed });
+      }
+    }
+  };
+  const onPolygonRadiusChange = () => {
+    if (!inputPolygonRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      const parsed = parseFloat(inputPolygonRadius.value);
+      const after = isNaN(parsed) || parsed < 1 ? 10 : roundToFourDecimals(parsed);
+      inputPolygonRadius.value = String(after);
+      const before = initialParametricShapeSnapshot?.radius ?? node.radius ?? 50;
+      stateManager.updateShape<Polygon>(node.id, { radius: after });
+      if (before !== after) {
+        const cmd = new UpdateParametricShapeCommand(stateManager, node.id, { radius: before }, { radius: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialParametricShapeSnapshot = null;
+    }
+  };
+
+  // Star Points
+  const onStarPointsFocus = () => captureInitialParametricShape();
+  const onStarPointsInput = () => {
+    if (!inputStarPoints) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (!initialParametricShapeSnapshot) captureInitialParametricShape();
+      const parsed = parseInt(inputStarPoints.value, 10);
+      if (!isNaN(parsed) && parsed >= 3) {
+        stateManager.updateShape<Star>(node.id, { points: Math.min(100, parsed) });
+      }
+    }
+  };
+  const onStarPointsChange = () => {
+    if (!inputStarPoints) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      const parsed = parseInt(inputStarPoints.value, 10);
+      const after = isNaN(parsed) || parsed < 3 ? 3 : Math.min(100, parsed);
+      inputStarPoints.value = String(after);
+      const before = initialParametricShapeSnapshot?.points ?? node.points ?? 5;
+      stateManager.updateShape<Star>(node.id, { points: after });
+      if (before !== after) {
+        const cmd = new UpdateParametricShapeCommand(stateManager, node.id, { points: before }, { points: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialParametricShapeSnapshot = null;
+    }
+  };
+
+  // Star Outer Radius
+  const onStarOuterRadiusFocus = () => captureInitialParametricShape();
+  const onStarOuterRadiusInput = () => {
+    if (!inputStarOuterRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (!initialParametricShapeSnapshot) captureInitialParametricShape();
+      const parsed = parseFloat(inputStarOuterRadius.value);
+      if (!isNaN(parsed) && parsed > 0) {
+        stateManager.updateShape<Star>(node.id, { outerRadius: parsed });
+      }
+    }
+  };
+  const onStarOuterRadiusChange = () => {
+    if (!inputStarOuterRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      const parsed = parseFloat(inputStarOuterRadius.value);
+      const after = isNaN(parsed) || parsed < 1 ? 50 : roundToFourDecimals(parsed);
+      inputStarOuterRadius.value = String(after);
+      const before = initialParametricShapeSnapshot?.outerRadius ?? node.outerRadius ?? 50;
+      stateManager.updateShape<Star>(node.id, { outerRadius: after });
+      if (before !== after) {
+        const cmd = new UpdateParametricShapeCommand(stateManager, node.id, { outerRadius: before }, { outerRadius: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialParametricShapeSnapshot = null;
+    }
+  };
+
+  // Star Inner Radius
+  const onStarInnerRadiusFocus = () => captureInitialParametricShape();
+  const onStarInnerRadiusInput = () => {
+    if (!inputStarInnerRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (!initialParametricShapeSnapshot) captureInitialParametricShape();
+      const parsed = parseFloat(inputStarInnerRadius.value);
+      if (!isNaN(parsed) && parsed > 0) {
+        stateManager.updateShape<Star>(node.id, { innerRadius: parsed });
+      }
+    }
+  };
+  const onStarInnerRadiusChange = () => {
+    if (!inputStarInnerRadius) return;
+    const selectedNodes = stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      const parsed = parseFloat(inputStarInnerRadius.value);
+      const after = isNaN(parsed) || parsed < 1 ? 25 : roundToFourDecimals(parsed);
+      inputStarInnerRadius.value = String(after);
+      const before = initialParametricShapeSnapshot?.innerRadius ?? node.innerRadius ?? 25;
+      stateManager.updateShape<Star>(node.id, { innerRadius: after });
+      if (before !== after) {
+        const cmd = new UpdateParametricShapeCommand(stateManager, node.id, { innerRadius: before }, { innerRadius: after });
+        commandManager.recordCommand(cmd);
+      }
+      initialParametricShapeSnapshot = null;
+    }
+  };
+
+  inputPolygonSides?.addEventListener('focus', onPolygonSidesFocus);
+  inputPolygonSides?.addEventListener('input', onPolygonSidesInput);
+  inputPolygonSides?.addEventListener('change', onPolygonSidesChange);
+  inputPolygonSides?.addEventListener('blur', onPolygonSidesChange);
+
+  inputPolygonRadius?.addEventListener('focus', onPolygonRadiusFocus);
+  inputPolygonRadius?.addEventListener('input', onPolygonRadiusInput);
+  inputPolygonRadius?.addEventListener('change', onPolygonRadiusChange);
+  inputPolygonRadius?.addEventListener('blur', onPolygonRadiusChange);
+
+  inputStarPoints?.addEventListener('focus', onStarPointsFocus);
+  inputStarPoints?.addEventListener('input', onStarPointsInput);
+  inputStarPoints?.addEventListener('change', onStarPointsChange);
+  inputStarPoints?.addEventListener('blur', onStarPointsChange);
+
+  inputStarOuterRadius?.addEventListener('focus', onStarOuterRadiusFocus);
+  inputStarOuterRadius?.addEventListener('input', onStarOuterRadiusInput);
+  inputStarOuterRadius?.addEventListener('change', onStarOuterRadiusChange);
+  inputStarOuterRadius?.addEventListener('blur', onStarOuterRadiusChange);
+
+  inputStarInnerRadius?.addEventListener('focus', onStarInnerRadiusFocus);
+  inputStarInnerRadius?.addEventListener('input', onStarInnerRadiusInput);
+  inputStarInnerRadius?.addEventListener('change', onStarInnerRadiusChange);
+  inputStarInnerRadius?.addEventListener('blur', onStarInnerRadiusChange);
+
   selectFontFamily?.addEventListener('change', onFontFamilyChange);
   inputFontSize?.addEventListener('focus', onFontSizeFocus);
   inputFontSize?.addEventListener('input', onFontSizeInput);
@@ -2114,6 +2430,12 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   btnPointSymmetric?.addEventListener('click', onPointSymmetricClick);
   btnDeleteAnchor?.addEventListener('click', onDeleteAnchorClick);
 
+  const onOutlineStrokeClick = () => {
+    inputController.outlineStroke();
+    syncPropertiesPanel();
+  };
+  btnOutlineStroke?.addEventListener('click', onOutlineStrokeClick);
+
   const onCanvasClickOrPointerUp = () => {
     syncPropertiesPanel();
   };
@@ -2304,6 +2626,31 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputLetterSpacing?.removeEventListener('change', onLetterSpacingChange);
       inputLetterSpacing?.removeEventListener('blur', onLetterSpacingChange);
 
+      inputPolygonSides?.removeEventListener('focus', onPolygonSidesFocus);
+      inputPolygonSides?.removeEventListener('input', onPolygonSidesInput);
+      inputPolygonSides?.removeEventListener('change', onPolygonSidesChange);
+      inputPolygonSides?.removeEventListener('blur', onPolygonSidesChange);
+
+      inputPolygonRadius?.removeEventListener('focus', onPolygonRadiusFocus);
+      inputPolygonRadius?.removeEventListener('input', onPolygonRadiusInput);
+      inputPolygonRadius?.removeEventListener('change', onPolygonRadiusChange);
+      inputPolygonRadius?.removeEventListener('blur', onPolygonRadiusChange);
+
+      inputStarPoints?.removeEventListener('focus', onStarPointsFocus);
+      inputStarPoints?.removeEventListener('input', onStarPointsInput);
+      inputStarPoints?.removeEventListener('change', onStarPointsChange);
+      inputStarPoints?.removeEventListener('blur', onStarPointsChange);
+
+      inputStarOuterRadius?.removeEventListener('focus', onStarOuterRadiusFocus);
+      inputStarOuterRadius?.removeEventListener('input', onStarOuterRadiusInput);
+      inputStarOuterRadius?.removeEventListener('change', onStarOuterRadiusChange);
+      inputStarOuterRadius?.removeEventListener('blur', onStarOuterRadiusChange);
+
+      inputStarInnerRadius?.removeEventListener('focus', onStarInnerRadiusFocus);
+      inputStarInnerRadius?.removeEventListener('input', onStarInnerRadiusInput);
+      inputStarInnerRadius?.removeEventListener('change', onStarInnerRadiusChange);
+      inputStarInnerRadius?.removeEventListener('blur', onStarInnerRadiusChange);
+
       selectFontWeight?.removeEventListener('change', onFontWeightChange);
       selectFontStyle?.removeEventListener('change', onFontStyleChange);
 
@@ -2350,6 +2697,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       btnPointSmooth?.removeEventListener('click', onPointSmoothClick);
       btnPointSymmetric?.removeEventListener('click', onPointSymmetricClick);
       btnDeleteAnchor?.removeEventListener('click', onDeleteAnchorClick);
+      btnOutlineStroke?.removeEventListener('click', onOutlineStrokeClick);
       canvas?.removeEventListener('pointerup', onCanvasClickOrPointerUp);
       btnTogglePanel?.removeEventListener('click', onTogglePanelClick);
 

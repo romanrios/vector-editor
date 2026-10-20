@@ -28,8 +28,12 @@ import {
 } from '../../types/scene-graph.ts';
 import type { ToolHandler } from './ToolHandler.ts';
 import type { ToolMode } from '../InputController.ts';
+import {
+  getShapeCornerRadiusHandles,
+  calculateRadiusFromHandleDrag,
+} from '../../utils/cornerSmoothing.ts';
 
-export type DirectSelectTargetType = 'anchor' | 'handleIn' | 'handleOut';
+export type DirectSelectTargetType = 'anchor' | 'handleIn' | 'handleOut' | 'cornerRadius';
 
 export interface DirectSelectTarget {
   readonly pathId: string;
@@ -330,6 +334,30 @@ export class DirectSelectToolHandler implements ToolHandler {
       const { pathId, pointIndex, type } = this._draggedPointTarget;
 
       const pathNode = this.stateManager.findNode(pathId) as Path | null;
+
+      if (type === 'cornerRadius') {
+        const activeNode = pathNode ?? (this.stateManager.findNode(pathId) as Path | null);
+        if (activeNode) {
+          const crHandles = getShapeCornerRadiusHandles(activeNode, this.getViewportManager().zoom);
+          const crHandle = crHandles.find((h) => h.vertexIndex === pointIndex);
+          if (crHandle) {
+            const newRadius = calculateRadiusFromHandleDrag(crHandle, x, y);
+            const nextPoints = this._initialPathPoints.map((pt, idx) => {
+              if (idx !== pointIndex) return pt;
+              if (newRadius > 0) {
+                return { ...pt, cornerRadius: newRadius };
+              } else {
+                const { cornerRadius: _, ...rest } = pt;
+                return rest as PathPoint;
+              }
+            });
+            this.stateManager.updateShape<Path>(pathId, { points: nextPoints });
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+        }
+      }
+
       if (pathNode && pathNode.rotation) {
         const rad = (-pathNode.rotation * Math.PI) / 180;
         const cos = Math.cos(rad);
@@ -534,6 +562,15 @@ export class DirectSelectToolHandler implements ToolHandler {
       }
     }
 
+    // 1b. Evaluar tiradores de radio de esquina (Corner Radius Handles)
+    const crHandles = getShapeCornerRadiusHandles(path, zoom);
+    for (const h of crHandles) {
+      const crAABB = this.createHandleAABB(h.x, h.y, handleSize);
+      if (isPointInAABB(testX, testY, crAABB)) {
+        return { index: h.vertexIndex, type: 'cornerRadius' };
+      }
+    }
+
     // 2. Evaluar colisiones con los vértices / puntos de ancla principales
     for (let i = 0; i < path.points.length; i++) {
       const pt = path.points[i];
@@ -714,6 +751,36 @@ export class DirectSelectToolHandler implements ToolHandler {
       targetType
     );
     this.commandManager.executeCommand(command);
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Establece el radio de esquina (cornerRadius) para las anclas seleccionadas (o todas si ninguna está seleccionada).
+   */
+  public setSelectedAnchorsCornerRadius(radius?: number): boolean {
+    const selection = this.stateManager.getSelection();
+    const pathId = this._anchorsPathId ?? (selection.length === 1 ? selection[0] : null);
+    if (!pathId) return false;
+    const pathNode = this.stateManager.findNode(pathId) as Path | null;
+    if (!pathNode || pathNode.type !== 'path') return false;
+
+    const targetIndices = this._selectedAnchors.size > 0
+      ? Array.from(this._selectedAnchors)
+      : pathNode.points.map((_, i) => i);
+
+    const initialPoints = pathNode.points;
+    const ok = this.stateManager.setPathPointCornerRadius(pathId, targetIndices, radius);
+    if (!ok) return false;
+
+    const updatedNode = this.stateManager.findNode(pathId) as Path;
+    const command = new PointCommand(
+      this.stateManager,
+      pathId,
+      initialPoints,
+      updatedNode.points
+    );
+    this.commandManager.recordCommand(command);
     this.stateManager.markDirty();
     return true;
   }

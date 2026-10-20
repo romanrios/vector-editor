@@ -11,6 +11,8 @@ import type {
   SelectableNode,
   Shape,
   Rectangle,
+  Polygon,
+  Star,
   Text,
   AssetData,
   FillType,
@@ -1493,6 +1495,8 @@ export class StateManager {
             const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
             const nextPoints = dimensions.points !== undefined ? dimensions.points : child.points;
             const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+            const hasCornerRadius = 'cornerRadius' in dimensions;
+            const nextCornerRadius = hasCornerRadius ? dimensions.cornerRadius : child.cornerRadius;
 
             const pointsDiffer = dimensions.points !== undefined && dimensions.points !== child.points;
 
@@ -1500,16 +1504,27 @@ export class StateManager {
               nextX !== child.x ||
               nextY !== child.y ||
               nextRot !== child.rotation ||
-              pointsDiffer
+              pointsDiffer ||
+              (hasCornerRadius && nextCornerRadius !== child.cornerRadius)
             ) {
               shapeChanged = true;
-              newShape = {
+              const pathBase: Path = {
                 ...child,
                 x: nextX,
                 y: nextY,
                 points: nextPoints,
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
               };
+              if (hasCornerRadius) {
+                if (nextCornerRadius !== undefined) {
+                  newShape = { ...pathBase, cornerRadius: nextCornerRadius };
+                } else {
+                  const { cornerRadius: _, ...rest } = pathBase;
+                  newShape = rest as Path;
+                }
+              } else {
+                newShape = pathBase;
+              }
             }
           } else if (child.type === 'text') {
             const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
@@ -1574,6 +1589,114 @@ export class StateManager {
                 height: nextH,
                 ...(nextRot !== undefined ? { rotation: nextRot } : {}),
               };
+            }
+          } else if (child.type === 'polygon') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
+            const nextRadius =
+              dimensions.radius !== undefined
+                ? dimensions.radius
+                : dimensions.width !== undefined
+                ? dimensions.width / 2
+                : dimensions.radiusX !== undefined
+                ? dimensions.radiusX
+                : child.radius;
+            const nextSides = dimensions.sides !== undefined ? dimensions.sides : child.sides;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+            const hasCornerRadius = 'cornerRadius' in dimensions;
+            const nextCornerRadius = hasCornerRadius ? dimensions.cornerRadius : child.cornerRadius;
+
+            if (
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextRadius !== child.radius ||
+              nextSides !== child.sides ||
+              nextRot !== child.rotation ||
+              (hasCornerRadius && nextCornerRadius !== child.cornerRadius)
+            ) {
+              shapeChanged = true;
+              const polyBase: Polygon = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                radius: nextRadius,
+                sides: nextSides,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
+              if (hasCornerRadius) {
+                if (nextCornerRadius !== undefined) {
+                  newShape = { ...polyBase, cornerRadius: nextCornerRadius };
+                } else {
+                  const { cornerRadius: _, ...rest } = polyBase;
+                  newShape = rest as Polygon;
+                }
+              } else {
+                newShape = polyBase;
+              }
+            }
+          } else if (child.type === 'star') {
+            const nextX = dimensions.x !== undefined ? dimensions.x : child.x;
+            const nextY = dimensions.y !== undefined ? dimensions.y : child.y;
+            const nextOuter =
+              dimensions.outerRadius !== undefined
+                ? dimensions.outerRadius
+                : dimensions.width !== undefined
+                ? dimensions.width / 2
+                : dimensions.radiusX !== undefined
+                ? dimensions.radiusX
+                : child.outerRadius;
+            const ratio = child.outerRadius > 0 ? child.innerRadius / child.outerRadius : 0.5;
+            const nextInner =
+              dimensions.innerRadius !== undefined
+                ? dimensions.innerRadius
+                : (dimensions.outerRadius !== undefined || dimensions.width !== undefined || dimensions.radiusX !== undefined)
+                ? nextOuter * ratio
+                : child.innerRadius;
+            const nextPoints = dimensions.starPoints !== undefined ? dimensions.starPoints : child.points;
+            const nextRot = dimensions.rotation !== undefined ? dimensions.rotation : child.rotation;
+            const hasCornerRadius = 'cornerRadius' in dimensions;
+            const nextCornerRadius = hasCornerRadius ? dimensions.cornerRadius : child.cornerRadius;
+            const hasInnerCornerRadius = 'innerCornerRadius' in dimensions;
+            const nextInnerCornerRadius = hasInnerCornerRadius ? dimensions.innerCornerRadius : child.innerCornerRadius;
+
+            if (
+              nextX !== child.x ||
+              nextY !== child.y ||
+              nextOuter !== child.outerRadius ||
+              nextInner !== child.innerRadius ||
+              nextPoints !== child.points ||
+              nextRot !== child.rotation ||
+              (hasCornerRadius && nextCornerRadius !== child.cornerRadius) ||
+              (hasInnerCornerRadius && nextInnerCornerRadius !== child.innerCornerRadius)
+            ) {
+              shapeChanged = true;
+              const starBase: Star = {
+                ...child,
+                x: nextX,
+                y: nextY,
+                outerRadius: nextOuter,
+                innerRadius: nextInner,
+                points: nextPoints,
+                ...(nextRot !== undefined ? { rotation: nextRot } : {}),
+              };
+              let sTemp = starBase;
+              if (hasCornerRadius) {
+                if (nextCornerRadius !== undefined) {
+                  sTemp = { ...sTemp, cornerRadius: nextCornerRadius };
+                } else {
+                  const { cornerRadius: _, ...rest } = sTemp;
+                  sTemp = rest as Star;
+                }
+              }
+              if (hasInnerCornerRadius) {
+                if (nextInnerCornerRadius !== undefined) {
+                  sTemp = { ...sTemp, innerCornerRadius: nextInnerCornerRadius };
+                } else {
+                  const { innerCornerRadius: _, ...rest } = sTemp;
+                  sTemp = rest as Star;
+                }
+              }
+              newShape = sTemp;
             }
           }
 
@@ -1897,6 +2020,44 @@ export class StateManager {
       const next = path.closed ? path.points[(i + 1) % n] : (i < n - 1 ? path.points[i + 1] : undefined);
       return applyPointType(pt, pointType, prev, next);
     });
+    return this.updateShape<Path>(pathId, { points: nextPoints });
+  }
+
+  /**
+   * Actualiza el radio de redondeo (cornerRadius) de uno o varios puntos de ancla de un trazado.
+   */
+  public setPathPointCornerRadius(
+    pathId: string,
+    indices: readonly number[],
+    cornerRadius?: number
+  ): boolean {
+    const target = this.findNode(pathId);
+    if (!target || target.type !== 'path') {
+      return false;
+    }
+    const path = target as Path;
+    const indicesSet = new Set(indices);
+    const radiusVal = cornerRadius !== undefined && cornerRadius > 0 ? cornerRadius : undefined;
+    let anyChanged = false;
+    const nextPoints = path.points.map((pt, i) => {
+      if (!indicesSet.has(i)) {
+        return pt;
+      }
+      if (pt.cornerRadius === radiusVal) {
+        return pt;
+      }
+      anyChanged = true;
+      const updated: PathPoint = { ...pt };
+      if (radiusVal !== undefined) {
+        return { ...updated, cornerRadius: radiusVal };
+      } else {
+        const { cornerRadius: _, ...withoutCR } = updated;
+        return withoutCR as PathPoint;
+      }
+    });
+    if (!anyChanged) {
+      return false;
+    }
     return this.updateShape<Path>(pathId, { points: nextPoints });
   }
 

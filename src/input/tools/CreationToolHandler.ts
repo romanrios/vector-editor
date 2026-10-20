@@ -8,6 +8,8 @@ import {
   calculateSnapping,
   getShapeAABB,
   normalizeShapeBounds,
+  getPolygonVertices,
+  getStarVertices,
 } from '../../utils/geometry.ts';
 import {
   isGroup,
@@ -16,11 +18,15 @@ import {
   type Ellipse,
   type LayerChildNode,
   type Rectangle,
+  type Polygon,
+  type Star,
   type Shape,
   type Vector2D,
 } from '../../types/scene-graph.ts';
 import type { ToolHandler } from './ToolHandler.ts';
 import type { ToolMode, ShapePreview } from '../InputController.ts';
+
+export type CreationToolMode = 'rectangle' | 'ellipse' | 'polygon' | 'star';
 
 export class CreationToolHandler implements ToolHandler {
   private readonly stateManager: StateManager;
@@ -38,6 +44,8 @@ export class CreationToolHandler implements ToolHandler {
   private _shapePreview: ShapePreview | null = null;
   public rectangleCounter: number = 0;
   public ellipseCounter: number = 0;
+  public polygonCounter: number = 0;
+  public starCounter: number = 0;
 
   constructor(
     stateManager: StateManager,
@@ -70,12 +78,12 @@ export class CreationToolHandler implements ToolHandler {
   }
 
   public onDeactivate(nextTool?: ToolMode): void {
-    if (nextTool !== 'rectangle' && nextTool !== 'ellipse') {
+    if (nextTool !== 'rectangle' && nextTool !== 'ellipse' && nextTool !== 'polygon' && nextTool !== 'star') {
       this.cancelCreation();
     }
   }
 
-  public onMouseDown(event: MouseEvent, coords: Vector2D, tool: 'rectangle' | 'ellipse' = 'rectangle'): void {
+  public onMouseDown(event: MouseEvent, coords: Vector2D, tool: CreationToolMode = 'rectangle'): void {
     this._isCreatingShape = true;
     this._creationStart = coords;
     this._creationCurrent = coords;
@@ -84,7 +92,7 @@ export class CreationToolHandler implements ToolHandler {
     this.stateManager.markDirty();
   }
 
-  public onMouseMove(event: MouseEvent, coords: Vector2D, tool: 'rectangle' | 'ellipse' = 'rectangle'): void {
+  public onMouseMove(event: MouseEvent, coords: Vector2D, tool: CreationToolMode = 'rectangle'): void {
     if (!this._isCreatingShape || !this._creationStart) return;
 
     this._creationCurrent = coords;
@@ -93,7 +101,7 @@ export class CreationToolHandler implements ToolHandler {
     this.stateManager.markDirty();
   }
 
-  public onMouseUp(event: MouseEvent, coords: Vector2D, tool: 'rectangle' | 'ellipse' = 'rectangle'): void {
+  public onMouseUp(event: MouseEvent, coords: Vector2D, tool: CreationToolMode = 'rectangle'): void {
     if (!this._isCreatingShape) return;
 
     const start = this._creationStart ?? coords;
@@ -114,11 +122,12 @@ export class CreationToolHandler implements ToolHandler {
       return;
     }
 
-    const lock = Boolean(event.shiftKey) || this._creationShiftKey;
+    const lock = (tool === 'polygon' || tool === 'star') ? true : (Boolean(event.shiftKey) || this._creationShiftKey);
+    const snapTool = (tool === 'polygon' || tool === 'star') ? 'ellipse' : tool;
     const snappedCurrent = this.snapCreationPoint(
       start,
       coords,
-      tool,
+      snapTool,
       lock
     );
 
@@ -150,7 +159,7 @@ export class CreationToolHandler implements ToolHandler {
         rotation: 0,
       };
       newShape = rectShape;
-    } else {
+    } else if (tool === 'ellipse') {
       const bounds = normalizeShapeBounds(
         start,
         snappedCurrent,
@@ -175,6 +184,60 @@ export class CreationToolHandler implements ToolHandler {
         rotation: 0,
       };
       newShape = ellipseShape;
+    } else if (tool === 'polygon') {
+      const bounds = normalizeShapeBounds(
+        start,
+        snappedCurrent,
+        'ellipse',
+        true
+      );
+      this.polygonCounter++;
+      const radius = Math.max(2, Math.min(bounds.width, bounds.height) / 2);
+      const polyShape: Polygon = {
+        id: `polygon-${Date.now()}-${this.polygonCounter}`,
+        type: 'polygon',
+        name: `Polígono ${this.polygonCounter}`,
+        x: bounds.x,
+        y: bounds.y,
+        radius,
+        sides: 5,
+        fill: style.fill,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+        visible: true,
+        locked: false,
+        rotation: 0,
+      };
+      newShape = polyShape;
+    } else {
+      const bounds = normalizeShapeBounds(
+        start,
+        snappedCurrent,
+        'ellipse',
+        true
+      );
+      this.starCounter++;
+      const outerRadius = Math.max(2, Math.min(bounds.width, bounds.height) / 2);
+      const innerRadius = Math.max(1, outerRadius * 0.5);
+      const starShape: Star = {
+        id: `star-${Date.now()}-${this.starCounter}`,
+        type: 'star',
+        name: `Estrella ${this.starCounter}`,
+        x: bounds.x,
+        y: bounds.y,
+        points: 5,
+        outerRadius,
+        innerRadius,
+        fill: style.fill,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+        visible: true,
+        locked: false,
+        rotation: 0,
+      };
+      newShape = starShape;
     }
 
     try {
@@ -199,34 +262,87 @@ export class CreationToolHandler implements ToolHandler {
     }
   }
 
-  public updateShapePreview(tool: 'rectangle' | 'ellipse', shiftKey?: boolean): void {
+  public updateShapePreview(tool: CreationToolMode, shiftKey?: boolean): void {
     if (!this._creationStart || !this._creationCurrent) {
       this._shapePreview = null;
       return;
     }
 
-    const lock = shiftKey ?? this._creationShiftKey;
+    const lock = (tool === 'polygon' || tool === 'star') ? true : (shiftKey ?? this._creationShiftKey);
+    const snapTool = (tool === 'polygon' || tool === 'star') ? 'ellipse' : tool;
     const snappedCurrent = this.snapCreationPoint(
       this._creationStart,
       this._creationCurrent,
-      tool,
+      snapTool,
       lock
     );
     const bounds = normalizeShapeBounds(
       this._creationStart,
       snappedCurrent,
-      tool,
+      snapTool,
       lock
     );
 
     const style = this.stateManager.getDrawingStyle();
-    this._shapePreview = {
-      ...bounds,
-      fill: style.fill,
-      stroke: style.stroke,
-      strokeWidth: style.strokeWidth,
-      opacity: style.opacity,
-    };
+    if (tool === 'polygon') {
+      const radius = Math.max(2, Math.min(bounds.width, bounds.height) / 2);
+      const points = getPolygonVertices({
+        id: 'preview',
+        type: 'polygon',
+        name: '',
+        x: bounds.x,
+        y: bounds.y,
+        radius,
+        sides: 5,
+        rotation: 0,
+      });
+      this._shapePreview = {
+        type: 'polygon',
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        points,
+        fill: style.fill,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+      };
+    } else if (tool === 'star') {
+      const outerRadius = Math.max(2, Math.min(bounds.width, bounds.height) / 2);
+      const innerRadius = Math.max(1, outerRadius * 0.5);
+      const points = getStarVertices({
+        id: 'preview',
+        type: 'star',
+        name: '',
+        x: bounds.x,
+        y: bounds.y,
+        points: 5,
+        outerRadius,
+        innerRadius,
+        rotation: 0,
+      });
+      this._shapePreview = {
+        type: 'star',
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        points,
+        fill: style.fill,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+      };
+    } else {
+      this._shapePreview = {
+        ...bounds,
+        fill: style.fill,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+      };
+    }
   }
 
   public calculateAABBSnap(

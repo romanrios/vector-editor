@@ -1,7 +1,7 @@
 /**
  * Tipos de nodos admitidos en el Scene Graph
  */
-export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path' | 'text' | 'image';
+export type NodeType = 'document' | 'layer' | 'group' | 'rectangle' | 'ellipse' | 'path' | 'text' | 'image' | 'polygon' | 'star';
 
 /**
  * Punto o vector bidimensional
@@ -30,6 +30,7 @@ export interface PathPoint {
   readonly pointType?: PathPointType;
   readonly moveTo?: boolean;
   readonly closeSubpath?: boolean;
+  readonly cornerRadius?: number;
 }
 
 /**
@@ -92,6 +93,7 @@ export interface Path extends BaseNode {
   readonly rotation?: number;
   readonly opacity?: number;
   readonly fillRule?: 'nonzero' | 'evenodd';
+  readonly cornerRadius?: number;
 }
 
 /**
@@ -234,9 +236,45 @@ export interface ImageNode extends BaseNode {
 }
 
 /**
+ * Propiedades geométricas y visuales para nodos de tipo Polygon (polígono regular)
+ */
+export interface Polygon extends BaseNode {
+  readonly type: 'polygon';
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+  readonly sides: number;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
+  readonly strokeWidth?: number;
+  readonly rotation?: number;
+  readonly opacity?: number;
+  readonly cornerRadius?: number;
+}
+
+/**
+ * Propiedades geométricas y visuales para nodos de tipo Star (estrella regular)
+ */
+export interface Star extends BaseNode {
+  readonly type: 'star';
+  readonly x: number;
+  readonly y: number;
+  readonly points: number;
+  readonly outerRadius: number;
+  readonly innerRadius: number;
+  readonly fill?: FillType;
+  readonly stroke?: FillType;
+  readonly strokeWidth?: number;
+  readonly rotation?: number;
+  readonly opacity?: number;
+  readonly cornerRadius?: number;
+  readonly innerCornerRadius?: number;
+}
+
+/**
  * Tipo discriminado para cualquier figura (Shape)
  */
-export type Shape = Rectangle | Ellipse | Path | Text | ImageNode;
+export type Shape = Rectangle | Ellipse | Path | Text | ImageNode | Polygon | Star;
 
 /**
  * Nodo contenedor Group (grupo), que alberga una colección de figuras y/o subgrupos
@@ -245,6 +283,8 @@ export type Shape = Rectangle | Ellipse | Path | Text | ImageNode;
 export interface Group extends BaseNode {
   readonly type: 'group';
   readonly opacity?: number;
+  readonly isClipMask?: boolean;
+  readonly clipChildId?: string;
   readonly children: readonly LayerChildNode[];
 }
 
@@ -302,6 +342,8 @@ export type RectangleNode = Rectangle;
 export type EllipseNode = Ellipse;
 export type PathNode = Path;
 export type TextNode = Text;
+export type PolygonNode = Polygon;
+export type StarNode = Star;
 
 /**
  * Funciones de guardia de tipos (Type Guards)
@@ -318,13 +360,19 @@ export function isGroup(node: SceneNode): node is Group {
   return node.type === 'group';
 }
 
+export function isClipMaskGroup(node: SceneNode): node is Group & { isClipMask: true } {
+  return isGroup(node) && node.isClipMask === true;
+}
+
 export function isShape(node: SceneNode): node is Shape {
   return (
     node.type === 'rectangle' ||
     node.type === 'ellipse' ||
     node.type === 'path' ||
     node.type === 'text' ||
-    node.type === 'image'
+    node.type === 'image' ||
+    node.type === 'polygon' ||
+    node.type === 'star'
   );
 }
 
@@ -350,6 +398,14 @@ export function isText(node: SceneNode): node is Text {
 
 export function isImage(node: SceneNode): node is ImageNode {
   return node.type === 'image';
+}
+
+export function isPolygon(node: SceneNode): node is Polygon {
+  return node.type === 'polygon';
+}
+
+export function isStar(node: SceneNode): node is Star {
+  return node.type === 'star';
 }
 
 export function isGradient(val: unknown): val is Gradient {

@@ -11,11 +11,14 @@ import {
   type Layer,
   type LayerChildNode,
   type Path,
+  type PathPoint,
   type Rectangle,
   type SelectableNode,
   type Shape,
   type Text,
   type ImageNode,
+  type Polygon,
+  type Star,
   type Vector2D,
   type Gradient,
 } from '../types/scene-graph.ts';
@@ -32,12 +35,21 @@ import {
   getShapeAABB,
   getVisiblePathHandles,
   getPointType,
+  getPolygonBaseVertices,
+  getStarBaseVertices,
+  traceShapeClip,
 } from '../utils/geometry.ts';
 import type { ShapePreview } from '../input/InputController.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 import { isNonePaint } from '../utils/color.ts';
 import { createCanvasGradient, gradientToWorldPoint } from '../utils/gradient.ts';
+import {
+  getPolygonPathPoints,
+  getStarPathPoints,
+  smoothPathPoints,
+  getShapeCornerRadiusHandles,
+} from '../utils/cornerSmoothing.ts';
 
 export interface TextEditRenderState {
   textId: string;
@@ -450,6 +462,24 @@ export class RenderEngine {
       this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
     }
 
+    if (group.isClipMask === true && group.children.length > 0) {
+      const maskChild = group.clipChildId
+        ? group.children.find((c) => c.id === group.clipChildId)
+        : group.children[group.children.length - 1];
+
+      if (maskChild && isShape(maskChild)) {
+        traceShapeClip(this.ctx, maskChild);
+        for (const child of group.children) {
+          if (child.id === maskChild.id) {
+            continue;
+          }
+          this.renderChildNode(child, zoom);
+        }
+        this.ctx.restore();
+        return;
+      }
+    }
+
     for (const child of group.children) {
       this.renderChildNode(child, zoom);
     }
@@ -477,6 +507,10 @@ export class RenderEngine {
       this.renderText(shape);
     } else if (shape.type === 'image') {
       this.renderImage(shape);
+    } else if (shape.type === 'polygon') {
+      this.renderPolygon(shape);
+    } else if (shape.type === 'star') {
+      this.renderStar(shape);
     }
 
     this.ctx.restore();
@@ -702,6 +736,145 @@ export class RenderEngine {
   }
 
   /**
+   * Dibuja un nodo Polygon con soporte para rotación, lados y radio.
+   */
+  private renderPolygon(polygon: Polygon): void {
+    this.ctx.save();
+
+    if (polygon.rotation) {
+      this.ctx.translate(polygon.x, polygon.y);
+      this.ctx.rotate((polygon.rotation * Math.PI) / 180);
+      this.ctx.translate(-polygon.x, -polygon.y);
+    }
+
+    const hasCornerRadius = Boolean(polygon.cornerRadius && polygon.cornerRadius > 0);
+    this.ctx.beginPath();
+    if (hasCornerRadius) {
+      const smoothedPts = getPolygonPathPoints({ ...polygon, rotation: 0 });
+      this.drawSmoothedPoints(smoothedPts);
+    } else {
+      const verts = getPolygonBaseVertices(polygon);
+      if (verts.length > 0) {
+        this.ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) {
+          this.ctx.lineTo(verts[i].x, verts[i].y);
+        }
+        this.ctx.closePath();
+      }
+    }
+
+    const baseAABB = {
+      minX: polygon.x - polygon.radius,
+      minY: polygon.y - polygon.radius,
+      maxX: polygon.x + polygon.radius,
+      maxY: polygon.y + polygon.radius,
+      width: polygon.radius * 2,
+      height: polygon.radius * 2,
+    };
+
+    if (!isNonePaint(polygon.fill)) {
+      if (isGradient(polygon.fill)) {
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, polygon.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = polygon.fill!;
+      }
+      this.ctx.fill();
+    }
+
+    if (!isNonePaint(polygon.stroke) && polygon.strokeWidth && polygon.strokeWidth > 0) {
+      this.ctx.lineWidth = polygon.strokeWidth;
+      if (polygon.strokeDashArray && polygon.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...polygon.strokeDashArray]);
+      }
+      if (polygon.strokeLineCap) {
+        this.ctx.lineCap = polygon.strokeLineCap;
+      }
+      if (polygon.strokeLineJoin) {
+        this.ctx.lineJoin = polygon.strokeLineJoin;
+      }
+      if (isGradient(polygon.stroke)) {
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, polygon.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = polygon.stroke!;
+      }
+      this.ctx.stroke();
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja un nodo Star con soporte para rotación, puntas y radios exterior/interior.
+   */
+  private renderStar(star: Star): void {
+    this.ctx.save();
+
+    if (star.rotation) {
+      this.ctx.translate(star.x, star.y);
+      this.ctx.rotate((star.rotation * Math.PI) / 180);
+      this.ctx.translate(-star.x, -star.y);
+    }
+
+    const hasCornerRadius = Boolean(
+      (star.cornerRadius && star.cornerRadius > 0) ||
+      (star.innerCornerRadius && star.innerCornerRadius > 0)
+    );
+    this.ctx.beginPath();
+    if (hasCornerRadius) {
+      const smoothedPts = getStarPathPoints({ ...star, rotation: 0 });
+      this.drawSmoothedPoints(smoothedPts);
+    } else {
+      const verts = getStarBaseVertices(star);
+      if (verts.length > 0) {
+        this.ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) {
+          this.ctx.lineTo(verts[i].x, verts[i].y);
+        }
+        this.ctx.closePath();
+      }
+    }
+
+    const baseAABB = {
+      minX: star.x - star.outerRadius,
+      minY: star.y - star.outerRadius,
+      maxX: star.x + star.outerRadius,
+      maxY: star.y + star.outerRadius,
+      width: star.outerRadius * 2,
+      height: star.outerRadius * 2,
+    };
+
+    if (!isNonePaint(star.fill)) {
+      if (isGradient(star.fill)) {
+        this.ctx.fillStyle = createCanvasGradient(this.ctx, star.fill, baseAABB);
+      } else {
+        this.ctx.fillStyle = star.fill!;
+      }
+      this.ctx.fill();
+    }
+
+    if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0) {
+      this.ctx.lineWidth = star.strokeWidth;
+      if (star.strokeDashArray && star.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
+        this.ctx.setLineDash([...star.strokeDashArray]);
+      }
+      if (star.strokeLineCap) {
+        this.ctx.lineCap = star.strokeLineCap;
+      }
+      if (star.strokeLineJoin) {
+        this.ctx.lineJoin = star.strokeLineJoin;
+      }
+      if (isGradient(star.stroke)) {
+        this.ctx.strokeStyle = createCanvasGradient(this.ctx, star.stroke, baseAABB);
+      } else {
+        this.ctx.strokeStyle = star.stroke!;
+      }
+      this.ctx.stroke();
+    }
+
+    this.ctx.restore();
+  }
+
+  /**
    * Dibuja la caja delimitadora (bounding box) y los manejadores de selección.
    * - Con una sola figura: dibuja la caja OBB con manejadores de esquina y rotación.
    * - Con un solo grupo: dibuja la caja delimitadora AABB de grosor constante, SIN tiradores.
@@ -906,6 +1079,20 @@ export class RenderEngine {
       baseHeight = baseAABB.height;
       cx = (baseAABB.minX + baseAABB.maxX) / 2;
       cy = (baseAABB.minY + baseAABB.maxY) / 2;
+    } else if (shape.type === 'polygon') {
+      baseX = shape.x - shape.radius;
+      baseY = shape.y - shape.radius;
+      baseWidth = shape.radius * 2;
+      baseHeight = shape.radius * 2;
+      cx = shape.x;
+      cy = shape.y;
+    } else if (shape.type === 'star') {
+      baseX = shape.x - shape.outerRadius;
+      baseY = shape.y - shape.outerRadius;
+      baseWidth = shape.outerRadius * 2;
+      baseHeight = shape.outerRadius * 2;
+      cx = shape.x;
+      cy = shape.y;
     }
 
     this.ctx.save();
@@ -975,6 +1162,20 @@ export class RenderEngine {
       baseY = baseAABB.minY;
       baseWidth = baseAABB.width;
       baseHeight = baseAABB.height;
+      cx = shape.x;
+      cy = shape.y;
+    } else if (shape.type === 'polygon') {
+      baseX = shape.x - shape.radius;
+      baseY = shape.y - shape.radius;
+      baseWidth = shape.radius * 2;
+      baseHeight = shape.radius * 2;
+      cx = shape.x;
+      cy = shape.y;
+    } else if (shape.type === 'star') {
+      baseX = shape.x - shape.outerRadius;
+      baseY = shape.y - shape.outerRadius;
+      baseWidth = shape.outerRadius * 2;
+      baseHeight = shape.outerRadius * 2;
       cx = shape.x;
       cy = shape.y;
     }
@@ -1068,6 +1269,9 @@ export class RenderEngine {
     this.ctx.stroke();
 
     this.ctx.restore();
+
+    // 5. Tiradores de radio de esquina para figuras compatibles (Rectangle, Polygon, Star, Path)
+    this.renderCornerRadiusHandlesOverlay(shape, zoom);
   }
 
   /**
@@ -1226,7 +1430,13 @@ export class RenderEngine {
       this.ctx.translate(-cx, -cy);
     }
 
-    const points = path.points;
+    const hasCornerRadius = Boolean(
+      (path.cornerRadius && path.cornerRadius > 0) ||
+      path.points.some((p) => p.cornerRadius && p.cornerRadius > 0)
+    );
+    const points = hasCornerRadius
+      ? smoothPathPoints(path.points, Boolean(path.closed), path.cornerRadius)
+      : path.points;
     this.ctx.beginPath();
     let subpathStartIdx = 0;
 
@@ -1683,7 +1893,81 @@ export class RenderEngine {
       }
     }
 
+    // 5. Tiradores de radio de esquina sobre el trazado en edición
+    this.renderCornerRadiusHandlesOverlay(path, zoom);
+
     this.ctx.restore();
+  }
+
+  /**
+   * Dibuja los tiradores circulares de radio de esquina para una figura seleccionada.
+   */
+  private renderCornerRadiusHandlesOverlay(shape: Shape, zoom: number): void {
+    const handles = getShapeCornerRadiusHandles(shape, zoom);
+    if (!handles || handles.length === 0) return;
+
+    const handleRadius = 4 / zoom;
+    const dotRadius = 1.5 / zoom;
+
+    this.ctx.save();
+    for (const h of handles) {
+      this.ctx.beginPath();
+      if (typeof this.ctx.arc === 'function') {
+        this.ctx.arc(h.x, h.y, handleRadius, 0, Math.PI * 2);
+      } else if (typeof this.ctx.ellipse === 'function') {
+        this.ctx.ellipse(h.x, h.y, handleRadius, handleRadius, 0, 0, Math.PI * 2);
+      } else {
+        this.ctx.rect(h.x - handleRadius, h.y - handleRadius, handleRadius * 2, handleRadius * 2);
+      }
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fill();
+      this.ctx.strokeStyle = '#0284c7';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.stroke();
+
+      this.ctx.beginPath();
+      if (typeof this.ctx.arc === 'function') {
+        this.ctx.arc(h.x, h.y, dotRadius, 0, Math.PI * 2);
+      } else if (typeof this.ctx.ellipse === 'function') {
+        this.ctx.ellipse(h.x, h.y, dotRadius, dotRadius, 0, 0, Math.PI * 2);
+      } else {
+        this.ctx.rect(h.x - dotRadius, h.y - dotRadius, dotRadius * 2, dotRadius * 2);
+      }
+      this.ctx.fillStyle = '#0284c7';
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+  }
+
+  /**
+   * Traza en el contexto un array de puntos suavizados que pueden contener segmentos rectos y cúbicos.
+   */
+  private drawSmoothedPoints(points: readonly PathPoint[]): void {
+    if (points.length === 0) return;
+    this.ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      if (prev.handleOut || curr.handleIn) {
+        const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
+        const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
+        const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
+        const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
+        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+      } else {
+        this.ctx.lineTo(curr.x, curr.y);
+      }
+    }
+    const last = points[points.length - 1];
+    const first = points[0];
+    if (last.handleOut || first.handleIn) {
+      const cp1x = last.handleOut ? last.handleOut.x : last.x;
+      const cp1y = last.handleOut ? last.handleOut.y : last.y;
+      const cp2x = first.handleIn ? first.handleIn.x : first.x;
+      const cp2y = first.handleIn ? first.handleIn.y : first.y;
+      this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, first.x, first.y);
+    }
+    this.ctx.closePath();
   }
 
   /**
@@ -1746,6 +2030,12 @@ export class RenderEngine {
       for (let i = 1; i < preview.points.length; i++) {
         this.ctx.lineTo(preview.points[i].x, preview.points[i].y);
       }
+    } else if ((preview.type === 'polygon' || preview.type === 'star') && preview.points && preview.points.length > 0) {
+      this.ctx.moveTo(preview.points[0].x, preview.points[0].y);
+      for (let i = 1; i < preview.points.length; i++) {
+        this.ctx.lineTo(preview.points[i].x, preview.points[i].y);
+      }
+      this.ctx.closePath();
     }
 
     if (preview.type !== 'line' && preview.type !== 'pencil' && !isNonePaint(preview.fill)) {

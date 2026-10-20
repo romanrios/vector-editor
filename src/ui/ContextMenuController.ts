@@ -6,6 +6,7 @@ import { BatchCommand } from '../commands/BatchCommand.ts';
 import { isGroup, type SelectableNode } from '../types/scene-graph.ts';
 import type { AlignmentMode } from '../utils/geometry.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
+import { canOutlineStroke } from '../utils/strokeToPath.ts';
 
 export interface ContextMenuControllerOptions {
   canvas?: HTMLCanvasElement | null;
@@ -45,6 +46,9 @@ export function setupContextMenuBindings(
   const ctxItemSendToBack = document.querySelector<HTMLButtonElement>('#ctx-item-send-to-back');
   const ctxItemGroup = document.querySelector<HTMLButtonElement>('#ctx-item-group');
   const ctxItemUngroup = document.querySelector<HTMLButtonElement>('#ctx-item-ungroup');
+  const ctxItemMakeClipMask = document.querySelector<HTMLButtonElement>('#ctx-item-make-clip-mask');
+  const ctxItemReleaseClipMask = document.querySelector<HTMLButtonElement>('#ctx-item-release-clip-mask');
+  const ctxItemOutlineStroke = document.querySelector<HTMLButtonElement>('#ctx-item-outline-stroke');
 
   const ctxItemAlign = document.querySelector<HTMLButtonElement>('#ctx-item-align');
   const ctxDropdownAlign = document.querySelector<HTMLElement>('#ctx-dropdown-align');
@@ -92,6 +96,9 @@ export function setupContextMenuBindings(
     ctxItemSendToBack,
     ctxItemGroup,
     ctxItemUngroup,
+    ctxItemMakeClipMask,
+    ctxItemReleaseClipMask,
+    ctxItemOutlineStroke,
     ctxItemAlign,
     ctxItemPathfinder,
     ctxItemLock,
@@ -204,6 +211,25 @@ export function setupContextMenuBindings(
     if (ctxItemUngroup) {
       ctxItemUngroup.disabled = !canUngroup;
       ctxItemUngroup.setAttribute('aria-disabled', String(!canUngroup));
+    }
+
+    const canMakeClipMask =
+      selectedNodes.length >= 2 ||
+      (selectedNodes.length === 1 && isGroup(selectedNodes[0]) && selectedNodes[0].children.length >= 2);
+    const canReleaseClipMask = selectedNodes.some((n) => isGroup(n) && n.isClipMask === true);
+
+    if (ctxItemMakeClipMask) {
+      ctxItemMakeClipMask.disabled = !canMakeClipMask;
+      ctxItemMakeClipMask.setAttribute('aria-disabled', String(!canMakeClipMask));
+    }
+    if (ctxItemReleaseClipMask) {
+      ctxItemReleaseClipMask.disabled = !canReleaseClipMask;
+      ctxItemReleaseClipMask.setAttribute('aria-disabled', String(!canReleaseClipMask));
+    }
+    const canOutlineStrokeValue = leafShapes.some(canOutlineStroke);
+    if (ctxItemOutlineStroke) {
+      ctxItemOutlineStroke.disabled = !canOutlineStrokeValue;
+      ctxItemOutlineStroke.setAttribute('aria-disabled', String(!canOutlineStrokeValue));
     }
     if (ctxItemAlign) {
       ctxItemAlign.disabled = !canAlign;
@@ -511,6 +537,40 @@ export function setupContextMenuBindings(
     }
   };
 
+  const onCtxMakeClipMaskClick = () => {
+    const selected = stateManager.getSelectedNodes();
+    const canMake =
+      selected.length >= 2 || (selected.length === 1 && isGroup(selected[0]) && selected[0].children.length >= 2);
+    if (canMake) {
+      closeContextMenu();
+      inputController.makeClipMask();
+      syncContextMenu();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
+  const onCtxReleaseClipMaskClick = () => {
+    if (stateManager.getSelectedNodes().some((n) => isGroup(n) && n.isClipMask === true)) {
+      closeContextMenu();
+      inputController.releaseClipMask();
+      syncContextMenu();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
+  const onCtxOutlineStrokeClick = () => {
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    if (leafShapes.some(canOutlineStroke)) {
+      closeContextMenu();
+      inputController.outlineStroke();
+      syncContextMenu();
+      options.onAction?.();
+      canvas?.focus?.();
+    }
+  };
+
   const createAlignHandler = (mode: AlignmentMode) => () => {
     if (stateManager.getSelection().length >= 2) {
       closeContextMenu();
@@ -588,6 +648,9 @@ export function setupContextMenuBindings(
   ctxItemSendToBack?.addEventListener('click', onCtxSendToBackClick);
   ctxItemGroup?.addEventListener('click', onCtxGroupClick);
   ctxItemUngroup?.addEventListener('click', onCtxUngroupClick);
+  ctxItemMakeClipMask?.addEventListener('click', onCtxMakeClipMaskClick);
+  ctxItemReleaseClipMask?.addEventListener('click', onCtxReleaseClipMaskClick);
+  ctxItemOutlineStroke?.addEventListener('click', onCtxOutlineStrokeClick);
 
   ctxItemAlignLeft?.addEventListener('click', onAlignLeft);
   ctxItemAlignCenterH?.addEventListener('click', onAlignCenterH);
@@ -623,6 +686,9 @@ export function setupContextMenuBindings(
       ctxItemSendToBack?.removeEventListener('click', onCtxSendToBackClick);
       ctxItemGroup?.removeEventListener('click', onCtxGroupClick);
       ctxItemUngroup?.removeEventListener('click', onCtxUngroupClick);
+      ctxItemMakeClipMask?.removeEventListener('click', onCtxMakeClipMaskClick);
+      ctxItemReleaseClipMask?.removeEventListener('click', onCtxReleaseClipMaskClick);
+      ctxItemOutlineStroke?.removeEventListener('click', onCtxOutlineStrokeClick);
 
       ctxItemAlignLeft?.removeEventListener('click', onAlignLeft);
       ctxItemAlignCenterH?.removeEventListener('click', onAlignCenterH);

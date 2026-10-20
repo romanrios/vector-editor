@@ -55,13 +55,17 @@ export function setupStatusBarBindings(options: StatusBarControllerOptions): Sta
                   ? 'Rectángulo'
                   : tool === 'ellipse'
                     ? 'Elipse'
-                    : tool === 'line'
-                      ? 'Línea'
-                      : tool === 'text'
-                        ? 'Texto'
-                        : tool === 'hand'
-                          ? 'Mano'
-                          : 'Selección'
+                    : tool === 'polygon'
+                      ? 'Polígono regular'
+                      : tool === 'star'
+                        ? 'Estrella'
+                        : tool === 'line'
+                          ? 'Línea'
+                          : tool === 'text'
+                            ? 'Texto'
+                            : tool === 'hand'
+                              ? 'Mano'
+                              : 'Selección'
       }`;
     }
   };
@@ -89,6 +93,9 @@ export function setupStatusBarBindings(options: StatusBarControllerOptions): Sta
           const typeLabels: Record<string, string> = {
             rectangle: 'Rectángulo',
             ellipse: 'Elipse',
+            polygon: 'Polígono',
+            star: 'Estrella',
+            image: 'Imagen',
             path: 'Trazado',
             text: 'Texto',
           };

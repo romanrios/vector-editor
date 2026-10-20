@@ -54,6 +54,7 @@ export * from './commands/GroupCommand.ts';
 export * from './commands/UngroupCommand.ts';
 export * from './commands/UpdateTextCommand.ts';
 export * from './commands/UpdateTextTypographyCommand.ts';
+export * from './commands/UpdateParametricShapeCommand.ts';
 export * from './commands/SetVisibilityCommand.ts';
 export * from './commands/SetLockedCommand.ts';
 export * from './commands/MoveStepCommand.ts';
@@ -65,6 +66,11 @@ export * from './commands/InsertPathPointCommand.ts';
 export * from './commands/DeletePathPointCommand.ts';
 export * from './commands/UpdatePathPointTypeCommand.ts';
 export * from './commands/BooleanOperationCommand.ts';
+export * from './commands/MakeClipMaskCommand.ts';
+export * from './commands/ReleaseClipMaskCommand.ts';
+export * from './commands/OutlineStrokeCommand.ts';
+export * from './utils/strokeToPath.ts';
+export * from './utils/cornerSmoothing.ts';
 
 // Serialización y Exportación de Documentos
 export * from './state/Serializer.ts';

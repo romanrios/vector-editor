@@ -16,7 +16,7 @@ export function getShapeCenter(shape: Shape): Vector2D {
       y: shape.y + shape.height / 2,
     };
   }
-  if (shape.type === 'ellipse') {
+  if (shape.type === 'ellipse' || shape.type === 'polygon' || shape.type === 'star') {
     return {
       x: shape.x,
       y: shape.y,
@@ -75,6 +75,25 @@ export function getShapeDimensions(shape: Shape): ShapeDimensions {
       y: shape.y,
       width: shape.width,
       height: shape.height,
+      rotation: shape.rotation ?? 0,
+    };
+  }
+  if (shape.type === 'polygon') {
+    return {
+      x: shape.x,
+      y: shape.y,
+      radius: shape.radius,
+      sides: shape.sides,
+      rotation: shape.rotation ?? 0,
+    };
+  }
+  if (shape.type === 'star') {
+    return {
+      x: shape.x,
+      y: shape.y,
+      outerRadius: shape.outerRadius,
+      innerRadius: shape.innerRadius,
+      starPoints: shape.points,
       rotation: shape.rotation ?? 0,
     };
   }
@@ -165,6 +184,49 @@ export function rotateShapesAboutPivot(
             y: newY,
             radiusX: shape.radiusX,
             radiusY: shape.radiusY,
+            rotation: newRot,
+          },
+        });
+      }
+    } else if (shape.type === 'polygon') {
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10 ||
+        Math.abs(newRot - oldRot) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
+            radius: shape.radius,
+            sides: shape.sides,
+            rotation: newRot,
+          },
+        });
+      }
+    } else if (shape.type === 'star') {
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10 ||
+        Math.abs(newRot - oldRot) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
+            outerRadius: shape.outerRadius,
+            innerRadius: shape.innerRadius,
+            starPoints: shape.points,
             rotation: newRot,
           },
         });
@@ -335,6 +397,55 @@ export function scaleShapesAboutAnchor(
             y: newY,
             radiusX: newRadiusX,
             radiusY: newRadiusY,
+            rotation: rotDeg,
+          },
+        });
+      }
+    } else if (shape.type === 'polygon') {
+      const scale = (lx + ly) / 2;
+      const newRadius = shape.radius * scale;
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10 ||
+        Math.abs(newRadius - shape.radius) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
+            radius: newRadius,
+            sides: shape.sides,
+            rotation: rotDeg,
+          },
+        });
+      }
+    } else if (shape.type === 'star') {
+      const scale = (lx + ly) / 2;
+      const newOuter = shape.outerRadius * scale;
+      const newInner = shape.innerRadius * scale;
+      const newX = newCx;
+      const newY = newCy;
+
+      const changed =
+        Math.abs(newX - shape.x) > 1e-10 ||
+        Math.abs(newY - shape.y) > 1e-10 ||
+        Math.abs(newOuter - shape.outerRadius) > 1e-10 ||
+        Math.abs(newInner - shape.innerRadius) > 1e-10;
+
+      if (changed) {
+        results.push({
+          id: shape.id,
+          dimensions: {
+            x: newX,
+            y: newY,
+            outerRadius: newOuter,
+            innerRadius: newInner,
+            starPoints: shape.points,
             rotation: rotDeg,
           },
         });

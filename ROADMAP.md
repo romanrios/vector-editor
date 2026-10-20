@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **859 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **969 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -35,7 +35,7 @@ El objetivo de esta fase es dotar al editor de herramientas interactivas estánd
   - Soporte de muestreo por inspección de propiedades del Scene Graph o lectura directa de píxeles (`ctx.getImageData`).
   - Aplicación automática a la figura activa o selección actual.
 
-- [ ] **1.3. Primitivas Paramétricas Adicionales (Polígono Regular y Estrella)**:
+- [x] **1.3. Primitivas Paramétricas Adicionales (Polígono Regular y Estrella)**:
   - **Polígono regular**: Control dinámico de radio y cantidad de vértices ($n \ge 3$).
   - **Estrella**: Control de número de puntas, radio exterior y radio interior.
   - Controles visuales en el panel de propiedades para alterar los parámetros de la figura en vivo.
@@ -46,16 +46,16 @@ El objetivo de esta fase es dotar al editor de herramientas interactivas estánd
 
 El objetivo de esta fase es ampliar las capacidades de composición gráfica y modificación de trazados.
 
-- [ ] **2.1. Máscaras de Recorte (Clipping Masks / `clipPath`)**:
+- [x] **2.1. Máscaras de Recorte (Clipping Masks / `clipPath`)**:
   - Capacidad de usar una figura o trazado superior como máscara delimitadora de un grupo o conjunto de figuras inferiores.
   - Renderizado mediante `ctx.clip()` en Canvas 2D nativo y exportación/importación correspondiente como `<clipPath>` en SVG.
   - Comandos dedicados para crear y liberar máscaras en el historial (`MakeClipMaskCommand`, `ReleaseClipMaskCommand`).
 
-- [ ] **2.2. Contornear Trazado (*Stroke to Path* / *Outline Stroke*)**:
+- [x] **2.2. Contornear Trazado (*Stroke to Path* / *Outline Stroke*)**:
   - Conversión de bordes y trazos abiertos o con grosor en trazados cerrados (`fill`).
   - Permite someter los trazos a operaciones booleanas (ej. restar una línea gruesa de un rectángulo).
 
-- [ ] **2.3. Redondeo de Esquinas en Vértices Arbitrarios (Corner Smoothing)**:
+- [x] **2.3. Redondeo de Esquinas en Vértices Arbitrarios (Corner Smoothing)**:
   - Tiradores de radio en vértices de trazados poligonales (no solo en primitivas `Rectangle`).
   - Generación matemática de arcos tangentes o curvas Bézier en cada vértice.
 

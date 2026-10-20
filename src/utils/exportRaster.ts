@@ -8,13 +8,16 @@ import type {
   Ellipse,
   Text,
   ImageNode,
+  Polygon,
+  Star,
   SelectableNode,
 } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import { isGroup, isShape, isGradient, type FillType, type Shape } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
-import { getPathBaseAABB, getTextLineHeight, getTextLineRanges } from './geometry.ts';
+import { getPathBaseAABB, getGroupAABB, getTextLineHeight, getTextLineRanges, getPolygonBaseVertices, getStarBaseVertices, traceShapeClip } from './geometry.ts';
 import { createCanvasGradient, getShapeBaseAABB } from './gradient.ts';
+import { smoothPathPoints, getPolygonPathPoints, getStarPathPoints } from './cornerSmoothing.ts';
 
 function resolveRasterPaint(
   ctx: CanvasRenderingContext2D,
@@ -151,7 +154,27 @@ export function calculateExportBounds(
           const h = (t.fontSize ?? 16) * 1.2;
           maxX = Math.max(maxX, t.x + w);
           maxY = Math.max(maxY, t.y + h);
+        } else if (node.type === 'polygon') {
+          const p = node as Polygon;
+          minX = Math.min(minX, p.x - p.radius);
+          minY = Math.min(minY, p.y - p.radius);
+          maxX = Math.max(maxX, p.x + p.radius);
+          maxY = Math.max(maxY, p.y + p.radius);
+        } else if (node.type === 'star') {
+          const s = node as Star;
+          minX = Math.min(minX, s.x - s.outerRadius);
+          minY = Math.min(minY, s.y - s.outerRadius);
+          maxX = Math.max(maxX, s.x + s.outerRadius);
+          maxY = Math.max(maxY, s.y + s.outerRadius);
         } else if (isGroup(node)) {
+          if (node.isClipMask) {
+            const maskAABB = getGroupAABB(node);
+            minX = Math.min(minX, maskAABB.minX);
+            minY = Math.min(minY, maskAABB.minY);
+            maxX = Math.max(maxX, maskAABB.maxX);
+            maxY = Math.max(maxY, maskAABB.maxY);
+            continue;
+          }
           const leaves = collectLeafShapes(node);
           for (const leaf of leaves) {
             if (leaf.type === 'rectangle' || leaf.type === 'image') {
@@ -172,6 +195,18 @@ export function calculateExportBounds(
               minY = Math.min(minY, aabb.minY);
               maxX = Math.max(maxX, aabb.maxX);
               maxY = Math.max(maxY, aabb.maxY);
+            } else if (leaf.type === 'polygon') {
+              const p = leaf as Polygon;
+              minX = Math.min(minX, p.x - p.radius);
+              minY = Math.min(minY, p.y - p.radius);
+              maxX = Math.max(maxX, p.x + p.radius);
+              maxY = Math.max(maxY, p.y + p.radius);
+            } else if (leaf.type === 'star') {
+              const s = leaf as Star;
+              minX = Math.min(minX, s.x - s.outerRadius);
+              minY = Math.min(minY, s.y - s.outerRadius);
+              maxX = Math.max(maxX, s.x + s.outerRadius);
+              maxY = Math.max(maxY, s.y + s.outerRadius);
             }
           }
         }
@@ -280,7 +315,13 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
         ctx.translate(-cx, -cy);
       }
 
-      const points = path.points;
+      const hasCornerRadius = Boolean(
+        (path.cornerRadius && path.cornerRadius > 0) ||
+        path.points.some((p) => p.cornerRadius && p.cornerRadius > 0)
+      );
+      const points = hasCornerRadius
+        ? smoothPathPoints(path.points, Boolean(path.closed), path.cornerRadius)
+        : path.points;
       ctx.beginPath();
       let subpathStartIdx = 0;
 
@@ -411,6 +452,66 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
         // Fallback placeholder
       }
     }
+  } else if (shape.type === 'polygon') {
+    const poly = shape as Polygon;
+    if (poly.rotation) {
+      ctx.translate(poly.x, poly.y);
+      ctx.rotate((poly.rotation * Math.PI) / 180);
+      ctx.translate(-poly.x, -poly.y);
+    }
+    ctx.beginPath();
+    if (poly.cornerRadius && poly.cornerRadius > 0) {
+      const smoothedPts = getPolygonPathPoints({ ...poly, rotation: 0 });
+      drawSmoothedRasterPoints(ctx, smoothedPts);
+    } else {
+      const verts = getPolygonBaseVertices(poly);
+      if (verts.length > 0) {
+        ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) {
+          ctx.lineTo(verts[i].x, verts[i].y);
+        }
+        ctx.closePath();
+      }
+    }
+    if (!isNonePaint(poly.fill) && poly.fill) {
+      ctx.fillStyle = resolveRasterPaint(ctx, poly, poly.fill);
+      ctx.fill();
+    }
+    if (!isNonePaint(poly.stroke) && poly.strokeWidth && poly.strokeWidth > 0 && poly.stroke) {
+      ctx.lineWidth = poly.strokeWidth;
+      ctx.strokeStyle = resolveRasterPaint(ctx, poly, poly.stroke);
+      ctx.stroke();
+    }
+  } else if (shape.type === 'star') {
+    const star = shape as Star;
+    if (star.rotation) {
+      ctx.translate(star.x, star.y);
+      ctx.rotate((star.rotation * Math.PI) / 180);
+      ctx.translate(-star.x, -star.y);
+    }
+    ctx.beginPath();
+    if ((star.cornerRadius && star.cornerRadius > 0) || (star.innerCornerRadius && star.innerCornerRadius > 0)) {
+      const smoothedPts = getStarPathPoints({ ...star, rotation: 0 });
+      drawSmoothedRasterPoints(ctx, smoothedPts);
+    } else {
+      const verts = getStarBaseVertices(star);
+      if (verts.length > 0) {
+        ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) {
+          ctx.lineTo(verts[i].x, verts[i].y);
+        }
+        ctx.closePath();
+      }
+    }
+    if (!isNonePaint(star.fill) && star.fill) {
+      ctx.fillStyle = resolveRasterPaint(ctx, star, star.fill);
+      ctx.fill();
+    }
+    if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0 && star.stroke) {
+      ctx.lineWidth = star.strokeWidth;
+      ctx.strokeStyle = resolveRasterPaint(ctx, star, star.stroke);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
@@ -446,6 +547,25 @@ function renderChildNode(
     if (typeof child.opacity === 'number') {
       ctx.globalAlpha *= Math.max(0, Math.min(1, child.opacity));
     }
+
+    if (child.isClipMask === true && child.children.length > 0) {
+      const maskChild = child.clipChildId
+        ? child.children.find((c) => c.id === child.clipChildId)
+        : child.children[child.children.length - 1];
+
+      if (maskChild && isShape(maskChild)) {
+        traceShapeClip(ctx, maskChild);
+        for (const nested of child.children) {
+          if (nested.id === maskChild.id) {
+            continue;
+          }
+          renderChildNode(ctx, nested, selectedSet);
+        }
+        ctx.restore();
+        return;
+      }
+    }
+
     for (const nested of child.children) {
       renderChildNode(ctx, nested, selectedSet);
     }
@@ -593,3 +713,35 @@ export function downloadRaster(filename: string, blob: Blob): void {
   document.body.removeChild(anchor);
   URL.revokeObjectURL(objectUrl);
 }
+
+function drawSmoothedRasterPoints(
+  ctx: CanvasRenderingContext2D,
+  points: readonly import('../types/scene-graph.ts').PathPoint[]
+): void {
+  if (points.length === 0) return;
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    if (prev.handleOut || curr.handleIn) {
+      const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
+      const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
+      const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
+      const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+    } else {
+      ctx.lineTo(curr.x, curr.y);
+    }
+  }
+  const last = points[points.length - 1];
+  const first = points[0];
+  if (last.handleOut || first.handleIn) {
+    const cp1x = last.handleOut ? last.handleOut.x : last.x;
+    const cp1y = last.handleOut ? last.handleOut.y : last.y;
+    const cp2x = first.handleIn ? first.handleIn.x : first.x;
+    const cp2y = first.handleIn ? first.handleIn.y : first.y;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, first.x, first.y);
+  }
+  ctx.closePath();
+}
+

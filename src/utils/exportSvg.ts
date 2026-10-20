@@ -8,6 +8,8 @@ import type {
   Ellipse,
   Text,
   ImageNode,
+  Polygon,
+  Star,
   AssetData,
   SelectableNode,
   Gradient,
@@ -15,8 +17,9 @@ import type {
 } from '../types/scene-graph.ts';
 import { isGroup, isShape, isGradient, isLinearGradient } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
-import { getPathBaseAABB, getTextLineHeight, getWrappedTextLines } from './geometry.ts';
+import { getPathBaseAABB, getGroupAABB, getTextLineHeight, getWrappedTextLines, getPolygonBaseVertices, getStarBaseVertices } from './geometry.ts';
 import { getShapeBaseAABB } from './gradient.ts';
+import { smoothPathPoints, getPolygonPathPoints, getStarPathPoints } from './cornerSmoothing.ts';
 
 interface ExportGradientEntry {
   readonly id: string;
@@ -55,6 +58,51 @@ function collectGradientsFromChild(
     }
     if (isGradient(child.stroke)) {
       entries.push({ id: `gradient-${child.id}-stroke`, gradient: child.stroke, shape: child });
+    }
+  }
+  return entries;
+}
+
+interface ExportClipMaskEntry {
+  readonly groupId: string;
+  readonly maskShape: Shape;
+}
+
+function collectClipMasksFromChild(
+  child: LayerChildNode,
+  selectedSet: Set<string> | null
+): ExportClipMaskEntry[] {
+  if (child.visible === false) {
+    return [];
+  }
+
+  if (selectedSet) {
+    if (isGroup(child)) {
+      const leaves = collectLeafShapes(child);
+      const anySelected = leaves.some((l) => selectedSet.has(l.id)) || selectedSet.has(child.id);
+      if (!anySelected) {
+        return [];
+      }
+    } else if (!selectedSet.has(child.id)) {
+      return [];
+    }
+  }
+
+  const entries: ExportClipMaskEntry[] = [];
+  if (isGroup(child)) {
+    if (child.isClipMask && child.children.length > 0) {
+      const maskChild = child.clipChildId
+        ? child.children.find((c) => c.id === child.clipChildId)
+        : child.children[child.children.length - 1];
+      if (maskChild && isShape(maskChild)) {
+        entries.push({
+          groupId: child.id,
+          maskShape: maskChild,
+        });
+      }
+    }
+    for (const nested of child.children) {
+      entries.push(...collectClipMasksFromChild(nested, selectedSet));
     }
   }
   return entries;
@@ -130,7 +178,17 @@ function collectLeafShapes(node: LayerChildNode): LayerChildNode[] {
  * Genera el string del atributo 'd' para un trazado Bézier en SVG
  */
 function buildPathData(path: Path, precision: number): string {
-  const points = path.points;
+  const hasCornerRadius = Boolean(
+    (path.cornerRadius && path.cornerRadius > 0) ||
+    path.points.some((p) => p.cornerRadius && p.cornerRadius > 0)
+  );
+  const rawPoints = hasCornerRadius
+    ? smoothPathPoints(path.points, Boolean(path.closed), path.cornerRadius)
+    : path.points;
+  return buildPathDataFromPoints(rawPoints, Boolean(path.closed), precision);
+}
+
+function buildPathDataFromPoints(points: readonly import('../types/scene-graph.ts').PathPoint[], closed: boolean, precision: number): string {
   if (!points || points.length === 0) {
     return '';
   }
@@ -144,7 +202,7 @@ function buildPathData(path: Path, precision: number): string {
       if (i > 0) {
         const prevStart = points[subpathStartIdx];
         const last = points[i - 1];
-        const shouldClose = last.closeSubpath ?? path.closed;
+        const shouldClose = last.closeSubpath ?? closed;
         if (shouldClose && i - subpathStartIdx > 1) {
           const cp1x = last.handleOut ? last.handleOut.x : last.x;
           const cp1y = last.handleOut ? last.handleOut.y : last.y;
@@ -173,7 +231,7 @@ function buildPathData(path: Path, precision: number): string {
   if (points.length > 0) {
     const prevStart = points[subpathStartIdx];
     const last = points[points.length - 1];
-    const shouldClose = last.closeSubpath ?? path.closed;
+    const shouldClose = last.closeSubpath ?? closed;
     if (shouldClose && points.length - subpathStartIdx > 1) {
       const cp1x = last.handleOut ? last.handleOut.x : last.x;
       const cp1y = last.handleOut ? last.handleOut.y : last.y;
@@ -227,8 +285,22 @@ function renderChildToSvg(
       groupAttrs.push(`opacity="${formatNum(child.opacity, 3)}"`);
     }
 
+    let maskChildId: string | null = null;
+    if (child.isClipMask && child.children.length > 0) {
+      groupAttrs.push(`clip-path="url(#clip-${escapeXml(child.id)})"`);
+      const maskChild = child.clipChildId
+        ? child.children.find((c) => c.id === child.clipChildId)
+        : child.children[child.children.length - 1];
+      if (maskChild) {
+        maskChildId = maskChild.id;
+      }
+    }
+
     lines.push(`${indent}<g ${groupAttrs.join(' ')}>`);
     for (const nested of child.children) {
+      if (nested.id === maskChildId) {
+        continue;
+      }
       lines.push(...renderChildToSvg(nested, selectedSet, precision, `${indent}  `, assets));
     }
     lines.push(`${indent}</g>`);
@@ -432,6 +504,64 @@ function renderChildToSvg(
     }
 
     lines.push(`${indent}<image ${attrs.join(' ')} preserveAspectRatio="none" />`);
+  } else if (child.type === 'polygon') {
+    const poly = child as Polygon;
+    if (poly.cornerRadius && poly.cornerRadius > 0) {
+      const smoothedPts = getPolygonPathPoints({ ...poly, rotation: 0 });
+      const d = buildPathDataFromPoints(smoothedPts, true, precision);
+      const attrs = [
+        ...commonAttrs,
+        `d="${d}"`,
+      ];
+      if (poly.rotation) {
+        attrs.push(
+          `transform="rotate(${formatNum(poly.rotation, precision)} ${formatNum(poly.x, precision)} ${formatNum(poly.y, precision)})"`
+        );
+      }
+      lines.push(`${indent}<path ${attrs.join(' ')} />`);
+    } else {
+      const verts = getPolygonBaseVertices(poly);
+      const ptsStr = verts.map((v) => `${formatNum(v.x, precision)},${formatNum(v.y, precision)}`).join(' ');
+      const attrs = [
+        ...commonAttrs,
+        `points="${ptsStr}"`,
+      ];
+      if (poly.rotation) {
+        attrs.push(
+          `transform="rotate(${formatNum(poly.rotation, precision)} ${formatNum(poly.x, precision)} ${formatNum(poly.y, precision)})"`
+        );
+      }
+      lines.push(`${indent}<polygon ${attrs.join(' ')} />`);
+    }
+  } else if (child.type === 'star') {
+    const star = child as Star;
+    if ((star.cornerRadius && star.cornerRadius > 0) || (star.innerCornerRadius && star.innerCornerRadius > 0)) {
+      const smoothedPts = getStarPathPoints({ ...star, rotation: 0 });
+      const d = buildPathDataFromPoints(smoothedPts, true, precision);
+      const attrs = [
+        ...commonAttrs,
+        `d="${d}"`,
+      ];
+      if (star.rotation) {
+        attrs.push(
+          `transform="rotate(${formatNum(star.rotation, precision)} ${formatNum(star.x, precision)} ${formatNum(star.y, precision)})"`
+        );
+      }
+      lines.push(`${indent}<path ${attrs.join(' ')} />`);
+    } else {
+      const verts = getStarBaseVertices(star);
+      const ptsStr = verts.map((v) => `${formatNum(v.x, precision)},${formatNum(v.y, precision)}`).join(' ');
+      const attrs = [
+        ...commonAttrs,
+        `points="${ptsStr}"`,
+      ];
+      if (star.rotation) {
+        attrs.push(
+          `transform="rotate(${formatNum(star.rotation, precision)} ${formatNum(star.x, precision)} ${formatNum(star.y, precision)})"`
+        );
+      }
+      lines.push(`${indent}<polygon ${attrs.join(' ')} />`);
+    }
   }
 
   return lines;
@@ -520,7 +650,27 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
           const h = (t.fontSize ?? 16) * 1.2;
           maxX = Math.max(maxX, t.x + w);
           maxY = Math.max(maxY, t.y + h);
+        } else if (node.type === 'polygon') {
+          const p = node as Polygon;
+          minX = Math.min(minX, p.x - p.radius);
+          minY = Math.min(minY, p.y - p.radius);
+          maxX = Math.max(maxX, p.x + p.radius);
+          maxY = Math.max(maxY, p.y + p.radius);
+        } else if (node.type === 'star') {
+          const s = node as Star;
+          minX = Math.min(minX, s.x - s.outerRadius);
+          minY = Math.min(minY, s.y - s.outerRadius);
+          maxX = Math.max(maxX, s.x + s.outerRadius);
+          maxY = Math.max(maxY, s.y + s.outerRadius);
         } else if (isGroup(node)) {
+          if (node.isClipMask) {
+            const maskAABB = getGroupAABB(node);
+            minX = Math.min(minX, maskAABB.minX);
+            minY = Math.min(minY, maskAABB.minY);
+            maxX = Math.max(maxX, maskAABB.maxX);
+            maxY = Math.max(maxY, maskAABB.maxY);
+            continue;
+          }
           const leaves = collectLeafShapes(node);
           for (const leaf of leaves) {
             if (leaf.type === 'rectangle') {
@@ -541,6 +691,18 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
               minY = Math.min(minY, aabb.minY);
               maxX = Math.max(maxX, aabb.maxX);
               maxY = Math.max(maxY, aabb.maxY);
+            } else if (leaf.type === 'polygon') {
+              const p = leaf as Polygon;
+              minX = Math.min(minX, p.x - p.radius);
+              minY = Math.min(minY, p.y - p.radius);
+              maxX = Math.max(maxX, p.x + p.radius);
+              maxY = Math.max(maxY, p.y + p.radius);
+            } else if (leaf.type === 'star') {
+              const s = leaf as Star;
+              minX = Math.min(minX, s.x - s.outerRadius);
+              minY = Math.min(minY, s.y - s.outerRadius);
+              maxX = Math.max(maxX, s.x + s.outerRadius);
+              maxY = Math.max(maxY, s.y + s.outerRadius);
             }
           }
         }
@@ -561,18 +723,20 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatNum(vx, precision)} ${formatNum(vy, precision)} ${formatNum(vw, precision)} ${formatNum(vh, precision)}" width="${formatNum(vw, precision)}" height="${formatNum(vh, precision)}">`
   );
 
-  // Recopilar y emitir definiciones de degradados (<defs>)
+  // Recopilar y emitir definiciones de degradados (<defs>) y máscaras de recorte (<clipPath>)
   const allGradients: ExportGradientEntry[] = [];
+  const allClipMasks: ExportClipMaskEntry[] = [];
   for (const layer of doc.children) {
     if (layer.visible === false) {
       continue;
     }
     for (const child of layer.children) {
       allGradients.push(...collectGradientsFromChild(child, selectedSet));
+      allClipMasks.push(...collectClipMasksFromChild(child, selectedSet));
     }
   }
 
-  if (allGradients.length > 0) {
+  if (allGradients.length > 0 || allClipMasks.length > 0) {
     lines.push('  <defs>');
     for (const entry of allGradients) {
       const grad = entry.gradient;
@@ -614,6 +778,14 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
         lines.push('    </radialGradient>');
       }
     }
+
+    for (const clipEntry of allClipMasks) {
+      lines.push(`    <clipPath id="clip-${escapeXml(clipEntry.groupId)}">`);
+      const maskSvgLines = renderChildToSvg(clipEntry.maskShape, null, precision, '      ', doc.assets);
+      lines.push(...maskSvgLines);
+      lines.push('    </clipPath>');
+    }
+
     lines.push('  </defs>');
   }
 

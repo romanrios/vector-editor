@@ -24,6 +24,8 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const btnPencil = document.querySelector<HTMLButtonElement>('#tool-pencil');
   const btnRectangle = document.querySelector<HTMLButtonElement>('#tool-rectangle');
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
+  const btnPolygon = document.querySelector<HTMLButtonElement>('#tool-polygon');
+  const btnStar = document.querySelector<HTMLButtonElement>('#tool-star');
   const btnLine = document.querySelector<HTMLButtonElement>('#tool-line');
   const btnText = document.querySelector<HTMLButtonElement>('#tool-text');
   const btnEyedropper = document.querySelector<HTMLButtonElement>('#tool-eyedropper');
@@ -71,6 +73,18 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       const isEllipse = tool === 'ellipse';
       btnEllipse.classList.toggle('active', isEllipse);
       btnEllipse.setAttribute('aria-pressed', String(isEllipse));
+    }
+
+    if (btnPolygon) {
+      const isPolygon = tool === 'polygon';
+      btnPolygon.classList.toggle('active', isPolygon);
+      btnPolygon.setAttribute('aria-pressed', String(isPolygon));
+    }
+
+    if (btnStar) {
+      const isStar = tool === 'star';
+      btnStar.classList.toggle('active', isStar);
+      btnStar.setAttribute('aria-pressed', String(isStar));
     }
 
     if (btnLine) {
@@ -128,6 +142,8 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const onPencilClick = () => inputController.setTool('pencil');
   const onRectangleClick = () => inputController.setTool('rectangle');
   const onEllipseClick = () => inputController.setTool('ellipse');
+  const onPolygonClick = () => inputController.setTool('polygon');
+  const onStarClick = () => inputController.setTool('star');
   const onLineClick = () => inputController.setTool('line');
   const onTextClick = () => inputController.setTool('text');
   const onEyedropperClick = () => inputController.setTool('eyedropper');
@@ -139,6 +155,8 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   btnPencil?.addEventListener('click', onPencilClick);
   btnRectangle?.addEventListener('click', onRectangleClick);
   btnEllipse?.addEventListener('click', onEllipseClick);
+  btnPolygon?.addEventListener('click', onPolygonClick);
+  btnStar?.addEventListener('click', onStarClick);
   btnLine?.addEventListener('click', onLineClick);
   btnText?.addEventListener('click', onTextClick);
   btnEyedropper?.addEventListener('click', onEyedropperClick);
@@ -166,6 +184,8 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnPencil?.removeEventListener('click', onPencilClick);
       btnRectangle?.removeEventListener('click', onRectangleClick);
       btnEllipse?.removeEventListener('click', onEllipseClick);
+      btnPolygon?.removeEventListener('click', onPolygonClick);
+      btnStar?.removeEventListener('click', onStarClick);
       btnLine?.removeEventListener('click', onLineClick);
       btnText?.removeEventListener('click', onTextClick);
       btnEyedropper?.removeEventListener('click', onEyedropperClick);

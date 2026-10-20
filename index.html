@@ -127,6 +127,19 @@
                 <span class="menu-shortcut">Ctrl+Shift+G</span>
               </button>
               <div class="menu-divider" role="separator" aria-hidden="true"></div>
+              <button id="menu-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Crear máscara de recorte</span>
+                <span class="menu-shortcut">Ctrl+7</span>
+              </button>
+              <button id="menu-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Soltar máscara de recorte</span>
+                <span class="menu-shortcut">Ctrl+Alt+7</span>
+              </button>
+              <button id="menu-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                <span class="menu-item-label">Contornear trazado</span>
+                <span class="menu-shortcut">Ctrl+Shift+O</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
 
               <!-- Submenú Alinear -->
               <div class="menu-submenu-container">
@@ -334,6 +347,18 @@
       <button id="tool-ellipse" class="tool-btn" title="Elipse (E)" aria-label="Elipse (E)" aria-pressed="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
+        </svg>
+      </button>
+
+      <button id="tool-polygon" class="tool-btn" title="Polígono regular (Y)" aria-label="Polígono regular (Y)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+        </svg>
+      </button>
+
+      <button id="tool-star" class="tool-btn" title="Estrella (S)" aria-label="Estrella (S)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
         </svg>
       </button>
 
@@ -577,6 +602,14 @@
               <option value="bevel">Biselada</option>
             </select>
           </div>
+          <div class="control-group" id="group-outline-stroke" style="margin-top: 4px;">
+            <button type="button" id="btn-outline-stroke" class="btn-action-full" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-size: 12px; font-weight: 500; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-surface-secondary); color: var(--text-primary); cursor: pointer;" title="Contornear trazado (Ctrl+Shift+O)" aria-label="Contornear trazado">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 17l9.2-9.2M17 17V7H7"/>
+              </svg>
+              <span>Contornear trazado</span>
+            </button>
+          </div>
           <div class="control-group" id="group-opacity">
             <label for="input-opacity">Opacidad</label>
             <div class="range-control">
@@ -634,6 +667,63 @@
       <div id="no-selection-state" class="no-selection-state">Sin selección</div>
 
       <div id="selection-state" style="display: none;">
+        <!-- Sección: Polígono regular (visible solo cuando hay un único Polygon seleccionado) -->
+        <details class="collapsible-section" id="section-polygon" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Polígono Regular</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="input-polygon-sides">Lados</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-polygon-sides" min="3" max="100" step="1" value="5" aria-label="Cantidad de lados del polígono">
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-polygon-radius">Radio</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-polygon-radius" min="1" step="1" aria-label="Radio del polígono en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Sección: Estrella (visible solo cuando hay una única Star seleccionada) -->
+        <details class="collapsible-section" id="section-star" open style="display: none;">
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Estrella</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="input-star-points">Puntas</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-star-points" min="3" max="100" step="1" value="5" aria-label="Cantidad de puntas de la estrella">
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-star-outer-radius">Radio exterior</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-star-outer-radius" min="1" step="1" aria-label="Radio exterior de la estrella en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label for="input-star-inner-radius">Radio interior</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="input-star-inner-radius" min="1" step="1" aria-label="Radio interior de la estrella en píxeles">
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <!-- Sección: Tipografía (visible solo cuando hay un único Text seleccionado) -->
         <details class="collapsible-section" id="section-typography" open style="display: none;">
           <summary class="section-header" tabindex="0">
@@ -1243,6 +1333,19 @@
       <button id="ctx-item-ungroup" class="menu-dropdown-item" role="menuitem" tabindex="-1">
         <span class="menu-item-label">Desagrupar</span>
         <span class="menu-shortcut">Ctrl+Shift+G</span>
+      </button>
+      <div class="menu-divider" role="separator" aria-hidden="true"></div>
+      <button id="ctx-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+        <span class="menu-item-label">Crear máscara de recorte</span>
+        <span class="menu-shortcut">Ctrl+7</span>
+      </button>
+      <button id="ctx-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+        <span class="menu-item-label">Soltar máscara de recorte</span>
+        <span class="menu-shortcut">Ctrl+Alt+7</span>
+      </button>
+      <button id="ctx-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+        <span class="menu-item-label">Contornear trazado</span>
+        <span class="menu-shortcut">Ctrl+Shift+O</span>
       </button>
       <div class="menu-divider" role="separator" aria-hidden="true"></div>
       <div class="menu-submenu-container" id="ctx-submenu-align-container">

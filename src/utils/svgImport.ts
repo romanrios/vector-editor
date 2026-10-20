@@ -1,17 +1,18 @@
-import type {
-  AABB,
-  Ellipse,
-  FillType,
-  GradientStop,
-  Group,
-  LayerChildNode,
-  Path,
-  PathPoint,
-  Rectangle,
-  StrokeLineCap,
-  StrokeLineJoin,
-  Text,
-  Vector2D,
+import {
+  isShape,
+  type AABB,
+  type Ellipse,
+  type FillType,
+  type GradientStop,
+  type Group,
+  type LayerChildNode,
+  type Path,
+  type PathPoint,
+  type Rectangle,
+  type StrokeLineCap,
+  type StrokeLineJoin,
+  type Text,
+  type Vector2D,
 } from '../types/scene-graph.ts';
 import { getPathBaseAABB } from './geometry.ts';
 import { normalizeColor } from './color.ts';
@@ -1198,7 +1199,14 @@ function parseSvgElement(
   const tagName = el.tagName.toLowerCase();
 
   // Ignorar etiquetas de metadatos o no gráficas
-  if (tagName === 'defs' || tagName === 'style' || tagName === 'title' || tagName === 'desc' || tagName === 'metadata') {
+  if (
+    tagName === 'defs' ||
+    tagName === 'style' ||
+    tagName === 'title' ||
+    tagName === 'desc' ||
+    tagName === 'metadata' ||
+    tagName === 'clippath'
+  ) {
     return null;
   }
 
@@ -1224,12 +1232,39 @@ function parseSvgElement(
     }
     if (children.length === 0) return null;
 
+    const clipPathAttr = el.getAttribute('clip-path') || el.getAttribute('clipPath') || inline['clip-path'];
+    let isClipMask = false;
+    let clipChildId: string | undefined;
+
+    if (clipPathAttr && clipPathAttr.includes('url(#')) {
+      const match = clipPathAttr.match(/url\(#([^)]+)\)/);
+      if (match && match[1]) {
+        const clipId = match[1];
+        let clipEl = el.ownerDocument?.getElementById ? el.ownerDocument.getElementById(clipId) : null;
+        if (!clipEl && (el.ownerDocument as any)?.querySelector) {
+          clipEl = (el.ownerDocument as any).querySelector(`#${clipId}`);
+        }
+        if (clipEl) {
+          for (let c = 0; c < clipEl.children.length; c++) {
+            const clipShape = parseSvgElement(clipEl.children[c], parentContext, cssRules, gradients);
+            if (clipShape && isShape(clipShape)) {
+              isClipMask = true;
+              clipChildId = clipShape.id;
+              children.push(clipShape);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     const group: Group = {
       id: nextId('group'),
       type: 'group',
       name: nameAttr,
       children,
       opacity: context.opacity,
+      ...(isClipMask ? { isClipMask: true, clipChildId } : {}),
     };
     return group;
   }

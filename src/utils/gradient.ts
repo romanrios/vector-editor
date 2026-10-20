@@ -74,6 +74,24 @@ export function getShapeBaseAABB(shape: Shape, ctx?: CanvasRenderingContext2D | 
     };
   } else if (shape.type === 'path') {
     return getPathBaseAABB(shape);
+  } else if (shape.type === 'polygon') {
+    return {
+      minX: shape.x - shape.radius,
+      minY: shape.y - shape.radius,
+      maxX: shape.x + shape.radius,
+      maxY: shape.y + shape.radius,
+      width: shape.radius * 2,
+      height: shape.radius * 2,
+    };
+  } else if (shape.type === 'star') {
+    return {
+      minX: shape.x - shape.outerRadius,
+      minY: shape.y - shape.outerRadius,
+      maxX: shape.x + shape.outerRadius,
+      maxY: shape.y + shape.outerRadius,
+      width: shape.outerRadius * 2,
+      height: shape.outerRadius * 2,
+    };
   } else {
     return getTextBaseAABB(shape, ctx);
   }
@@ -85,7 +103,7 @@ export function getShapeBaseAABB(shape: Shape, ctx?: CanvasRenderingContext2D | 
 export function getShapeCentroid(shape: Shape, _ctx?: CanvasRenderingContext2D | null): Vector2D {
   if (shape.type === 'rectangle' || shape.type === 'image') {
     return { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
-  } else if (shape.type === 'ellipse') {
+  } else if (shape.type === 'ellipse' || shape.type === 'polygon' || shape.type === 'star') {
     return { x: shape.x, y: shape.y };
   } else if (shape.type === 'path') {
     const aabb = getPathBaseAABB(shape);
