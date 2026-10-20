@@ -397,21 +397,24 @@ export function scaleShapesAboutAnchor(
       }
     } else if (shape.type === 'text') {
       const oldFontSize = shape.fontSize ?? 16;
-      const scaleFactor = Math.hypot(sx * cosTheta, sy * sinTheta);
-      const newFontSize = Math.max(1, Math.round(oldFontSize * scaleFactor));
+      const scaleFactor = Math.abs(sx - sy) < 1e-9 ? sx : Math.hypot(sx * cosTheta, sy * sinTheta);
+      const newFontSize = Math.max(1, Math.round(oldFontSize * scaleFactor * 100) / 100);
       const oldLineHeight = shape.lineHeight;
-      const newLineHeight = oldLineHeight !== undefined ? Math.max(1, Math.round(oldLineHeight * scaleFactor)) : undefined;
+      const newLineHeight = oldLineHeight !== undefined ? Math.max(1, Math.round(oldLineHeight * scaleFactor * 100) / 100) : undefined;
       const oldLetterSpacing = shape.letterSpacing;
       const newLetterSpacing = oldLetterSpacing !== undefined ? Math.round(oldLetterSpacing * scaleFactor * 100) / 100 : undefined;
+      const oldBoxWidth = shape.boxWidth;
+      const newBoxWidth = oldBoxWidth !== undefined ? Math.max(5, Math.round(oldBoxWidth * scaleFactor * 100) / 100) : undefined;
       const newX = newCx;
       const newY = newCy;
 
       const changed =
         Math.abs(newX - shape.x) > 1e-10 ||
         Math.abs(newY - shape.y) > 1e-10 ||
-        newFontSize !== oldFontSize ||
-        (oldLineHeight !== undefined && newLineHeight !== oldLineHeight) ||
-        (oldLetterSpacing !== undefined && newLetterSpacing !== oldLetterSpacing);
+        Math.abs(newFontSize - oldFontSize) > 1e-10 ||
+        (oldLineHeight !== undefined && Math.abs((newLineHeight ?? 0) - oldLineHeight) > 1e-10) ||
+        (oldLetterSpacing !== undefined && Math.abs((newLetterSpacing ?? 0) - oldLetterSpacing) > 1e-10) ||
+        (oldBoxWidth !== undefined && Math.abs((newBoxWidth ?? 0) - oldBoxWidth) > 1e-10);
 
       if (changed) {
         results.push({
@@ -422,6 +425,7 @@ export function scaleShapesAboutAnchor(
             fontSize: newFontSize,
             ...(newLineHeight !== undefined ? { lineHeight: newLineHeight } : {}),
             ...(newLetterSpacing !== undefined ? { letterSpacing: newLetterSpacing } : {}),
+            ...(newBoxWidth !== undefined ? { boxWidth: newBoxWidth } : {}),
             rotation: rotDeg,
           },
         });

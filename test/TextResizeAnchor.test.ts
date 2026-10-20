@@ -5,6 +5,7 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import {
   getTextBaseAABB,
+  getSelectionBounds,
   setSharedMeasureContext,
 } from '../src/utils/geometry.ts';
 import type { Text } from '../src/types/scene-graph.ts';
@@ -470,5 +471,286 @@ describe('Escalado de Texto con Anclaje en Esquina Opuesta, Centro (Alt) y Progr
     assert.ok(redoneNode.fontSize! > 20, 'Redo debe restaurar el tamaño escalado');
 
     controller.destroy();
+  });
+
+  describe('Escalado de Múltiples Textos Seleccionados en Simultáneo', () => {
+    function setupTwoTexts(): {
+      canvas: HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void };
+      mockCtx: CanvasRenderingContext2D;
+      stateManager: StateManager;
+      commandManager: CommandManager;
+      controller: InputController;
+      text1: Text;
+      text2: Text;
+      initialBounds: { minX: number; minY: number; maxX: number; maxY: number };
+    } {
+      const { canvas, mockCtx } = createMockCanvas();
+      setSharedMeasureContext(mockCtx);
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      const layerId = stateManager.getState().children[0].id;
+
+      // text1: x=100, y=100, fontSize=20, 'TEXTO1' (6 letras -> 75px ancho, 20px alto) -> [100, 100, 175, 120]
+      const text1: Text = {
+        id: 'multi-text-1',
+        type: 'text',
+        name: 'Texto 1',
+        x: 100,
+        y: 100,
+        text: 'TEXTO1',
+        fontSize: 20,
+      };
+      // text2: x=200, y=200, fontSize=20, 'TEXTO2' (6 letras -> 75px ancho, 20px alto) -> [200, 200, 275, 220]
+      const text2: Text = {
+        id: 'multi-text-2',
+        type: 'text',
+        name: 'Texto 2',
+        x: 200,
+        y: 200,
+        text: 'TEXTO2',
+        fontSize: 20,
+      };
+
+      stateManager.addShape(layerId, text1);
+      stateManager.addShape(layerId, text2);
+      stateManager.setSelection(['multi-text-1', 'multi-text-2']);
+
+      const b = getSelectionBounds(stateManager.getSelectedNodes())!;
+      const initialBounds = { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+
+      return {
+        canvas,
+        mockCtx,
+        stateManager,
+        commandManager,
+        controller,
+        text1,
+        text2,
+        initialBounds,
+      };
+    }
+
+    it('9. Al escalar varios textos desde bottom-left, el anclaje permanece estrictamente fijo en top-right', () => {
+      const { canvas, stateManager, commandManager, controller, initialBounds } = setupTwoTexts();
+
+      // Arrastrar handle bottom-left (100, 220) hacia la izquierda (-50) y abajo (+30) sin Shift
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: initialBounds.minX,
+        clientY: initialBounds.maxY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assert.equal(controller.isMultiTransforming, true);
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: initialBounds.minX - 50,
+        clientY: initialBounds.maxY + 30,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      const newBounds = getSelectionBounds(stateManager.getSelectedNodes())!;
+      // El ancla opuesta a bottom-left es top-right (maxX, minY)
+      assert.ok(
+        Math.abs(newBounds.maxX - initialBounds.maxX) < 0.1,
+        `La esquina derecha debe permanecer fija en ${initialBounds.maxX}, actual: ${newBounds.maxX}`
+      );
+      assert.ok(
+        Math.abs(newBounds.minY - initialBounds.minY) < 0.1,
+        `La esquina superior debe permanecer fija en ${initialBounds.minY}, actual: ${newBounds.minY}`
+      );
+
+      // Los textos deben haber crecido proporcionalmente
+      const t1 = stateManager.findNode('multi-text-1') as Text;
+      const t2 = stateManager.findNode('multi-text-2') as Text;
+      assert.ok(t1.fontSize! > 20);
+      assert.ok(t2.fontSize! > 20);
+      assert.equal(t1.fontSize, t2.fontSize);
+
+      canvas.dispatchSimulatedEvent('mouseup', {
+        clientX: initialBounds.minX - 50,
+        clientY: initialBounds.maxY + 30,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      assert.equal(controller.isMultiTransforming, false);
+      assert.equal(commandManager.undoCount, 1);
+
+      // Undo restaura dimensiones originales exactas
+      commandManager.undo();
+      const bUndo = getSelectionBounds(stateManager.getSelectedNodes())!;
+      assert.ok(Math.abs(bUndo.minX - initialBounds.minX) < 0.1);
+      assert.ok(Math.abs(bUndo.maxX - initialBounds.maxX) < 0.1);
+
+      controller.destroy();
+    });
+
+    it('10. Al escalar varios textos desde top-left, el anclaje permanece estrictamente fijo en bottom-right', () => {
+      const { canvas, stateManager, controller, initialBounds } = setupTwoTexts();
+
+      // Arrastrar handle top-left (100, 100) hacia arriba y la izquierda (-40, -40)
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: initialBounds.minX,
+        clientY: initialBounds.minY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: initialBounds.minX - 40,
+        clientY: initialBounds.minY - 40,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      const newBounds = getSelectionBounds(stateManager.getSelectedNodes())!;
+      // El ancla opuesta a top-left es bottom-right (maxX, maxY)
+      assert.ok(
+        Math.abs(newBounds.maxX - initialBounds.maxX) < 0.1,
+        `La esquina derecha debe permanecer fija en ${initialBounds.maxX}, actual: ${newBounds.maxX}`
+      );
+      assert.ok(
+        Math.abs(newBounds.maxY - initialBounds.maxY) < 0.1,
+        `La esquina inferior debe permanecer fija en ${initialBounds.maxY}, actual: ${newBounds.maxY}`
+      );
+
+      controller.destroy();
+    });
+
+    it('11. Al escalar varios textos desde top-right, el anclaje permanece estrictamente fijo en bottom-left', () => {
+      const { canvas, stateManager, controller, initialBounds } = setupTwoTexts();
+
+      // Arrastrar handle top-right (275, 100) hacia arriba y la derecha (+40, -40)
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: initialBounds.maxX,
+        clientY: initialBounds.minY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: initialBounds.maxX + 40,
+        clientY: initialBounds.minY - 40,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      const newBounds = getSelectionBounds(stateManager.getSelectedNodes())!;
+      // El ancla opuesta a top-right es bottom-left (minX, maxY)
+      assert.ok(
+        Math.abs(newBounds.minX - initialBounds.minX) < 0.1,
+        `La esquina izquierda debe permanecer fija en ${initialBounds.minX}, actual: ${newBounds.minX}`
+      );
+      assert.ok(
+        Math.abs(newBounds.maxY - initialBounds.maxY) < 0.1,
+        `La esquina inferior debe permanecer fija en ${initialBounds.maxY}, actual: ${newBounds.maxY}`
+      );
+
+      controller.destroy();
+    });
+
+    it('12. Al escalar varios textos desde bottom-right, el anclaje permanece estrictamente fijo en top-left', () => {
+      const { canvas, stateManager, controller, initialBounds } = setupTwoTexts();
+
+      // Arrastrar handle bottom-right (275, 220) hacia abajo y la derecha (+40, +40)
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: initialBounds.maxX,
+        clientY: initialBounds.maxY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: initialBounds.maxX + 40,
+        clientY: initialBounds.maxY + 40,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      const newBounds = getSelectionBounds(stateManager.getSelectedNodes())!;
+      // El ancla opuesta a bottom-right es top-left (minX, minY)
+      assert.ok(
+        Math.abs(newBounds.minX - initialBounds.minX) < 0.1,
+        `La esquina izquierda debe permanecer fija en ${initialBounds.minX}, actual: ${newBounds.minX}`
+      );
+      assert.ok(
+        Math.abs(newBounds.minY - initialBounds.minY) < 0.1,
+        `La esquina superior debe permanecer fija en ${initialBounds.minY}, actual: ${newBounds.minY}`
+      );
+
+      controller.destroy();
+    });
+
+    it('13. Al mantener Alt (fromCenter = true), el centro de la selección multilínea permanece exactamente fijo', () => {
+      const { canvas, stateManager, controller, initialBounds } = setupTwoTexts();
+      const initialCenterX = (initialBounds.minX + initialBounds.maxX) / 2;
+      const initialCenterY = (initialBounds.minY + initialBounds.maxY) / 2;
+
+      // Arrastrar con altKey = true
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: initialBounds.maxX,
+        clientY: initialBounds.maxY,
+        button: 0,
+        shiftKey: false,
+        altKey: true,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: initialBounds.maxX + 30,
+        clientY: initialBounds.maxY + 30,
+        button: 0,
+        shiftKey: false,
+        altKey: true,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
+
+      const newBounds = getSelectionBounds(stateManager.getSelectedNodes())!;
+      const newCenterX = (newBounds.minX + newBounds.maxX) / 2;
+      const newCenterY = (newBounds.minY + newBounds.maxY) / 2;
+
+      assert.ok(
+        Math.abs(newCenterX - initialCenterX) < 0.1,
+        `El centro X debe permanecer en ${initialCenterX}, actual: ${newCenterX}`
+      );
+      assert.ok(
+        Math.abs(newCenterY - initialCenterY) < 0.1,
+        `El centro Y debe permanecer en ${initialCenterY}, actual: ${newCenterY}`
+      );
+
+      controller.destroy();
+    });
   });
 });

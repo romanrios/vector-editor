@@ -333,10 +333,19 @@ describe('Transformaciones de Conjuntos (Escalado y Rotación)', () => {
     assert.equal(bl.sx, (100 - (-20)) / 100); // 1.2
     assert.equal(bl.sy, (100 + 30) / 100); // 1.3
 
-    // 5. Con Shift (preserveAspect: true): sx === sy
+    // 5. Con Shift (preserveAspect: true): sx === sy con proyección diagonal continua
     const shiftScale = computeBoxScale(bounds, 'bottom-right', 50, 10, true);
     assert.equal(shiftScale.sx, shiftScale.sy);
-    assert.equal(shiftScale.sx, 1.5); // Domina rawSx = 150/100 = 1.5
+    assert.equal(shiftScale.sx, 1.3); // Proyección diagonal: dot = (50*100 + 10*100)/(100^2 + 100^2) = 0.3 -> 1.3
+
+    const diagScale = computeBoxScale(bounds, 'bottom-right', 50, 50, true);
+    assert.equal(diagScale.sx, diagScale.sy);
+    assert.equal(diagScale.sx, 1.5); // Arrastre puramente diagonal avanza a 1.5
+
+    // 5b. Con Alt (fromCenter: true): anclaje en el centro de la caja
+    const altScale = computeBoxScale(bounds, 'bottom-right', 25, 25, true, true);
+    assert.deepEqual(altScale.anchor, { x: 60, y: 70 });
+    assert.equal(altScale.sx, 1.5);
 
     // 6. Mínimo de 5 px para el conjunto (sin colapsar por debajo de 5 px)
     const minNoShift = computeBoxScale(bounds, 'bottom-right', -200, -200, false);

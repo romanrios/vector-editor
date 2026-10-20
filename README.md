@@ -157,7 +157,7 @@ vector-editor/
 
 ## Cobertura y Calidad de Pruebas
 
-El repositorio mantiene una suite de pruebas automatizadas con más de 850 tests unitarios (actualmente 859 tests activos) que cubren:
+El repositorio mantiene una suite de pruebas automatizadas con más de 870 tests unitarios (actualmente 872 tests activos) que cubren:
 
 - **Integridad del Scene Graph**: Garantía de inmutabilidad (`Object.freeze`), persistencia estructural y aislamiento de la selección fuera del árbol del documento.
 - **Historial y Comandos**: Validación de operaciones unitarias y lotes compuestos (`BatchCommand`) con 1, 2 y 3 figuras en ciclos de Undo/Redo.

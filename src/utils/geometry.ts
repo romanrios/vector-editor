@@ -2299,35 +2299,56 @@ export function computeBoxScale(
   handle: HandleType,
   dx: number,
   dy: number,
-  preserveAspect: boolean = false
+  preserveAspect: boolean = false,
+  fromCenter: boolean = false
 ): { anchor: Vector2D; sx: number; sy: number } {
   let anchor: Vector2D;
   let dxSign = 1;
   let dySign = 1;
 
+  if (fromCenter) {
+    anchor = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    };
+  } else {
+    switch (handle) {
+      case 'top-left':
+        anchor = { x: bounds.maxX, y: bounds.maxY };
+        break;
+      case 'top-right':
+        anchor = { x: bounds.minX, y: bounds.maxY };
+        break;
+      case 'bottom-right':
+        anchor = { x: bounds.minX, y: bounds.minY };
+        break;
+      case 'bottom-left':
+        anchor = { x: bounds.maxX, y: bounds.minY };
+        break;
+      default:
+        anchor = { x: bounds.minX, y: bounds.minY };
+        break;
+    }
+  }
+
   switch (handle) {
     case 'top-left':
-      anchor = { x: bounds.maxX, y: bounds.maxY };
       dxSign = -1;
       dySign = -1;
       break;
     case 'top-right':
-      anchor = { x: bounds.minX, y: bounds.maxY };
       dxSign = 1;
       dySign = -1;
       break;
     case 'bottom-right':
-      anchor = { x: bounds.minX, y: bounds.minY };
       dxSign = 1;
       dySign = 1;
       break;
     case 'bottom-left':
-      anchor = { x: bounds.maxX, y: bounds.minY };
       dxSign = -1;
       dySign = 1;
       break;
     default:
-      anchor = { x: bounds.minX, y: bounds.minY };
       dxSign = 1;
       dySign = 1;
       break;
@@ -2337,11 +2358,11 @@ export function computeBoxScale(
   const initH = bounds.height;
   const safeInitW = Math.max(1, initW);
   const safeInitH = Math.max(1, initH);
-
-  const rawW = initW + dxSign * dx;
-  const rawH = initH + dySign * dy;
+  const mult = fromCenter ? 2 : 1;
 
   if (!preserveAspect) {
+    const rawW = initW + mult * dxSign * dx;
+    const rawH = initH + mult * dySign * dy;
     const newW = Math.max(5, rawW);
     const newH = Math.max(5, rawH);
     return {
@@ -2351,12 +2372,13 @@ export function computeBoxScale(
     };
   }
 
-  const rawSx = rawW / safeInitW;
-  const rawSy = rawH / safeInitH;
-  let scale = Math.abs(rawSx - 1) >= Math.abs(rawSy - 1) ? rawSx : rawSy;
+  const diagLenSq = safeInitW * safeInitW + safeInitH * safeInitH;
+  const dot = dxSign * dx * safeInitW + dySign * dy * safeInitH;
+  const deltaScale = mult * (dot / diagLenSq);
+  const rawScale = 1 + deltaScale;
 
   const minScale = Math.max(5 / safeInitW, 5 / safeInitH);
-  scale = Math.max(minScale, scale);
+  const scale = Math.max(minScale, rawScale);
 
   return {
     anchor,

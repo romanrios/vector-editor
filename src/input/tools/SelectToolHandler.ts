@@ -559,7 +559,9 @@ export class SelectToolHandler implements ToolHandler {
     }
 
     if (this._multiTransformState) {
-      this.applyMultiTransform(x, y, Boolean(event.shiftKey));
+      this._lastShiftKey = Boolean(event.shiftKey);
+      this._lastAltKey = Boolean(event.altKey);
+      this.applyMultiTransform(x, y, Boolean(event.shiftKey), Boolean(event.altKey));
       return;
     }
 
@@ -1094,7 +1096,12 @@ export class SelectToolHandler implements ToolHandler {
   public handleShiftToggle(shiftKey: boolean): void {
     this._lastShiftKey = shiftKey;
     if (this._multiTransformState && this._multiTransformState.lastMouse) {
-      this.applyMultiTransform(this._multiTransformState.lastMouse.x, this._multiTransformState.lastMouse.y, shiftKey);
+      this.applyMultiTransform(
+        this._multiTransformState.lastMouse.x,
+        this._multiTransformState.lastMouse.y,
+        shiftKey,
+        this._lastAltKey
+      );
       this.stateManager.markDirty();
       return;
     }
@@ -1118,6 +1125,16 @@ export class SelectToolHandler implements ToolHandler {
 
   public handleAltToggle(altKey: boolean): void {
     this._lastAltKey = altKey;
+    if (this._multiTransformState && this._multiTransformState.lastMouse) {
+      this.applyMultiTransform(
+        this._multiTransformState.lastMouse.x,
+        this._multiTransformState.lastMouse.y,
+        this._lastShiftKey,
+        altKey
+      );
+      this.stateManager.markDirty();
+      return;
+    }
     if (
       this._isResizing &&
       this.resizingShapeId &&
@@ -1283,7 +1300,7 @@ export class SelectToolHandler implements ToolHandler {
     }
   }
 
-  public applyMultiTransform(x: number, y: number, shiftKey: boolean): void {
+  public applyMultiTransform(x: number, y: number, shiftKey: boolean, altKey: boolean = false): void {
     if (!this._multiTransformState) {
       return;
     }
@@ -1310,10 +1327,13 @@ export class SelectToolHandler implements ToolHandler {
     } else if (transformState.type === 'scale') {
       const handle = transformState.handle!;
       const bounds = transformState.initialBounds;
+      const hasTextOrImage = transformState.leafShapes.some((s) => s.type === 'text' || s.type === 'image');
+      const shouldPreserveAspect = hasTextOrImage ? true : shiftKey;
+
       const applyScale = (mouseX: number, mouseY: number): void => {
         const dx = mouseX - transformState.startMouse.x;
         const dy = mouseY - transformState.startMouse.y;
-        const { anchor, sx, sy } = computeBoxScale(bounds, handle, dx, dy, shiftKey);
+        const { anchor, sx, sy } = computeBoxScale(bounds, handle, dx, dy, shouldPreserveAspect, altKey);
         const changes = scaleShapesAboutAnchor(transformState.leafShapes, anchor, sx, sy);
         if (changes.length === 0) {
           const restoreEntries = transformState.leafShapes.map((shape) => ({
@@ -1327,6 +1347,13 @@ export class SelectToolHandler implements ToolHandler {
       };
 
       applyScale(x, y);
+
+      if (altKey) {
+        this.setActiveGuides([]);
+        this.canvas.style.cursor = this.getResizeCursor(handle, 0);
+        return;
+      }
+
       const scaledShapes = transformState.leafShapes
         .map((shape) => this.stateManager.findNode(shape.id))
         .filter((shape): shape is Shape => Boolean(shape && isShape(shape)));
