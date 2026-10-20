@@ -30,7 +30,7 @@ El objetivo de esta fase es dotar al editor de herramientas interactivas estánd
   - Generación de un nodo `Path` estándar con puntos de ancla optimizados.
   - Historial reversible encapsulado en `AddShapeCommand`.
 
-- [ ] **1.2. Herramienta Cuentagotas (Eyedropper Tool - `I`)**:
+- [x] **1.2. Herramienta Cuentagotas (Eyedropper Tool - `I`)**:
   - Muestreo del color de relleno, borde o gradiente al hacer clic sobre cualquier figura del canvas.
   - Soporte de muestreo por inspección de propiedades del Scene Graph o lectura directa de píxeles (`ctx.getImageData`).
   - Aplicación automática a la figura activa o selección actual.

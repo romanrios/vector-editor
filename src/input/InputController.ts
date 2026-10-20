@@ -57,8 +57,9 @@ import { CreationToolHandler } from './tools/CreationToolHandler.ts';
 import { LineToolHandler } from './tools/LineToolHandler.ts';
 import { TextToolHandler } from './tools/TextToolHandler.ts';
 import { PencilToolHandler } from './tools/PencilToolHandler.ts';
+import { EyedropperToolHandler, type EyedropperPreview, type EyedropperSampleResult } from './tools/EyedropperToolHandler.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text' | 'pencil';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper';
 export interface CanvasContextMenuData {
   readonly clientX: number;
   readonly clientY: number;
@@ -68,7 +69,8 @@ export interface CanvasContextMenuData {
   readonly targetNode: SelectableNode | null;
 }
 export type CanvasContextMenuCallback = (data: CanvasContextMenuData) => void;
-export type InputControllerEvent = 'toolChange' | 'exportRequest' | 'canvasContextMenu';
+export type ColorSampledCallback = (data: EyedropperSampleResult) => void;
+export type InputControllerEvent = 'toolChange' | 'exportRequest' | 'canvasContextMenu' | 'colorSampled';
 export type ToolChangeCallback = (tool: ToolMode) => void;
 export type ExportRequestCallback = () => void;
 export type SmartGuidesChangeCallback = (enabled: boolean) => void;
@@ -91,6 +93,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
   { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
   { key: 'B / N', description: 'Herramienta Lápiz (trazo libre)', category: 'Herramientas' },
+  { key: 'I', description: 'Herramienta Cuentagotas (muestreo de color)', category: 'Herramientas' },
   { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
   { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
   { key: 'L', description: 'Herramienta Línea', category: 'Herramientas' },
@@ -230,6 +233,7 @@ export class InputController {
   public readonly lineToolHandler: LineToolHandler;
   public readonly textToolHandler: TextToolHandler;
   public readonly pencilToolHandler: PencilToolHandler;
+  public readonly eyedropperToolHandler: EyedropperToolHandler;
 
   // Event Emitter para observabilidad externa desacoplada del DOM
   private readonly eventListeners: Map<string, Set<(data: any) => void>> = new Map();
@@ -342,6 +346,15 @@ export class InputController {
       () => this.viewportManager
     );
 
+    // 9. Inicializar EyedropperToolHandler
+    this.eyedropperToolHandler = new EyedropperToolHandler(
+      this.stateManager,
+      this.commandManager,
+      this.canvas,
+      (x, y) => this.hitTest(x, y),
+      (event, data) => this.emit(event, data)
+    );
+
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
     this.onDoubleClickHandler = (e: MouseEvent) => this.handleDoubleClick(e);
     this.onMouseMoveHandler = (e: MouseEvent) => this.handleMouseMove(e);
@@ -399,6 +412,9 @@ export class InputController {
     if (this._currentTool === 'pencil' && tool !== 'pencil') {
       this.pencilToolHandler.onDeactivate(tool);
     }
+    if (this._currentTool === 'eyedropper' && tool !== 'eyedropper') {
+      this.eyedropperToolHandler.onDeactivate(tool);
+    }
 
     this._currentTool = tool;
 
@@ -408,6 +424,8 @@ export class InputController {
       this.penToolHandler.onActivate();
     } else if (tool === 'pencil') {
       this.pencilToolHandler.onActivate();
+    } else if (tool === 'eyedropper') {
+      this.eyedropperToolHandler.onActivate();
     } else if (tool === 'rectangle' || tool === 'ellipse') {
       this.creationToolHandler.onActivate();
     } else if (tool === 'line') {
@@ -427,6 +445,7 @@ export class InputController {
   public on(event: 'toolChange', listener: ToolChangeCallback): () => void;
   public on(event: 'exportRequest', listener: ExportRequestCallback): () => void;
   public on(event: 'canvasContextMenu', listener: CanvasContextMenuCallback): () => void;
+  public on(event: 'colorSampled', listener: ColorSampledCallback): () => void;
   public on(event: InputControllerEvent, listener: (...args: any[]) => void): () => void {
     let listeners = this.eventListeners.get(event);
     if (!listeners) {
@@ -443,6 +462,7 @@ export class InputController {
   public off(event: 'toolChange', listener: ToolChangeCallback): void;
   public off(event: 'exportRequest', listener: ExportRequestCallback): void;
   public off(event: 'canvasContextMenu', listener: CanvasContextMenuCallback): void;
+  public off(event: 'colorSampled', listener: ColorSampledCallback): void;
   public off(event: InputControllerEvent, listener: (...args: any[]) => void): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
@@ -456,6 +476,7 @@ export class InputController {
   public emit(event: 'toolChange', tool: ToolMode): void;
   public emit(event: 'exportRequest'): void;
   public emit(event: 'canvasContextMenu', data: CanvasContextMenuData): void;
+  public emit(event: 'colorSampled', data: EyedropperSampleResult): void;
   public emit(event: InputControllerEvent, arg?: any): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
@@ -522,6 +543,10 @@ export class InputController {
 
   public get isDrawingPencil(): boolean {
     return this.pencilToolHandler.isDrawing;
+  }
+
+  public get eyedropperPreview(): EyedropperPreview | null {
+    return this._currentTool === 'eyedropper' ? this.eyedropperToolHandler.preview : null;
   }
 
   public get isMarqueeSelecting(): boolean {
@@ -765,6 +790,7 @@ export class InputController {
     } else if (
       this._currentTool === 'pen' ||
       this._currentTool === 'pencil' ||
+      this._currentTool === 'eyedropper' ||
       this._currentTool === 'rectangle' ||
       this._currentTool === 'ellipse' ||
       this._currentTool === 'line'
@@ -1052,6 +1078,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'eyedropper') {
+      this.eyedropperToolHandler.onMouseDown(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseDown(event, coords);
       return;
@@ -1173,6 +1204,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'eyedropper') {
+      this.eyedropperToolHandler.onMouseMove(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseMove(event, coords);
       return;
@@ -1237,6 +1273,11 @@ export class InputController {
 
     if (this._currentTool === 'pencil') {
       this.pencilToolHandler.onMouseUp(event, coords);
+      return;
+    }
+
+    if (this._currentTool === 'eyedropper') {
+      this.eyedropperToolHandler.onMouseUp(event, coords);
       return;
     }
 
@@ -1452,6 +1493,8 @@ export class InputController {
       this.setTool('pen');
     } else if (keyLower === 'b' || keyLower === 'n') {
       this.setTool('pencil');
+    } else if (keyLower === 'i') {
+      this.setTool('eyedropper');
     } else if (keyLower === 'v') {
       this.setTool('select');
     } else if (keyLower === 'a') {

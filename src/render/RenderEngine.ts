@@ -77,6 +77,10 @@ export interface RenderEngineOptions {
   textEditProvider?: () => TextEditRenderState | null;
   activeGuidesProvider?: () => readonly SnapGuide[];
   /**
+   * Proveedor funcional opcional de la vista previa del cuentagotas (muestreo de color bajo el cursor).
+   */
+  eyedropperPreviewProvider?: () => { readonly screenX: number; readonly screenY: number; readonly color: string } | null;
+  /**
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
   viewportManager?: ViewportManager;
@@ -298,6 +302,11 @@ export class RenderEngine {
     }
 
     this.renderSnapGuides(this.options.activeGuidesProvider?.() ?? [], zoom);
+
+    const eyedropperPreview = this.options.eyedropperPreviewProvider?.() ?? null;
+    if (eyedropperPreview) {
+      this.renderEyedropperPreview(eyedropperPreview, dpr);
+    }
 
     this.ctx.restore();
     this._renderCount++;
@@ -1781,6 +1790,42 @@ export class RenderEngine {
       }
     }
     this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja una muestra/lupa circular flotante junto al cursor durante el modo Cuentagotas.
+   */
+  private renderEyedropperPreview(
+    preview: { readonly screenX: number; readonly screenY: number; readonly color: string },
+    dpr: number
+  ): void {
+    this.ctx.save();
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = preview.screenX + 16;
+    const cy = preview.screenY - 16;
+    const r = 9;
+
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    this.ctx.shadowBlur = 6;
+    this.ctx.shadowOffsetX = 0;
+    this.ctx.shadowOffsetY = 2;
+
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    this.ctx.fillStyle = preview.color === 'none' || preview.color === 'transparent' ? '#1e293b' : preview.color;
+    this.ctx.fill();
+
+    this.ctx.shadowColor = 'transparent';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.stroke();
+
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    this.ctx.stroke();
+
     this.ctx.restore();
   }
 }

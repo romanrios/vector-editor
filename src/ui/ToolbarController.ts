@@ -26,6 +26,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const btnEllipse = document.querySelector<HTMLButtonElement>('#tool-ellipse');
   const btnLine = document.querySelector<HTMLButtonElement>('#tool-line');
   const btnText = document.querySelector<HTMLButtonElement>('#tool-text');
+  const btnEyedropper = document.querySelector<HTMLButtonElement>('#tool-eyedropper');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
 
@@ -84,6 +85,12 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnText.setAttribute('aria-pressed', String(isText));
     }
 
+    if (btnEyedropper) {
+      const isEyedropper = tool === 'eyedropper';
+      btnEyedropper.classList.toggle('active', isEyedropper);
+      btnEyedropper.setAttribute('aria-pressed', String(isEyedropper));
+    }
+
     onToolChanged?.(tool);
   };
 
@@ -123,6 +130,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const onEllipseClick = () => inputController.setTool('ellipse');
   const onLineClick = () => inputController.setTool('line');
   const onTextClick = () => inputController.setTool('text');
+  const onEyedropperClick = () => inputController.setTool('eyedropper');
 
   btnSelect?.addEventListener('click', onSelectClick);
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
@@ -133,6 +141,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   btnEllipse?.addEventListener('click', onEllipseClick);
   btnLine?.addEventListener('click', onLineClick);
   btnText?.addEventListener('click', onTextClick);
+  btnEyedropper?.addEventListener('click', onEyedropperClick);
 
   const onUndoClick = () => commandManager.undo();
   const onRedoClick = () => commandManager.redo();
@@ -159,6 +168,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnEllipse?.removeEventListener('click', onEllipseClick);
       btnLine?.removeEventListener('click', onLineClick);
       btnText?.removeEventListener('click', onTextClick);
+      btnEyedropper?.removeEventListener('click', onEyedropperClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
     },

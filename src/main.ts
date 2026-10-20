@@ -298,6 +298,7 @@ if (typeof document !== 'undefined') {
       pathEditProvider: () => inputController?.pathEditState ?? null,
       textEditProvider: () => inputController?.textEditState ?? null,
       activeGuidesProvider: () => inputController?.activeGuides ?? [],
+      eyedropperPreviewProvider: () => inputController?.eyedropperPreview ?? null,
     });
     renderEngine.start();
 

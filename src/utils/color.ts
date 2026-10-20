@@ -59,6 +59,39 @@ export function parseHexColor(text: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * Convierte componentes RGB numéricos (0-255) a cadena hexadecimal '#rrggbb'.
+ */
+export function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.min(255, Math.max(0, Math.round(v)));
+  const hexR = clamp(r).toString(16).padStart(2, '0');
+  const hexG = clamp(g).toString(16).padStart(2, '0');
+  const hexB = clamp(b).toString(16).padStart(2, '0');
+  return `#${hexR}${hexG}${hexB}`.toLowerCase();
+}
+
+/**
+ * Muestrea el color de un píxel específico en un Canvas 2D mediante getImageData.
+ * Retorna '#rrggbb' o 'none' si el píxel es totalmente transparente (alpha === 0).
+ */
+export function sampleCanvasPixel(
+  ctx: CanvasRenderingContext2D,
+  screenX: number,
+  screenY: number
+): string {
+  try {
+    const x = Math.floor(screenX);
+    const y = Math.floor(screenY);
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    if (pixel[3] === 0) {
+      return NONE_PAINT;
+    }
+    return rgbToHex(pixel[0], pixel[1], pixel[2]);
+  } catch {
+    return NONE_PAINT;
+  }
+}
+
 const CSS_NAMED_COLORS: Record<string, string> = {
   black: '#000000',
   white: '#ffffff',

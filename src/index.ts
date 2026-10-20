@@ -31,6 +31,7 @@ export * from './input/tools/CreationToolHandler.ts';
 export * from './input/tools/LineToolHandler.ts';
 export * from './input/tools/TextToolHandler.ts';
 export * from './input/tools/PencilToolHandler.ts';
+export * from './input/tools/EyedropperToolHandler.ts';
 
 export * from './utils/booleanOperations.ts';
 
