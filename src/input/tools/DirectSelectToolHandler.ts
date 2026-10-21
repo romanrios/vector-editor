@@ -50,6 +50,7 @@ export class DirectSelectToolHandler implements ToolHandler {
   private readonly canvas: HTMLCanvasElement;
   private readonly getViewportManager: () => ViewportManager;
   private readonly hitTest: (x: number, y: number) => Shape | null;
+  private readonly isTouch?: () => boolean;
 
   private _draggedPointIndex: number | null = null;
   private _draggedTargetType: DirectSelectTargetType | null = null;
@@ -71,13 +72,15 @@ export class DirectSelectToolHandler implements ToolHandler {
     commandManager: CommandManager,
     canvas: HTMLCanvasElement,
     getViewportManager: () => ViewportManager,
-    hitTest: (x: number, y: number) => Shape | null
+    hitTest: (x: number, y: number) => Shape | null,
+    isTouch?: () => boolean
   ) {
     this.stateManager = stateManager;
     this.commandManager = commandManager;
     this.canvas = canvas;
     this.getViewportManager = getViewportManager;
     this.hitTest = hitTest;
+    this.isTouch = isTouch;
   }
 
   public get draggedPointIndex(): number | null {
@@ -536,7 +539,8 @@ export class DirectSelectToolHandler implements ToolHandler {
     if (!path.points || path.points.length === 0) return null;
 
     const zoom = this.getViewportManager().zoom;
-    const handleSize = customHandleSize ?? (10 / zoom);
+    const defaultHandleSize = (this.isTouch?.() ? 22 : 10) / zoom;
+    const handleSize = customHandleSize ?? defaultHandleSize;
 
     let testX = x;
     let testY = y;

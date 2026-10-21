@@ -49,6 +49,7 @@ export class TextEditManager {
   private _cursorBlinkTimer: ReturnType<typeof setInterval> | null = null;
   private _isMouseSelectingText: boolean = false;
   private _textDragAnchorIndex: number = 0;
+  private _mobileInputProxy: HTMLTextAreaElement | null = null;
 
   constructor(
     stateManager: StateManager,
@@ -252,6 +253,7 @@ export class TextEditManager {
 
     this.canvas.style.cursor = 'text';
 
+    this.setupMobileInputProxy();
     this.startCursorBlink();
     this.stateManager.markDirty();
     return true;
@@ -266,6 +268,7 @@ export class TextEditManager {
       return false;
     }
 
+    this.teardownMobileInputProxy();
     this.stopCursorBlink();
     this._isMouseSelectingText = false;
     const { textId, originalText, currentText } = this._textEditingState;
@@ -296,6 +299,7 @@ export class TextEditManager {
       return;
     }
 
+    this.teardownMobileInputProxy();
     this.stopCursorBlink();
     this._isMouseSelectingText = false;
     this._textEditingState = null;
@@ -741,7 +745,91 @@ export class TextEditManager {
     return true;
   }
 
+  public insertText(insertedText: string): void {
+    if (!this._textEditingState) return;
+    const text = this._textEditingState.currentText;
+    const cursor = this._textEditingState.cursorIndex;
+    const selAnchor = this._textEditingState.selectionStart;
+    const selFocus = this._textEditingState.selectionEnd;
+    const hasSelection = selAnchor !== selFocus;
+    const selMin = Math.min(selAnchor, selFocus);
+    const selMax = Math.max(selAnchor, selFocus);
+
+    if (hasSelection) {
+      this._textEditingState.currentText = text.slice(0, selMin) + insertedText + text.slice(selMax);
+      const newCursor = selMin + insertedText.length;
+      this._textEditingState.cursorIndex = newCursor;
+      this._textEditingState.selectionStart = newCursor;
+      this._textEditingState.selectionEnd = newCursor;
+    } else {
+      this._textEditingState.currentText = text.slice(0, cursor) + insertedText + text.slice(cursor);
+      const newCursor = cursor + insertedText.length;
+      this._textEditingState.cursorIndex = newCursor;
+      this._textEditingState.selectionStart = newCursor;
+      this._textEditingState.selectionEnd = newCursor;
+    }
+    this.resetCursorBlink();
+    this.stateManager.markDirty();
+  }
+
+  private setupMobileInputProxy(): void {
+    if (typeof document === 'undefined') return;
+    if (!this._mobileInputProxy) {
+      this._mobileInputProxy = document.createElement('textarea');
+      this._mobileInputProxy.id = 'mobile-text-proxy';
+      this._mobileInputProxy.setAttribute('autocomplete', 'off');
+      this._mobileInputProxy.setAttribute('autocorrect', 'off');
+      this._mobileInputProxy.setAttribute('autocapitalize', 'off');
+      this._mobileInputProxy.setAttribute('spellcheck', 'false');
+      this._mobileInputProxy.setAttribute('aria-hidden', 'true');
+      this._mobileInputProxy.style.position = 'fixed';
+      this._mobileInputProxy.style.top = '-9999px';
+      this._mobileInputProxy.style.left = '-9999px';
+      this._mobileInputProxy.style.opacity = '0';
+      this._mobileInputProxy.style.width = '1px';
+      this._mobileInputProxy.style.height = '1px';
+      this._mobileInputProxy.style.fontSize = '16px';
+      this._mobileInputProxy.style.pointerEvents = 'none';
+      this._mobileInputProxy.style.zIndex = '-1';
+
+      this._mobileInputProxy.addEventListener('input', () => {
+        if (!this._mobileInputProxy || !this._textEditingState) return;
+        const val = this._mobileInputProxy.value;
+        if (val.length > 0) {
+          this.insertText(val);
+          this._mobileInputProxy.value = '';
+        }
+      });
+
+      this._mobileInputProxy.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+          this.handleKeyDown(e);
+        }
+      });
+
+      document.body.appendChild(this._mobileInputProxy);
+    }
+
+    try {
+      this._mobileInputProxy.value = '';
+      this._mobileInputProxy.focus();
+    } catch {
+      // Ignorar fallos de foco
+    }
+  }
+
+  private teardownMobileInputProxy(): void {
+    if (this._mobileInputProxy) {
+      this._mobileInputProxy.blur();
+    }
+  }
+
   public destroy(): void {
+    this.teardownMobileInputProxy();
+    if (this._mobileInputProxy) {
+      this._mobileInputProxy.remove();
+      this._mobileInputProxy = null;
+    }
     this.stopCursorBlink();
     this._textEditingState = null;
     this._isMouseSelectingText = false;

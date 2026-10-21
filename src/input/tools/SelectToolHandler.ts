@@ -81,6 +81,7 @@ export interface MultiTransformState {
 
 export interface SelectToolHandlerOptions {
   deselectOnEmptyClick?: boolean;
+  isTouch?: () => boolean;
 }
 
 export class SelectToolHandler implements ToolHandler {
@@ -95,6 +96,10 @@ export class SelectToolHandler implements ToolHandler {
   private readonly setActiveGuides: (guides: SnapGuide[]) => void;
   private readonly getScreenCoordinates: (event: MouseEvent) => { x: number; y: number };
   private readonly options: SelectToolHandlerOptions;
+
+  private get isTouch(): boolean {
+    return this.options.isTouch?.() ?? false;
+  }
 
   // Estado del arrastre
   private _isDragging: boolean = false;
@@ -322,7 +327,9 @@ export class SelectToolHandler implements ToolHandler {
       const bounds = getSelectionBounds(selectedNodes);
       if (bounds) {
         const zoom = this.getViewportManager().zoom;
-        const handles = getSelectionBoxHandles(bounds, 8 / zoom, 30 / zoom);
+        const handleScreenSize = this.isTouch ? 22 : 8;
+        const rotationDistance = this.isTouch ? 36 : 30;
+        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom);
         const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
         if (hitHandle) {
@@ -372,7 +379,8 @@ export class SelectToolHandler implements ToolHandler {
         const gradProp: 'fill' | 'stroke' = isGradient(selectedNode.fill) ? 'fill' : 'stroke';
 
         if (grad) {
-          const hitGrad = hitTestGradientHandles(selectedNode, grad, x, y, 10 / zoom);
+          const gradTolerance = (this.isTouch ? 20 : 10) / zoom;
+          const hitGrad = hitTestGradientHandles(selectedNode, grad, x, y, gradTolerance);
           if (hitGrad) {
             this._activeGradientDrag = {
               shapeId: selectedNode.id,
@@ -391,7 +399,9 @@ export class SelectToolHandler implements ToolHandler {
           }
         }
 
-        const handles = getSelectionHandles(selectedNode, 8 / zoom, 30 / zoom);
+        const handleScreenSize = this.isTouch ? 22 : 8;
+        const rotationDistance = this.isTouch ? 36 : 30;
+        const handles = getSelectionHandles(selectedNode, handleScreenSize / zoom, rotationDistance / zoom);
         const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
         if (hitHandle) {
@@ -478,7 +488,8 @@ export class SelectToolHandler implements ToolHandler {
 
         // Comprobar si se hizo clic sobre un tirador de radio de esquina (Corner Radius Handle)
         const crHandles = getShapeCornerRadiusHandles(selectedNode, zoom);
-        const hitCRHandle = hitTestCornerRadiusHandle(crHandles, x, y, 8 / zoom);
+        const crTolerance = (this.isTouch ? 18 : 8) / zoom;
+        const hitCRHandle = hitTestCornerRadiusHandle(crHandles, x, y, crTolerance);
         if (hitCRHandle) {
           this._activeCornerRadiusDrag = {
             handle: hitCRHandle,
@@ -821,7 +832,9 @@ export class SelectToolHandler implements ToolHandler {
       const bounds = getSelectionBounds(currentSelected);
       if (bounds) {
         const zoom = this.getViewportManager().zoom;
-        const handles = getSelectionBoxHandles(bounds, 8 / zoom, 30 / zoom);
+        const handleScreenSize = this.isTouch ? 22 : 8;
+        const rotationDistance = this.isTouch ? 36 : 30;
+        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
         if (hoveredHandle) {
           if (hoveredHandle.type === 'rotation-handle') {
@@ -843,14 +856,17 @@ export class SelectToolHandler implements ToolHandler {
           ? selectedShape.stroke
           : null;
         if (grad) {
-          const hitGrad = hitTestGradientHandles(selectedShape, grad, x, y, 10 / zoom);
+          const gradTolerance = (this.isTouch ? 20 : 10) / zoom;
+          const hitGrad = hitTestGradientHandles(selectedShape, grad, x, y, gradTolerance);
           if (hitGrad) {
             this.canvas.style.cursor = 'crosshair';
             return;
           }
         }
 
-        const handles = getSelectionHandles(selectedShape, 8 / zoom, 30 / zoom);
+        const handleScreenSize = this.isTouch ? 22 : 8;
+        const rotationDistance = this.isTouch ? 36 : 30;
+        const handles = getSelectionHandles(selectedShape, handleScreenSize / zoom, rotationDistance / zoom);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
         if (hoveredHandle) {
           if (hoveredHandle.type === 'rotation-handle') {

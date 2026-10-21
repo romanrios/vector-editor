@@ -59,6 +59,7 @@ import { LineToolHandler } from './tools/LineToolHandler.ts';
 import { TextToolHandler } from './tools/TextToolHandler.ts';
 import { PencilToolHandler } from './tools/PencilToolHandler.ts';
 import { EyedropperToolHandler, type EyedropperPreview, type EyedropperSampleResult } from './tools/EyedropperToolHandler.ts';
+import { TouchGestureController } from './TouchGestureController.ts';
 
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper';
 export interface CanvasContextMenuData {
@@ -245,6 +246,12 @@ export class InputController {
   public readonly pencilToolHandler: PencilToolHandler;
   public readonly eyedropperToolHandler: EyedropperToolHandler;
 
+  // Controlador táctil y gestual desacoplado
+  public readonly touchGestureController: TouchGestureController;
+  private _lastPointerDownTimestamp: number = 0;
+  private _lastPointerMoveTimestamp: number = 0;
+  private _lastPointerUpTimestamp: number = 0;
+
   // Event Emitter para observabilidad externa desacoplada del DOM
   private readonly eventListeners: Map<string, Set<(data: any) => void>> = new Map();
   private readonly smartGuidesListeners: Set<SmartGuidesChangeCallback> = new Set();
@@ -297,7 +304,10 @@ export class InputController {
         this.activeGuides = guides;
       },
       (e) => this.getScreenCoordinates(e),
-      { deselectOnEmptyClick: this.options.deselectOnEmptyClick }
+      {
+        deselectOnEmptyClick: this.options.deselectOnEmptyClick,
+        isTouch: () => this.isTouch,
+      }
     );
 
     // 3. Inicializar PenToolHandler
@@ -314,7 +324,8 @@ export class InputController {
       this.commandManager,
       this.canvas,
       () => this.viewportManager,
-      (x, y) => this.hitTest(x, y)
+      (x, y) => this.hitTest(x, y),
+      () => this.isTouch
     );
 
     // 5. Inicializar CreationToolHandler
@@ -372,11 +383,79 @@ export class InputController {
     this.onWheelHandler = (e: WheelEvent) => this.handleWheel(e);
     this.onContextMenuHandler = (e: MouseEvent) => this.handleContextMenu(e);
 
+    // Inicializar TouchGestureController para soporte multitáctil (Pinch & Pan), Long-press y Double-tap
+    this.touchGestureController = new TouchGestureController(
+      this.canvas,
+      {
+        onSinglePointerDown: (e) => {
+          this._lastPointerDownTimestamp = Date.now();
+          this.handleMouseDown(e as MouseEvent);
+        },
+        onSinglePointerMove: (e) => {
+          this._lastPointerMoveTimestamp = Date.now();
+          this.handleMouseMove(e as MouseEvent);
+        },
+        onSinglePointerUp: (e) => {
+          this._lastPointerUpTimestamp = Date.now();
+          this.handleMouseUp(e as MouseEvent);
+        },
+        onCancelSinglePointer: () => {
+          this.cancelCurrentAction();
+        },
+        onPinchPan: (midpointScreen, zoomFactor, panDelta) => {
+          this.handlePinchPan(midpointScreen, zoomFactor, panDelta);
+        },
+        onLongPress: (e) => {
+          this.handleContextMenu(e as MouseEvent);
+        },
+        onDoubleTap: (e) => {
+          this.handleDoubleClick(e as MouseEvent);
+        },
+      }
+    );
+
     this.attachEventListeners();
   }
 
   public get isPanning(): boolean {
     return this._isPanning;
+  }
+
+  public get isTouch(): boolean {
+    return this.touchGestureController?.isTouchActive() ?? false;
+  }
+
+  public get isPinching(): boolean {
+    return this.touchGestureController?.isPinchActive ?? false;
+  }
+
+  public cancelCurrentAction(): void {
+    this.creationToolHandler?.cancelCreation();
+    this.pencilToolHandler?.cancelDrawing();
+    this.lineToolHandler?.cancelCreation();
+    this.selectToolHandler?.cancelMarquee();
+    this.selectToolHandler?.resetDrag();
+    this.selectToolHandler?.resetResize();
+    this.selectToolHandler?.resetRotate();
+    this.directSelectToolHandler?.resetDirectSelect();
+    this._isPanning = false;
+    this._panStartScreen = null;
+    this.stateManager.markDirty();
+  }
+
+  public handlePinchPan(midpointScreen: Vector2D, zoomFactor: number, panDelta: Vector2D): void {
+    const rect = typeof this.canvas.getBoundingClientRect === 'function'
+      ? this.canvas.getBoundingClientRect()
+      : { left: 0, top: 0 };
+    const screenX = midpointScreen.x - rect.left;
+    const screenY = midpointScreen.y - rect.top;
+
+    if (Math.abs(zoomFactor - 1.0) > 0.0005) {
+      this.viewportManager.zoomAt({ x: screenX, y: screenY }, zoomFactor);
+    }
+    if (Math.abs(panDelta.x) > 0.001 || Math.abs(panDelta.y) > 0.001) {
+      this.viewportManager.panBy(panDelta.x, panDelta.y);
+    }
   }
 
   public get isSpacePressed(): boolean {
@@ -744,6 +823,7 @@ export class InputController {
   }
 
   public destroy(): void {
+    this.touchGestureController.destroy();
     this.textEditManager.destroy();
     this.selectToolHandler.destroy();
     this.penToolHandler.destroy();
@@ -946,13 +1026,16 @@ export class InputController {
       return null;
     }
 
+    const isTouch = this.isTouch;
+
     if (isShape(node)) {
       if (node.type === 'path') {
-        if (isPointInPath(x, y, node as Path, ctx, 8 / zoom)) {
+        const tolerance = (isTouch ? 20 : 8) / zoom;
+        if (isPointInPath(x, y, node as Path, ctx, tolerance)) {
           return node;
         }
       } else if (node.type === 'text') {
-        const tolerance = 4 / zoom;
+        const tolerance = (isTouch ? 16 : 4) / zoom;
         const currentText =
           this.textEditManager.isEditingText && this.textEditManager.textEditingState?.textId === node.id
             ? this.textEditManager.textEditingState.currentText
@@ -965,7 +1048,7 @@ export class InputController {
           return node;
         }
       } else {
-        const tolerance = 4 / zoom;
+        const tolerance = (isTouch ? 16 : 4) / zoom;
         if (isPointInShape(x, y, node, tolerance)) {
           return node;
         }
@@ -1082,6 +1165,11 @@ export class InputController {
   }
 
   public handleMouseDown(event: MouseEvent): void {
+    // Si fue precedido inmediatamente por un PointerEvent y el evento es sintético, ignorarlo
+    if (!('pointerType' in event) && Date.now() - this._lastPointerDownTimestamp < 250) {
+      return;
+    }
+
     const isHandPan = this._currentTool === 'hand' && (event.button === 0 || event.button === undefined);
     const isMiddlePan = event.button === 1;
     const isSpacePan = this._isSpacePressed && (event.button === 0 || event.button === undefined);
@@ -1221,6 +1309,10 @@ export class InputController {
   }
 
   public handleMouseMove(event: MouseEvent): void {
+    if (!('pointerType' in event) && Date.now() - this._lastPointerMoveTimestamp < 250) {
+      return;
+    }
+
     if (this._isPanning && this._panStartScreen) {
       const dx = event.clientX - this._panStartScreen.x;
       const dy = event.clientY - this._panStartScreen.y;
@@ -1288,6 +1380,10 @@ export class InputController {
   }
 
   public handleMouseUp(event: MouseEvent): void {
+    if (!('pointerType' in event) && Date.now() - this._lastPointerUpTimestamp < 250) {
+      return;
+    }
+
     if (this._isPanning) {
       this._isPanning = false;
       this._panStartScreen = null;
