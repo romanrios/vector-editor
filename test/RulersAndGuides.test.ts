@@ -527,5 +527,190 @@ describe('Reglas graduadas y Guías de usuario (Rulers & Guides)', () => {
         controller.cleanup();
       });
     });
+
+    it('arrastrar desde la regla horizontal crea y confirma una nueva guía en StateManager', () => {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(createBaseDocument(), commandManager);
+      const viewportManager = new ViewportManager();
+
+      const listeners: Record<string, ((e: any) => void)[]> = {};
+      const mockContainer = {
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0 }),
+        addEventListener: (t: string, fn: any) => { (listeners[t] = listeners[t] || []).push(fn); },
+        removeEventListener: (t: string, fn: any) => { listeners[t] = (listeners[t] || []).filter((l) => l !== fn); },
+        classList: { remove: () => {}, add: () => {} },
+      } as any;
+
+      const rulerListeners: Record<string, ((e: any) => void)[]> = {};
+      const mockHorizontalCanvas = {
+        addEventListener: (t: string, fn: any) => { (rulerListeners[t] = rulerListeners[t] || []).push(fn); },
+        removeEventListener: (t: string, fn: any) => { rulerListeners[t] = (rulerListeners[t] || []).filter((l) => l !== fn); },
+        getContext: () => null,
+      } as any;
+
+      const winListeners: Record<string, ((e: any) => void)[]> = {};
+      (globalThis as any).addEventListener = (t: string, fn: any) => { (winListeners[t] = winListeners[t] || []).push(fn); };
+      (globalThis as any).removeEventListener = (t: string, fn: any) => { winListeners[t] = (winListeners[t] || []).filter((l) => l !== fn); };
+
+      let dragGuideChange: Guide | null = null;
+      const controller = setupRulersController({
+        canvasContainer: mockContainer,
+        rulerHorizontal: mockHorizontalCanvas,
+        rulerVertical: null,
+        rulerCorner: null,
+        viewportManager,
+        stateManager,
+        commandManager,
+        onGuideDragChange: (g) => { dragGuideChange = g; },
+      });
+
+      // Iniciar arrastre en regla horizontal
+      rulerListeners['mousedown']?.[0]?.({
+        preventDefault: () => {},
+        clientY: 10,
+        clientX: 100,
+      });
+
+      assert.ok(dragGuideChange);
+      assert.strictEqual((dragGuideChange as Guide).axis, 'y');
+      assert.strictEqual(controller.activeDragGuide?.axis, 'y');
+
+      // Mover el ratón a y = 150 px
+      winListeners['mousemove']?.[0]?.({
+        clientY: 150,
+        clientX: 100,
+      });
+
+      assert.strictEqual((dragGuideChange as Guide).position, 150);
+
+      // Soltar el ratón en y = 150 px
+      winListeners['mouseup']?.[0]?.({
+        clientY: 150,
+        clientX: 100,
+      });
+
+      assert.strictEqual(dragGuideChange, null);
+      assert.strictEqual(controller.activeDragGuide, null);
+
+      // Verificar guía creada
+      const guides = stateManager.getGuides();
+      assert.strictEqual(guides.length, 1);
+      assert.strictEqual(guides[0].axis, 'y');
+      assert.strictEqual(guides[0].position, 150);
+
+      // Soporte Undo/Redo
+      commandManager.undo();
+      assert.strictEqual(stateManager.getGuides().length, 0);
+      commandManager.redo();
+      assert.strictEqual(stateManager.getGuides().length, 1);
+      assert.strictEqual(stateManager.getGuides()[0].position, 150);
+
+      controller.cleanup();
+    });
+
+    it('arrastrar desde la regla vertical crea y confirma una nueva guía en StateManager', () => {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(createBaseDocument(), commandManager);
+      const viewportManager = new ViewportManager();
+
+      const mockContainer = {
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0 }),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        classList: { remove: () => {}, add: () => {} },
+      } as any;
+
+      const rulerListeners: Record<string, ((e: any) => void)[]> = {};
+      const mockVerticalCanvas = {
+        addEventListener: (t: string, fn: any) => { (rulerListeners[t] = rulerListeners[t] || []).push(fn); },
+        removeEventListener: () => {},
+        getContext: () => null,
+      } as any;
+
+      const winListeners: Record<string, ((e: any) => void)[]> = {};
+      (globalThis as any).addEventListener = (t: string, fn: any) => { (winListeners[t] = winListeners[t] || []).push(fn); };
+      (globalThis as any).removeEventListener = () => {};
+
+      let dragGuideChange: Guide | null = null;
+      const controller = setupRulersController({
+        canvasContainer: mockContainer,
+        rulerHorizontal: null,
+        rulerVertical: mockVerticalCanvas,
+        rulerCorner: null,
+        viewportManager,
+        stateManager,
+        commandManager,
+        onGuideDragChange: (g) => { dragGuideChange = g; },
+      });
+
+      rulerListeners['mousedown']?.[0]?.({
+        preventDefault: () => {},
+        clientX: 10,
+        clientY: 200,
+      });
+
+      assert.ok(dragGuideChange);
+      assert.strictEqual((dragGuideChange as Guide).axis, 'x');
+
+      winListeners['mousemove']?.[0]?.({
+        clientX: 250,
+        clientY: 200,
+      });
+
+      assert.strictEqual((dragGuideChange as Guide).position, 250);
+
+      winListeners['mouseup']?.[0]?.({
+        clientX: 250,
+        clientY: 200,
+      });
+
+      const guides = stateManager.getGuides();
+      assert.strictEqual(guides.length, 1);
+      assert.strictEqual(guides[0].axis, 'x');
+      assert.strictEqual(guides[0].position, 250);
+
+      controller.cleanup();
+    });
+
+    it('doble clic en la regla coloca una guía en la coordenada pulsada', () => {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(createBaseDocument(), commandManager);
+      const viewportManager = new ViewportManager();
+
+      const mockContainer = {
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0 }),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        classList: { remove: () => {}, add: () => {} },
+      } as any;
+
+      const rulerListeners: Record<string, ((e: any) => void)[]> = {};
+      const mockHorizontalCanvas = {
+        addEventListener: (t: string, fn: any) => { (rulerListeners[t] = rulerListeners[t] || []).push(fn); },
+        removeEventListener: () => {},
+        getContext: () => null,
+      } as any;
+
+      const controller = setupRulersController({
+        canvasContainer: mockContainer,
+        rulerHorizontal: mockHorizontalCanvas,
+        rulerVertical: null,
+        rulerCorner: null,
+        viewportManager,
+        stateManager,
+        commandManager,
+      });
+
+      rulerListeners['dblclick']?.[0]?.({
+        clientY: 100,
+      });
+
+      const guides = stateManager.getGuides();
+      assert.strictEqual(guides.length, 1);
+      assert.strictEqual(guides[0].axis, 'y');
+      assert.strictEqual(guides[0].position, 100);
+
+      controller.cleanup();
+    });
   });
 });

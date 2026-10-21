@@ -7,7 +7,7 @@
         padding: 0 12px;
         background: var(--bg-bar);
         border-bottom: 1px solid var(--border-subtle);
-        z-index: 10;
+        z-index: 100;
       }
 
       .header-left {

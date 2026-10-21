@@ -998,7 +998,7 @@ export function setupMenuBarBindings(
     closeAllMenus();
     const prev = stateManager.getGuides();
     if (prev.length > 0) {
-      commandManager.recordCommand(new ClearGuidesCommand(stateManager, prev));
+      commandManager.executeCommand(new ClearGuidesCommand(stateManager, prev));
     }
   };
 

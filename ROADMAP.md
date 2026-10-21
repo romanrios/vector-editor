@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **990 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **993 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.

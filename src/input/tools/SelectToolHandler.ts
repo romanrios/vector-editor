@@ -901,7 +901,7 @@ export class SelectToolHandler implements ToolHandler {
 
       if (draggedToRuler) {
         const cmd = new RemoveGuideCommand(this.stateManager, guide);
-        this.commandManager.recordCommand(cmd);
+        this.commandManager.executeCommand(cmd);
       } else if (currentPosition !== initialPosition) {
         const cmd = new MoveGuideCommand(this.stateManager, guide.id, initialPosition, currentPosition);
         this.commandManager.recordCommand(cmd);
@@ -2166,7 +2166,7 @@ export class SelectToolHandler implements ToolHandler {
   public deleteHoveredGuide(): boolean {
     if (this._hoveredGuide && !this.stateManager.isGuidesLocked()) {
       const cmd = new RemoveGuideCommand(this.stateManager, this._hoveredGuide);
-      this.commandManager.recordCommand(cmd);
+      this.commandManager.executeCommand(cmd);
       this._hoveredGuide = null;
       this.canvas.style.cursor = 'default';
       return true;

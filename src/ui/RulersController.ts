@@ -48,6 +48,7 @@ export interface RulersController {
   render(): void;
   syncVisibility(): void;
   cleanup(): void;
+  readonly activeDragGuide: Guide | null;
 }
 
 export function setupRulersController(options: RulersControllerOptions): RulersController {
@@ -292,6 +293,11 @@ export function setupRulersController(options: RulersControllerOptions): RulersC
   const onHorizontalMouseDown = (e: MouseEvent) => {
     e.preventDefault();
     if (!container) return;
+
+    if (!stateManager.isGuidesVisible()) {
+      stateManager.setGuidesVisible(true);
+    }
+
     const rect = container.getBoundingClientRect();
     const startY = e.clientY - rect.top;
     const guideId = 'guide-' + Math.random().toString(36).substring(2, 9);
@@ -299,54 +305,80 @@ export function setupRulersController(options: RulersControllerOptions): RulersC
     const vp = viewportManager.getViewport();
     const worldY = Math.round((startY - vp.panY) / vp.zoom);
     activeDragGuide = { id: guideId, axis: 'y', position: worldY };
+    cursorScreenPos = { x: e.clientX - rect.left, y: startY };
+    render();
     onGuideDragChange?.(activeDragGuide);
     stateManager.markDirty();
 
+    if (typeof document !== 'undefined') {
+      document.body.style.cursor = 'row-resize';
+    }
+
     const onWindowMove = (we: MouseEvent) => {
+      const currentVp = viewportManager.getViewport();
       const currY = we.clientY - rect.top;
-      const currWorldY = Math.round((currY - vp.panY) / vp.zoom);
+      const currWorldY = Math.round((currY - currentVp.panY) / currentVp.zoom);
       activeDragGuide = { id: guideId, axis: 'y', position: currWorldY };
+      cursorScreenPos = { x: we.clientX - rect.left, y: currY };
+      render();
       onGuideDragChange?.(activeDragGuide);
       stateManager.markDirty();
     };
 
-    const onWindowUp = (we: MouseEvent) => {
-      window.removeEventListener('mousemove', onWindowMove);
-      window.removeEventListener('mouseup', onWindowUp);
+    const win = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? (globalThis as any) : null);
 
+    const onWindowUp = (we: MouseEvent) => {
+      win?.removeEventListener?.('mousemove', onWindowMove);
+      win?.removeEventListener?.('mouseup', onWindowUp);
+
+      if (typeof document !== 'undefined') {
+        document.body.style.cursor = '';
+      }
+
+      const currentVp = viewportManager.getViewport();
       const endY = we.clientY - rect.top;
-      const finalWorldY = Math.round((endY - vp.panY) / vp.zoom);
+      const finalWorldY = Math.round((endY - currentVp.panY) / currentVp.zoom);
       activeDragGuide = null;
+      cursorScreenPos = null;
+      render();
       onGuideDragChange?.(null);
 
       // Si se soltó dentro del área del lienzo (> 20px)
       if (endY > RULER_THICKNESS) {
         const newGuide: Guide = { id: guideId, axis: 'y', position: finalWorldY };
         const cmd = new AddGuideCommand(stateManager, newGuide);
-        commandManager.recordCommand(cmd);
+        commandManager.executeCommand(cmd);
       } else {
         stateManager.markDirty();
       }
     };
 
-    window.addEventListener('mousemove', onWindowMove);
-    window.addEventListener('mouseup', onWindowUp);
+    win?.addEventListener?.('mousemove', onWindowMove);
+    win?.addEventListener?.('mouseup', onWindowUp);
   };
 
   const onHorizontalDblClick = (e: MouseEvent) => {
     if (!container) return;
+    if (!stateManager.isGuidesVisible()) {
+      stateManager.setGuidesVisible(true);
+    }
     const rect = container.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const vp = viewportManager.getViewport();
     const worldY = Math.round((clickY - vp.panY) / vp.zoom);
     const guideId = 'guide-' + Math.random().toString(36).substring(2, 9);
     const newGuide: Guide = { id: guideId, axis: 'y', position: worldY };
-    commandManager.recordCommand(new AddGuideCommand(stateManager, newGuide));
+    commandManager.executeCommand(new AddGuideCommand(stateManager, newGuide));
   };
 
   const onVerticalMouseDown = (e: MouseEvent) => {
     e.preventDefault();
     if (!container) return;
+
+    if (!stateManager.isGuidesVisible()) {
+      stateManager.setGuidesVisible(true);
+    }
+
     const rect = container.getBoundingClientRect();
     const startX = e.clientX - rect.left;
     const guideId = 'guide-' + Math.random().toString(36).substring(2, 9);
@@ -354,49 +386,70 @@ export function setupRulersController(options: RulersControllerOptions): RulersC
     const vp = viewportManager.getViewport();
     const worldX = Math.round((startX - vp.panX) / vp.zoom);
     activeDragGuide = { id: guideId, axis: 'x', position: worldX };
+    cursorScreenPos = { x: startX, y: e.clientY - rect.top };
+    render();
     onGuideDragChange?.(activeDragGuide);
     stateManager.markDirty();
 
+    if (typeof document !== 'undefined') {
+      document.body.style.cursor = 'col-resize';
+    }
+
     const onWindowMove = (we: MouseEvent) => {
+      const currentVp = viewportManager.getViewport();
       const currX = we.clientX - rect.left;
-      const currWorldX = Math.round((currX - vp.panX) / vp.zoom);
+      const currWorldX = Math.round((currX - currentVp.panX) / currentVp.zoom);
       activeDragGuide = { id: guideId, axis: 'x', position: currWorldX };
+      cursorScreenPos = { x: currX, y: we.clientY - rect.top };
+      render();
       onGuideDragChange?.(activeDragGuide);
       stateManager.markDirty();
     };
 
-    const onWindowUp = (we: MouseEvent) => {
-      window.removeEventListener('mousemove', onWindowMove);
-      window.removeEventListener('mouseup', onWindowUp);
+    const winV = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? (globalThis as any) : null);
 
+    const onWindowUp = (we: MouseEvent) => {
+      winV?.removeEventListener?.('mousemove', onWindowMove);
+      winV?.removeEventListener?.('mouseup', onWindowUp);
+
+      if (typeof document !== 'undefined') {
+        document.body.style.cursor = '';
+      }
+
+      const currentVp = viewportManager.getViewport();
       const endX = we.clientX - rect.left;
-      const finalWorldX = Math.round((endX - vp.panX) / vp.zoom);
+      const finalWorldX = Math.round((endX - currentVp.panX) / currentVp.zoom);
       activeDragGuide = null;
+      cursorScreenPos = null;
+      render();
       onGuideDragChange?.(null);
 
       // Si se soltó dentro del área del lienzo (> 20px)
       if (endX > RULER_THICKNESS) {
         const newGuide: Guide = { id: guideId, axis: 'x', position: finalWorldX };
         const cmd = new AddGuideCommand(stateManager, newGuide);
-        commandManager.recordCommand(cmd);
+        commandManager.executeCommand(cmd);
       } else {
         stateManager.markDirty();
       }
     };
 
-    window.addEventListener('mousemove', onWindowMove);
-    window.addEventListener('mouseup', onWindowUp);
+    winV?.addEventListener?.('mousemove', onWindowMove);
+    winV?.addEventListener?.('mouseup', onWindowUp);
   };
 
   const onVerticalDblClick = (e: MouseEvent) => {
     if (!container) return;
+    if (!stateManager.isGuidesVisible()) {
+      stateManager.setGuidesVisible(true);
+    }
     const rect = container.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const vp = viewportManager.getViewport();
     const worldX = Math.round((clickX - vp.panX) / vp.zoom);
     const guideId = 'guide-' + Math.random().toString(36).substring(2, 9);
     const newGuide: Guide = { id: guideId, axis: 'x', position: worldX };
-    commandManager.recordCommand(new AddGuideCommand(stateManager, newGuide));
+    commandManager.executeCommand(new AddGuideCommand(stateManager, newGuide));
   };
 
   const onCornerClick = () => {
@@ -439,6 +492,9 @@ export function setupRulersController(options: RulersControllerOptions): RulersC
   return {
     render,
     syncVisibility,
+    get activeDragGuide() {
+      return activeDragGuide;
+    },
     cleanup: () => {
       unsubscribeViewport();
       unsubscribeState();

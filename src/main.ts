@@ -1,5 +1,6 @@
 import { StateManager } from './state/StateManager.ts';
 import { DEFAULT_DOCUMENT, DEFAULT_DOCUMENT_ZOOM } from './state/defaultDocument.ts';
+import type { Guide } from './types/scene-graph.ts';
 import { injectSampleShapes } from './state/injectSampleShapes.ts';
 import { RenderEngine } from './render/RenderEngine.ts';
 import { InputController, type ToolMode } from './input/InputController.ts';
@@ -52,6 +53,7 @@ const commandManager = new CommandManager();
 const stateManager = new StateManager(DEFAULT_DOCUMENT, commandManager);
 const viewportManager = new ViewportManager({ zoom: DEFAULT_DOCUMENT_ZOOM, panX: 0, panY: 0 });
 const moduleStateManager = stateManager;
+let activeRulerGuideDrag: Guide | null = null;
 
 debug('✅ Documento predeterminado cargado con zoom inicial al 50%.');
 
@@ -228,6 +230,10 @@ export function setupUIBindings(
     viewportManager,
     stateManager,
     commandManager,
+    onGuideDragChange: (guide) => {
+      activeRulerGuideDrag = guide;
+      stateManager.markDirty();
+    },
   });
 
   // Suscripciones reactivas del estado y de la entrada
@@ -283,6 +289,7 @@ export function setupUIBindings(
       contextMenuController.cleanup();
       menuBarController.cleanup();
       placementController.cleanup();
+      activeRulerGuideDrag = null;
       rulersController.cleanup();
     },
   };
@@ -312,7 +319,7 @@ if (typeof document !== 'undefined') {
       textEditProvider: () => inputController?.textEditState ?? null,
       activeGuidesProvider: () => inputController?.activeGuides ?? [],
       eyedropperPreviewProvider: () => inputController?.eyedropperPreview ?? null,
-      activeGuideDragProvider: () => inputController?.activeGuideDrag ?? null,
+      activeGuideDragProvider: () => activeRulerGuideDrag ?? inputController?.activeGuideDrag ?? null,
     });
     renderEngine.start();
 
