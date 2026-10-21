@@ -5,6 +5,7 @@ import {
   isText,
   type Shape,
   type Text,
+  type Vector2D,
 } from '../types/scene-graph.ts';
 import {
   getTextIndexAtPosition,
@@ -32,6 +33,7 @@ export interface TextEditStateView {
 
 export interface TextEditManagerHooks {
   onStartEditing?: () => void;
+  worldToScreen?: (point: Vector2D) => Vector2D;
 }
 
 /**
@@ -154,6 +156,7 @@ export class TextEditManager {
    */
   public resetCursorBlink(): void {
     this._cursorVisible = true;
+    this.syncProxyValue();
     if (this._cursorBlinkTimer !== null && typeof setInterval !== 'undefined') {
       clearInterval(this._cursorBlinkTimer);
       this._cursorBlinkTimer = setInterval(() => {
@@ -205,6 +208,7 @@ export class TextEditManager {
         this.stateManager.markDirty();
       }
       this.canvas.style.cursor = 'text';
+      this.setupMobileInputProxy(selectAll);
       return true;
     }
     if (this._textEditingState) {
@@ -253,7 +257,7 @@ export class TextEditManager {
 
     this.canvas.style.cursor = 'text';
 
-    this.setupMobileInputProxy();
+    this.setupMobileInputProxy(selectAll);
     this.startCursorBlink();
     this.stateManager.markDirty();
     return true;
@@ -772,7 +776,45 @@ export class TextEditManager {
     this.stateManager.markDirty();
   }
 
-  private setupMobileInputProxy(): void {
+  private syncProxyValue(): void {
+    if (!this._mobileInputProxy || !this._textEditingState) return;
+    if (this._mobileInputProxy.value !== this._textEditingState.currentText) {
+      this._mobileInputProxy.value = this._textEditingState.currentText;
+    }
+    const pos = this._textEditingState.cursorIndex;
+    try {
+      this._mobileInputProxy.setSelectionRange(pos, pos);
+    } catch {
+      // Ignorar si el entorno mock no implementa setSelectionRange
+    }
+  }
+
+  public updateMobileInputProxyPosition(): void {
+    if (!this._mobileInputProxy || !this._textEditingState) return;
+    const canvasRect = this.canvas.getBoundingClientRect ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    let screenX = canvasRect.left + 50;
+    let screenY = canvasRect.top + 50;
+
+    const node = this.stateManager.findNode(this._textEditingState.textId);
+    if (node && isText(node) && this.hooks?.worldToScreen) {
+      const screenPos = this.hooks.worldToScreen({ x: node.x, y: node.y });
+      screenX = canvasRect.left + screenPos.x;
+      screenY = canvasRect.top + screenPos.y;
+    }
+
+    const winW = typeof window !== 'undefined' ? window.innerWidth : 400;
+    const winH = typeof window !== 'undefined' ? window.innerHeight : 600;
+    const clampedX = Math.max(10, Math.min(winW - 60, screenX));
+    const clampedY = Math.max(10, Math.min(winH - 60, screenY));
+
+    this._mobileInputProxy.style.top = `${clampedY}px`;
+    this._mobileInputProxy.style.left = `${clampedX}px`;
+    this._mobileInputProxy.style.width = '30px';
+    this._mobileInputProxy.style.height = '30px';
+    this._mobileInputProxy.style.pointerEvents = 'auto';
+  }
+
+  private setupMobileInputProxy(selectAll: boolean = false): void {
     if (typeof document === 'undefined') return;
     if (!this._mobileInputProxy) {
       this._mobileInputProxy = document.createElement('textarea');
@@ -781,46 +823,101 @@ export class TextEditManager {
       this._mobileInputProxy.setAttribute('autocorrect', 'off');
       this._mobileInputProxy.setAttribute('autocapitalize', 'off');
       this._mobileInputProxy.setAttribute('spellcheck', 'false');
-      this._mobileInputProxy.setAttribute('aria-hidden', 'true');
+      this._mobileInputProxy.setAttribute('aria-label', 'Editor de texto');
       this._mobileInputProxy.style.position = 'fixed';
-      this._mobileInputProxy.style.top = '-9999px';
-      this._mobileInputProxy.style.left = '-9999px';
-      this._mobileInputProxy.style.opacity = '0';
-      this._mobileInputProxy.style.width = '1px';
-      this._mobileInputProxy.style.height = '1px';
+      this._mobileInputProxy.style.opacity = '0.01';
+      this._mobileInputProxy.style.color = 'transparent';
+      this._mobileInputProxy.style.background = 'transparent';
+      this._mobileInputProxy.style.border = 'none';
+      this._mobileInputProxy.style.outline = 'none';
+      this._mobileInputProxy.style.resize = 'none';
+      this._mobileInputProxy.style.overflow = 'hidden';
+      this._mobileInputProxy.style.padding = '0';
+      this._mobileInputProxy.style.margin = '0';
       this._mobileInputProxy.style.fontSize = '16px';
-      this._mobileInputProxy.style.pointerEvents = 'none';
-      this._mobileInputProxy.style.zIndex = '-1';
+      this._mobileInputProxy.style.pointerEvents = 'auto';
+      this._mobileInputProxy.style.zIndex = '50';
 
       this._mobileInputProxy.addEventListener('input', () => {
         if (!this._mobileInputProxy || !this._textEditingState) return;
-        const val = this._mobileInputProxy.value;
-        if (val.length > 0) {
-          this.insertText(val);
-          this._mobileInputProxy.value = '';
-        }
+        const newText = this._mobileInputProxy.value;
+        const newCursor = this._mobileInputProxy.selectionStart ?? newText.length;
+        this._textEditingState.currentText = newText;
+        this._textEditingState.cursorIndex = newCursor;
+        this._textEditingState.selectionStart = newCursor;
+        this._textEditingState.selectionEnd = newCursor;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
       });
 
+      const onSelectionSync = () => {
+        if (!this._mobileInputProxy || !this._textEditingState) return;
+        const start = this._mobileInputProxy.selectionStart ?? 0;
+        const end = this._mobileInputProxy.selectionEnd ?? 0;
+        if (
+          this._textEditingState.selectionStart !== start ||
+          this._textEditingState.selectionEnd !== end ||
+          this._textEditingState.cursorIndex !== end
+        ) {
+          this._textEditingState.selectionStart = start;
+          this._textEditingState.selectionEnd = end;
+          this._textEditingState.cursorIndex = end;
+          this.resetCursorBlink();
+          this.stateManager.markDirty();
+        }
+      };
+      this._mobileInputProxy.addEventListener('select', onSelectionSync);
+      this._mobileInputProxy.addEventListener('keyup', onSelectionSync);
+
       this._mobileInputProxy.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.commitTextEdit();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
           this.handleKeyDown(e);
+          if (this._mobileInputProxy && this._textEditingState) {
+            this._mobileInputProxy.value = this._textEditingState.currentText;
+            const pos = this._textEditingState.cursorIndex;
+            try {
+              this._mobileInputProxy.setSelectionRange(pos, pos);
+            } catch {}
+          }
         }
       });
 
       document.body.appendChild(this._mobileInputProxy);
     }
 
-    try {
-      this._mobileInputProxy.value = '';
-      this._mobileInputProxy.focus();
-    } catch {
-      // Ignorar fallos de foco
+    this.updateMobileInputProxyPosition();
+
+    if (this._mobileInputProxy && this._textEditingState) {
+      this._mobileInputProxy.value = this._textEditingState.currentText;
+      const textLen = this._textEditingState.currentText.length;
+      if (selectAll) {
+        try {
+          this._mobileInputProxy.setSelectionRange(0, textLen);
+        } catch {}
+      } else {
+        const pos = Math.min(textLen, this._textEditingState.cursorIndex);
+        try {
+          this._mobileInputProxy.setSelectionRange(pos, pos);
+        } catch {}
+      }
+      try {
+        this._mobileInputProxy.focus({ preventScroll: true });
+      } catch {
+        this._mobileInputProxy.focus();
+      }
     }
   }
 
   private teardownMobileInputProxy(): void {
     if (this._mobileInputProxy) {
       this._mobileInputProxy.blur();
+      this._mobileInputProxy.style.top = '-9999px';
+      this._mobileInputProxy.style.left = '-9999px';
+      this._mobileInputProxy.style.pointerEvents = 'none';
     }
   }
 

@@ -5,7 +5,7 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { TouchGestureController } from '../src/input/TouchGestureController.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
-import type { Rectangle, Vector2D } from '../src/types/scene-graph.ts';
+import type { Rectangle, Text, Vector2D } from '../src/types/scene-graph.ts';
 
 function createMockCanvas(): HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void } {
   const listeners: Record<string, ((e: unknown) => void)[]> = {};
@@ -328,5 +328,175 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       pointerType: 'touch',
     });
     inputController.destroy();
+  });
+
+  it('8. edición de texto en táctil / mobile: proxy visible, soporte IME/input y rechazo de mousedown sintético', () => {
+    const origDoc = (globalThis as any).document;
+    const origWindow = (globalThis as any).window;
+
+    const proxyListeners: Record<string, ((e: any) => void)[]> = {};
+    const mockProxy = {
+      id: '',
+      value: '',
+      selectionStart: 0,
+      selectionEnd: 0,
+      style: {} as Record<string, string>,
+      attributes: {} as Record<string, string>,
+      setAttribute: (k: string, v: string) => { mockProxy.attributes[k] = v; },
+      getAttribute: (k: string) => mockProxy.attributes[k],
+      focus: () => {},
+      blur: () => {},
+      remove: () => {
+        if (appendedElement === mockProxy) {
+          appendedElement = null;
+        }
+      },
+      setSelectionRange: (s: number, e: number) => {
+        mockProxy.selectionStart = s;
+        mockProxy.selectionEnd = e;
+      },
+      addEventListener: (type: string, fn: (e: any) => void) => {
+        proxyListeners[type] = proxyListeners[type] || [];
+        proxyListeners[type].push(fn);
+      },
+      removeEventListener: () => {},
+    };
+
+    let appendedElement: any = null;
+    const mockBody: any = {
+      appendChild: (el: any) => {
+        appendedElement = el;
+        el.parentElement = mockBody;
+      },
+      removeChild: (el: any) => {
+        if (appendedElement === el) {
+          appendedElement = null;
+          el.parentElement = null;
+        }
+      },
+    };
+    (globalThis as any).document = {
+      createElement: (tag: string) => {
+        if (tag === 'textarea') return mockProxy;
+        if (tag === 'canvas') {
+          return {
+            getContext: () => ({
+              font: '16px Inter',
+              textAlign: 'left',
+              textBaseline: 'top',
+              measureText: (str: string) => ({ width: str.length * 10 }),
+            }),
+          };
+        }
+        return {};
+      },
+      body: mockBody,
+      getElementById: (id: string) => {
+        if (appendedElement && appendedElement.id === id) return appendedElement;
+        return null;
+      },
+    };
+    (globalThis as any).window = {
+      innerWidth: 360,
+      innerHeight: 640,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+
+    try {
+      const canvas = createMockCanvas();
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const viewportManager = new ViewportManager({ zoom: 1, panX: 0, panY: 0 });
+
+      const inputController = new InputController(canvas, stateManager, commandManager, {
+        viewportManager,
+      });
+
+      const layerId = stateManager.getState().children[0].id;
+      const textNode: Text = {
+        id: 'text-mobile-1',
+        type: 'text',
+        name: 'Texto Móvil',
+        x: 50,
+        y: 120,
+        text: 'Hola',
+        fontFamily: 'Inter',
+        fontSize: 16,
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        textAlign: 'left',
+        fill: '#000000',
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+      };
+      stateManager.addShape(layerId, textNode);
+
+      // Simular pointerdown/up touch para activar modo táctil
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 50,
+        clientY: 120,
+        pointerType: 'touch',
+      });
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        pointerType: 'touch',
+      });
+
+      // Iniciar edición de texto
+      inputController.startEditingText(textNode.id);
+      assert.equal(inputController.isEditingText, true);
+
+      // Verificar que el proxy textarea fue configurado adecuadamente para Android IME
+      assert.ok(appendedElement !== null, 'Debe adjuntar proxy textarea al body');
+      assert.equal(appendedElement.id, 'mobile-text-proxy');
+      assert.equal(appendedElement.style.opacity, '0.01');
+      assert.equal(appendedElement.style.pointerEvents, 'auto');
+      assert.equal(appendedElement.style.fontSize, '16px');
+      // Debe estar dentro de las coordenadas visibles de la pantalla, no a -9999px
+      assert.ok(parseInt(appendedElement.style.top, 10) >= 0);
+      assert.ok(parseInt(appendedElement.style.left, 10) >= 0);
+      assert.equal(appendedElement.value, 'Hola');
+
+      // Simular escritura desde el teclado virtual móvil (evento input)
+      mockProxy.value = 'Hola Mundo';
+      mockProxy.selectionStart = 10;
+      mockProxy.selectionEnd = 10;
+      for (const listener of proxyListeners['input'] || []) {
+        listener({ inputType: 'insertText', data: ' Mundo' });
+      }
+      assert.equal(inputController.textEditingState?.currentText, 'Hola Mundo');
+
+      // Simular mousedown sintético de Android que llega después de pointerup (300ms)
+      // Debe ser ignorado y NO cancelar la sesión de edición de texto
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: 200,
+        clientY: 200,
+        button: 0,
+        sourceCapabilities: { firesTouchEvents: true },
+      });
+      assert.equal(inputController.isEditingText, true, 'El mousedown sintético no debe cancelar la edición');
+
+      // Confirmar edición: el proxy debe quedar inactivo fuera de pantalla
+      inputController.commitTextEdit();
+      assert.equal(inputController.isEditingText, false);
+      assert.equal(appendedElement.style.pointerEvents, 'none');
+      assert.equal(appendedElement.style.top, '-9999px');
+      assert.equal(appendedElement.style.left, '-9999px');
+      assert.equal(appendedElement.value, 'Hola Mundo');
+
+      const updatedNode = stateManager.findNode(textNode.id) as Text;
+      assert.equal(updatedNode.text, 'Hola Mundo');
+
+      // Al destruir el controlador, el elemento proxy se elimina del DOM
+      inputController.destroy();
+      assert.equal(appendedElement, null, 'Debe remover el proxy del body al destruir el controlador');
+    } finally {
+      (globalThis as any).document = origDoc;
+      (globalThis as any).window = origWindow;
+    }
   });
 });

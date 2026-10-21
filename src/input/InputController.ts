@@ -287,6 +287,7 @@ export class InputController {
             this.selectToolHandler.cancelMarquee();
           }
         },
+        worldToScreen: (point) => this.viewportManager.worldToScreen(point),
       }
     );
 
@@ -1165,8 +1166,14 @@ export class InputController {
   }
 
   public handleMouseDown(event: MouseEvent): void {
-    // Si fue precedido inmediatamente por un PointerEvent y el evento es sintético, ignorarlo
-    if (!('pointerType' in event) && Date.now() - this._lastPointerDownTimestamp < 250) {
+    // Si fue precedido inmediatamente por un evento Pointer/Touch y el evento es un MouseEvent sintético, ignorarlo
+    const isSyntheticMouse =
+      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+    if (
+      isSyntheticMouse &&
+      (Date.now() - this._lastPointerDownTimestamp < 800 ||
+        Date.now() - this._lastPointerUpTimestamp < 800)
+    ) {
       return;
     }
 
@@ -1309,7 +1316,13 @@ export class InputController {
   }
 
   public handleMouseMove(event: MouseEvent): void {
-    if (!('pointerType' in event) && Date.now() - this._lastPointerMoveTimestamp < 250) {
+    const isSyntheticMouse =
+      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+    if (
+      isSyntheticMouse &&
+      (Date.now() - this._lastPointerMoveTimestamp < 400 ||
+        Date.now() - this._lastPointerDownTimestamp < 400)
+    ) {
       return;
     }
 
@@ -1395,8 +1408,14 @@ export class InputController {
       return;
     }
 
-    // El clic derecho (button === 2) o botones secundarios no deben disparar acciones de finalización de herramientas
-    if (event.button !== 0 && event.button !== undefined) {
+    // Ignorar eventos mouseup sintéticos tras interacción táctil
+    const isSyntheticMouse =
+      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+    if (
+      isSyntheticMouse &&
+      (Date.now() - this._lastPointerDownTimestamp < 800 ||
+        Date.now() - this._lastPointerUpTimestamp < 800)
+    ) {
       return;
     }
 
@@ -1777,7 +1796,7 @@ export class InputController {
     const target =
       (event.target as HTMLElement | null) ??
       (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
-    if (!target) {
+    if (!target || target.id === 'mobile-text-proxy') {
       return false;
     }
     const tagName = target.tagName;
