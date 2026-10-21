@@ -452,6 +452,26 @@ export class SelectToolHandler implements ToolHandler {
               radiusY: selectedNode.radiusY,
               rotation: selectedNode.rotation ?? 0,
             };
+          } else if (selectedNode.type === 'polygon') {
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              radius: selectedNode.radius,
+              sides: selectedNode.sides,
+              rotation: selectedNode.rotation ?? 0,
+              ...(selectedNode.cornerRadius !== undefined ? { cornerRadius: selectedNode.cornerRadius } : {}),
+            };
+          } else if (selectedNode.type === 'star') {
+            this.initialDimensions = {
+              x: selectedNode.x,
+              y: selectedNode.y,
+              outerRadius: selectedNode.outerRadius,
+              innerRadius: selectedNode.innerRadius,
+              starPoints: selectedNode.points,
+              rotation: selectedNode.rotation ?? 0,
+              ...(selectedNode.cornerRadius !== undefined ? { cornerRadius: selectedNode.cornerRadius } : {}),
+              ...(selectedNode.innerCornerRadius !== undefined ? { innerCornerRadius: selectedNode.innerCornerRadius } : {}),
+            };
           } else if (selectedNode.type === 'path') {
             const aabb = getPathBaseAABB(selectedNode);
             this.initialDimensions = {
@@ -1396,7 +1416,7 @@ export class SelectToolHandler implements ToolHandler {
     }
 
     if (this._isResizing && this.resizingShapeId && this.initialDimensions) {
-      this.stateManager.updateShape(this.resizingShapeId, this.initialDimensions);
+      this.stateManager.updateShapeDimensions(this.resizingShapeId, this.initialDimensions);
       this.resetResize();
       this.stateManager.markDirty();
       this.canvas.style.cursor = 'default';
@@ -1704,7 +1724,8 @@ export class SelectToolHandler implements ToolHandler {
     const currentShape = this.stateManager.findNode(this.resizingShapeId);
     const isImageNode = currentShape?.type === 'image';
     const isTextNode = currentShape?.type === 'text';
-    const preserveRatio = isImageNode || isTextNode ? true : shiftKey;
+    const isParametricRegular = currentShape?.type === 'polygon' || currentShape?.type === 'star';
+    const preserveRatio = isImageNode || isTextNode || isParametricRegular ? true : shiftKey;
 
     const deltaX = mouseX - this.resizeOrigin.x;
     const deltaY = mouseY - this.resizeOrigin.y;
@@ -2078,8 +2099,20 @@ export class SelectToolHandler implements ToolHandler {
       const initCenterY = initial.y ?? 0;
       const initR = initial.radius;
       const initSize = initR * 2;
-      const { newW, newH } = computeSize(initSize, initSize);
-      const newR = Math.max(2, Math.min(newW, newH) / 2);
+      const mult = fromCenter ? 2 : 1;
+      let newR: number;
+
+      if (preserveAspectRatio) {
+        const { newW } = computeSize(initSize, initSize);
+        newR = Math.max(2, newW / 2);
+      } else {
+        const rawNewW = initSize + mult * dxSign * localDx;
+        const rawNewH = initSize + mult * dySign * localDy;
+        const sx = rawNewW / Math.max(1, initSize);
+        const sy = rawNewH / Math.max(1, initSize);
+        const scale = Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
+        newR = Math.max(2, initR * scale);
+      }
 
       const localShiftX = fromCenter ? 0 : (dxSign * (newR * 2 - initSize)) / 2;
       const localShiftY = fromCenter ? 0 : (dySign * (newR * 2 - initSize)) / 2;
@@ -2093,6 +2126,7 @@ export class SelectToolHandler implements ToolHandler {
         radius: newR,
         sides: initial.sides,
         rotation,
+        ...(initial.cornerRadius !== undefined ? { cornerRadius: initial.cornerRadius } : {}),
       };
     }
 
@@ -2101,8 +2135,21 @@ export class SelectToolHandler implements ToolHandler {
       const initCenterY = initial.y ?? 0;
       const initOuter = initial.outerRadius;
       const initSize = initOuter * 2;
-      const { newW, newH } = computeSize(initSize, initSize);
-      const newOuter = Math.max(2, Math.min(newW, newH) / 2);
+      const mult = fromCenter ? 2 : 1;
+      let newOuter: number;
+
+      if (preserveAspectRatio) {
+        const { newW } = computeSize(initSize, initSize);
+        newOuter = Math.max(2, newW / 2);
+      } else {
+        const rawNewW = initSize + mult * dxSign * localDx;
+        const rawNewH = initSize + mult * dySign * localDy;
+        const sx = rawNewW / Math.max(1, initSize);
+        const sy = rawNewH / Math.max(1, initSize);
+        const scale = Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
+        newOuter = Math.max(2, initOuter * scale);
+      }
+
       const ratio = initOuter > 0 ? initial.innerRadius / initOuter : 0.5;
       const newInner = Math.max(1, newOuter * ratio);
 
@@ -2119,6 +2166,8 @@ export class SelectToolHandler implements ToolHandler {
         innerRadius: newInner,
         starPoints: initial.starPoints,
         rotation,
+        ...(initial.cornerRadius !== undefined ? { cornerRadius: initial.cornerRadius } : {}),
+        ...(initial.innerCornerRadius !== undefined ? { innerCornerRadius: initial.innerCornerRadius } : {}),
       };
     }
 

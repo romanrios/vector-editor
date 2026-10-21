@@ -657,6 +657,183 @@ describe('Primitivas Paramétricas: Polígono Regular y Estrella', () => {
       assert.strictEqual(poly.x, 100);
       assert.strictEqual(poly.radius, 50);
     });
+
+    it('calculateResizedDimensions escala un polígono regular desde manejador de esquina', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager();
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+
+      const initial = { x: 100, y: 100, radius: 50, sides: 6 };
+      // Arrastrar hacia abajo-derecha (+20, +20): el radio pasa de 50 a 60 y el centro se desplaza +10, +10
+      const resizedBR = ic.calculateResizedDimensions(initial, 'bottom-right', 20, 20, true, false);
+      assert.strictEqual(resizedBR.radius, 60);
+      assert.strictEqual(resizedBR.x, 110);
+      assert.strictEqual(resizedBR.y, 110);
+      assert.strictEqual(resizedBR.sides, 6);
+
+      // Arrastrar desde el centro (Alt): centro se mantiene fijo en (100, 100)
+      const resizedCenter = ic.calculateResizedDimensions(initial, 'bottom-right', 20, 20, true, true);
+      assert.strictEqual(resizedCenter.x, 100);
+      assert.strictEqual(resizedCenter.y, 100);
+      assert.strictEqual(resizedCenter.radius, 70);
+
+      ic.destroy();
+    });
+
+    it('calculateResizedDimensions escala una estrella regular manteniendo la proporción de radios', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager();
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+
+      const initial = { x: 200, y: 200, outerRadius: 60, innerRadius: 30, starPoints: 5 };
+      const resized = ic.calculateResizedDimensions(initial, 'bottom-right', 24, 24, true, false);
+      assert.strictEqual(resized.outerRadius, 72);
+      assert.strictEqual(resized.innerRadius, 36);
+      assert.strictEqual(resized.x, 212);
+      assert.strictEqual(resized.y, 212);
+      assert.strictEqual(resized.starPoints, 5);
+
+      ic.destroy();
+    });
+
+    it('SelectToolHandler permite redimensionar interactivamente polígonos y estrellas desde manejadores de esquina con Undo/Redo', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager();
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+      const layerId = sm.getState().children[0].id;
+
+      // 1. Probar con Polígono
+      const poly: Polygon = {
+        id: 'poly-interactive',
+        type: 'polygon',
+        name: 'Hexágono',
+        x: 150,
+        y: 150,
+        radius: 40,
+        sides: 6,
+      };
+      sm.addShape(layerId, poly);
+      sm.setSelection(['poly-interactive']);
+
+      // Obtener el manejador bottom-right del polígono
+      const polyHandles = getSelectionHandles(poly, 8);
+      const brHandle = polyHandles.find((h) => h.type === 'bottom-right');
+      assert.ok(brHandle);
+
+      // Iniciar arrastre sobre el tirador
+      const startX = (brHandle.minX + brHandle.maxX) / 2;
+      const startY = (brHandle.minY + brHandle.maxY) / 2;
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: startX,
+        clientY: startY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      assert.strictEqual(ic.isResizing, true);
+
+      // Arrastrar +30px en X e Y
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: startX + 30,
+        clientY: startY + 30,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      let updatedPoly = sm.findNode('poly-interactive') as Polygon;
+      assert.ok(updatedPoly.radius > 40, `El radio ${updatedPoly.radius} debería ser mayor a 40`);
+
+      // Soltar para completar el comando
+      canvas.dispatchSimulatedEvent('mouseup', {
+        clientX: startX + 30,
+        clientY: startY + 30,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      assert.strictEqual(ic.isResizing, false);
+      const scaledRadius = (sm.findNode('poly-interactive') as Polygon).radius;
+      assert.ok(scaledRadius > 40);
+
+      // Deshacer restaura el radio original
+      cm.undo();
+      updatedPoly = sm.findNode('poly-interactive') as Polygon;
+      assert.strictEqual(updatedPoly.radius, 40);
+      assert.strictEqual(updatedPoly.x, 150);
+      assert.strictEqual(updatedPoly.y, 150);
+
+      // Rehacer vuelve a aplicar el tamaño escalado
+      cm.redo();
+      updatedPoly = sm.findNode('poly-interactive') as Polygon;
+      assert.strictEqual(updatedPoly.radius, scaledRadius);
+
+      // 2. Probar con Estrella
+      const star: Star = {
+        id: 'star-interactive',
+        type: 'star',
+        name: 'Estrella',
+        x: 300,
+        y: 300,
+        outerRadius: 50,
+        innerRadius: 25,
+        points: 5,
+      };
+      sm.addShape(layerId, star);
+      sm.setSelection(['star-interactive']);
+
+      const starHandles = getSelectionHandles(star, 8);
+      const starBrHandle = starHandles.find((h) => h.type === 'bottom-right');
+      assert.ok(starBrHandle);
+
+      const starStartX = (starBrHandle.minX + starBrHandle.maxX) / 2;
+      const starStartY = (starBrHandle.minY + starBrHandle.maxY) / 2;
+      canvas.dispatchSimulatedEvent('mousedown', {
+        clientX: starStartX,
+        clientY: starStartY,
+        button: 0,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      assert.strictEqual(ic.isResizing, true);
+
+      canvas.dispatchSimulatedEvent('mousemove', {
+        clientX: starStartX + 20,
+        clientY: starStartY + 20,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      let updatedStar = sm.findNode('star-interactive') as Star;
+      assert.ok(updatedStar.outerRadius > 50);
+      assert.ok(updatedStar.innerRadius > 25);
+
+      canvas.dispatchSimulatedEvent('mouseup', {
+        clientX: starStartX + 20,
+        clientY: starStartY + 20,
+        shiftKey: false,
+        altKey: false,
+      });
+
+      assert.strictEqual(ic.isResizing, false);
+      const finalOuter = (sm.findNode('star-interactive') as Star).outerRadius;
+      assert.ok(finalOuter > 50);
+
+      cm.undo();
+      updatedStar = sm.findNode('star-interactive') as Star;
+      assert.strictEqual(updatedStar.outerRadius, 50);
+      assert.strictEqual(updatedStar.innerRadius, 25);
+
+      cm.redo();
+      updatedStar = sm.findNode('star-interactive') as Star;
+      assert.strictEqual(updatedStar.outerRadius, finalOuter);
+
+      ic.destroy();
+    });
   });
 
   describe('4. Exportación SVG y Raster', () => {
