@@ -43,12 +43,7 @@
         font-weight: 500;
       }
 
-      .status-hints {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--text-muted);
-      }
+
 
       .separator {
         opacity: 0.35;

@@ -226,7 +226,7 @@ describe('MobileNavigationController (Fase 3)', () => {
     controller.cleanup();
   });
 
-  it('el botón de cerrar panel (#btn-close-sheet) y el backdrop cierran el bottom sheet de propiedades', () => {
+  it('el botón de cerrar panel (#btn-close-sheet) y el backdrop cierran el panel lateral de propiedades', () => {
     const controller = setupMobileNavigationBindings();
 
     // Abrir panel simulado

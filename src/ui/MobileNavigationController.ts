@@ -3,7 +3,7 @@
  *
  * Gestiona la navegación y el comportamiento responsivo en dispositivos móviles:
  * - Cajón lateral de navegación (Mobile Drawer) activado por el botón Hamburguesa.
- * - Cierre y control del Bottom Sheet del panel de propiedades.
+ * - Cierre y control del panel lateral derecho de propiedades.
  * - Delegación de acciones de los elementos del cajón hacia los botones reales de la barra de menú.
  * - Sincronización de estados deshabilitados (Undo, Redo, Cut, Copy, etc.).
  * - Atajos de teclado (Escape) y backdrops táctiles con desenfoque.
@@ -209,7 +209,7 @@ export function setupMobileNavigationBindings(
     targetElement.click();
   };
 
-  // 3. Eventos del Bottom Sheet (Panel de Propiedades)
+  // 3. Eventos del Panel Lateral de Propiedades
   const propertiesSidebar = document.querySelector<HTMLElement>('#properties-panel');
 
   const onPropertiesPanelEvent = (e: Event): void => {

@@ -214,45 +214,46 @@
   margin-left: 12px;
 }
 
-/* 5. Tirador superior y botón de cerrar del Bottom Sheet de propiedades */
+/* 5. Barra superior y botón de cerrar del panel lateral de propiedades (< 900px) */
 .mobile-sheet-handle-bar {
   display: none;
   align-items: center;
-  justify-content: center;
-  position: relative;
-  height: 28px;
-  padding: 8px 16px 0 16px;
-  background: var(--bg-panel);
-  border-radius: 16px 16px 0 0;
+  justify-content: flex-end;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   touch-action: none;
 }
 
 .mobile-sheet-pill {
-  width: 38px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border-default);
+  display: none !important;
 }
 
 .mobile-sheet-close {
-  position: absolute;
-  right: 10px;
-  top: 4px;
-  display: flex;
+  position: static;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   cursor: pointer;
+  transition: all var(--transition);
 }
 
 .mobile-sheet-close:hover {
   background: var(--bg-control-hover);
   color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.mobile-sheet-close:focus-visible {
+  outline: 1px solid var(--border-focus);
 }
 
 /* 6. Backdrop del panel de propiedades:
@@ -265,7 +266,13 @@
   visibility: hidden !important;
 }
 
-/* 7. Reglas de Adaptación Responsive (< 600px) */
+/* 7. Reglas de Adaptación Responsive (< 900px y < 600px) */
+@media (max-width: 900px) {
+  .mobile-sheet-handle-bar {
+    display: flex;
+  }
+}
+
 @media (max-width: 600px) {
   .hamburger-btn {
     display: inline-flex !important;
@@ -273,10 +280,6 @@
 
   .menu-bar {
     display: none !important;
-  }
-
-  .mobile-sheet-handle-bar {
-    display: flex;
   }
 
   body.panel-open .panel-backdrop {
