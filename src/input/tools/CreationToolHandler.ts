@@ -384,6 +384,31 @@ export class CreationToolHandler implements ToolHandler {
       }
     }
 
+    if (this.stateManager.isGuidesVisible() && this.stateManager.isGuideSnappingEnabled()) {
+      const userGuides = this.stateManager.getGuides();
+      for (const g of userGuides) {
+        if (g.axis === 'x') {
+          targetAABBs.push({
+            minX: g.position,
+            maxX: g.position,
+            minY: -100000,
+            maxY: 100000,
+            width: 0,
+            height: 200000,
+          });
+        } else {
+          targetAABBs.push({
+            minX: -100000,
+            maxX: 100000,
+            minY: g.position,
+            maxY: g.position,
+            width: 200000,
+            height: 0,
+          });
+        }
+      }
+    }
+
     const tolerance = 5 / this.getViewportManager().zoom;
     if (fixedXFeature !== undefined && fixedYFeature !== undefined) {
       return calculateAnchoredSnapping(

@@ -16,6 +16,7 @@ import {
   type Vector2D,
   type StrokeLineCap,
   type StrokeLineJoin,
+  type Guide,
 } from '../types/scene-graph.ts';
 import {
   getShapeAABB,
@@ -123,6 +124,10 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
   { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
   { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
+  { key: 'Ctrl+R / Cmd+R', description: 'Mostrar / ocultar reglas graduadas', category: 'Vista' },
+  { key: 'Ctrl+; / Cmd+;', description: 'Mostrar / ocultar guías de usuario', category: 'Vista' },
+  { key: 'Ctrl+Alt+; / Cmd+Alt+;', description: 'Bloquear / desbloquear guías de usuario', category: 'Vista' },
+  { key: 'Supr / Backspace (sobre guía)', description: 'Eliminar guía bajo el cursor', category: 'Vista' },
   { key: 'Ctrl+U', description: 'Activar / desactivar guías inteligentes', category: 'Vista' },
   { key: 'Flechas', description: 'Mover figuras seleccionadas (1 px)', category: 'Transformación' },
   { key: 'Shift + Flechas', description: 'Mover figuras seleccionadas (10 px)', category: 'Transformación' },
@@ -567,6 +572,10 @@ export class InputController {
 
   public get eyedropperPreview(): EyedropperPreview | null {
     return this._currentTool === 'eyedropper' ? this.eyedropperToolHandler.preview : null;
+  }
+
+  public get activeGuideDrag(): Guide | null {
+    return this.selectToolHandler.activeGuideDrag;
   }
 
   public get isMarqueeSelecting(): boolean {
@@ -1466,6 +1475,22 @@ export class InputController {
         return;
       }
 
+      if (keyLower === 'r' && !event.shiftKey && !event.altKey) {
+        event.preventDefault?.();
+        this.stateManager.setRulersVisible(!this.stateManager.isRulersVisible());
+        return;
+      }
+
+      if (key === ';' || event.code === 'Semicolon') {
+        event.preventDefault?.();
+        if (event.altKey) {
+          this.stateManager.setGuidesLocked(!this.stateManager.isGuidesLocked());
+        } else {
+          this.stateManager.setGuidesVisible(!this.stateManager.isGuidesVisible());
+        }
+        return;
+      }
+
       if (key === '+' || key === '=') {
         event.preventDefault?.();
         this.zoomIn();
@@ -1554,6 +1579,10 @@ export class InputController {
 
     const keyLower = key ? key.toLowerCase() : '';
     if (keyLower === 'delete' || keyLower === 'backspace') {
+      if (this.selectToolHandler.deleteHoveredGuide()) {
+        event.preventDefault?.();
+        return;
+      }
       if (this.deleteSelected()) {
         event.preventDefault?.();
       }

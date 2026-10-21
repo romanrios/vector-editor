@@ -308,6 +308,15 @@ export interface Layer extends BaseNode {
 }
 
 /**
+ * Guía de usuario horizontal o vertical en el espacio del mundo (mesa de trabajo)
+ */
+export interface Guide {
+  readonly id: string;
+  readonly axis: 'x' | 'y';
+  readonly position: number;
+}
+
+/**
  * Nodo raíz Document, que alberga una colección de capas (Layer), activos multimedia y metadatos del lienzo
  */
 export interface Document extends BaseNode {
@@ -316,6 +325,7 @@ export interface Document extends BaseNode {
   readonly height: number;
   readonly children: readonly Layer[];
   readonly assets?: Readonly<Record<string, AssetData>>;
+  readonly guides?: readonly Guide[];
 }
 
 /**

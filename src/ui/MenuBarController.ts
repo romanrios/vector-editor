@@ -6,6 +6,7 @@ import { isGroup, type SelectableNode } from '../types/scene-graph.ts';
 import type { AlignmentMode, DistributionAxis } from '../utils/geometry.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
 import { canOutlineStroke } from '../utils/strokeToPath.ts';
+import { ClearGuidesCommand } from '../commands/ClearGuidesCommand.ts';
 
 export interface MenuBarControllerOptions {
   viewportManager: ViewportManager;
@@ -112,6 +113,14 @@ export function setupMenuBarBindings(
   const menuItemPathfinderExclude = document.querySelector<HTMLButtonElement>('#menu-item-pathfinder-exclude');
 
   // Vista y Ayuda
+  const menuItemRulers = document.querySelector<HTMLButtonElement>('#menu-item-rulers');
+  const menuItemGuides = document.querySelector<HTMLButtonElement>('#menu-item-guides');
+  const menuDropdownGuides = document.querySelector<HTMLElement>('#menu-dropdown-guides');
+  const menuItemShowGuides = document.querySelector<HTMLButtonElement>('#menu-item-show-guides');
+  const menuItemLockGuides = document.querySelector<HTMLButtonElement>('#menu-item-lock-guides');
+  const menuItemSnapGuides = document.querySelector<HTMLButtonElement>('#menu-item-snap-guides');
+  const menuItemClearGuides = document.querySelector<HTMLButtonElement>('#menu-item-clear-guides');
+
   const menuItemZoomIn = document.querySelector<HTMLButtonElement>('#menu-item-zoom-in');
   const menuItemZoomOut = document.querySelector<HTMLButtonElement>('#menu-item-zoom-out');
   const menuItemZoomFit = document.querySelector<HTMLButtonElement>('#menu-item-zoom-fit');
@@ -167,7 +176,9 @@ export function setupMenuBarBindings(
       trigger: menuBtnView,
       dropdown: menuDropdownView,
       items: [
+        menuItemRulers,
         menuItemSmartGuides,
+        menuItemGuides,
         menuItemZoomIn,
         menuItemZoomOut,
         menuItemZoomFit,
@@ -207,6 +218,16 @@ export function setupMenuBarBindings(
         menuItemPathfinderSubtract,
         menuItemPathfinderIntersect,
         menuItemPathfinderExclude,
+      ],
+    },
+    {
+      trigger: menuItemGuides,
+      dropdown: menuDropdownGuides,
+      items: [
+        menuItemShowGuides,
+        menuItemLockGuides,
+        menuItemSnapGuides,
+        menuItemClearGuides,
       ],
     },
   ];
@@ -263,6 +284,24 @@ export function setupMenuBarBindings(
       }
     }
   };
+
+  function syncRulersAndGuidesMenuItems(): void {
+    menuItemRulers?.setAttribute('aria-checked', String(stateManager.isRulersVisible()));
+    const checkRulers = menuItemRulers?.querySelector('.menu-check');
+    if (checkRulers) checkRulers.textContent = stateManager.isRulersVisible() ? '✓' : '';
+
+    menuItemShowGuides?.setAttribute('aria-checked', String(stateManager.isGuidesVisible()));
+    const checkShow = menuItemShowGuides?.querySelector('.menu-check');
+    if (checkShow) checkShow.textContent = stateManager.isGuidesVisible() ? '✓' : '';
+
+    menuItemLockGuides?.setAttribute('aria-checked', String(stateManager.isGuidesLocked()));
+    const checkLock = menuItemLockGuides?.querySelector('.menu-check');
+    if (checkLock) checkLock.textContent = stateManager.isGuidesLocked() ? '✓' : '';
+
+    menuItemSnapGuides?.setAttribute('aria-checked', String(stateManager.isGuideSnappingEnabled()));
+    const checkSnap = menuItemSnapGuides?.querySelector('.menu-check');
+    if (checkSnap) checkSnap.textContent = stateManager.isGuideSnappingEnabled() ? '✓' : '';
+  }
 
   function syncMenuItems(selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()): void {
     const canUndo = commandManager.canUndo();
@@ -421,6 +460,8 @@ export function setupMenuBarBindings(
       menuItemZoomOut.disabled = isAtMinZoom;
       menuItemZoomOut.setAttribute('aria-disabled', String(isAtMinZoom));
     }
+
+    syncRulersAndGuidesMenuItems();
   }
 
   const openMenu = (index: number, focusFirstItem: boolean = false) => {
@@ -931,6 +972,38 @@ export function setupMenuBarBindings(
     canvas?.focus?.();
   };
 
+
+
+  const onMenuRulersClick = () => {
+    stateManager.setRulersVisible(!stateManager.isRulersVisible());
+    syncRulersAndGuidesMenuItems();
+  };
+
+  const onMenuShowGuidesClick = () => {
+    stateManager.setGuidesVisible(!stateManager.isGuidesVisible());
+    syncRulersAndGuidesMenuItems();
+  };
+
+  const onMenuLockGuidesClick = () => {
+    stateManager.setGuidesLocked(!stateManager.isGuidesLocked());
+    syncRulersAndGuidesMenuItems();
+  };
+
+  const onMenuSnapGuidesClick = () => {
+    stateManager.setGuideSnappingEnabled(!stateManager.isGuideSnappingEnabled());
+    syncRulersAndGuidesMenuItems();
+  };
+
+  const onMenuClearGuidesClick = () => {
+    closeAllMenus();
+    const prev = stateManager.getGuides();
+    if (prev.length > 0) {
+      commandManager.recordCommand(new ClearGuidesCommand(stateManager, prev));
+    }
+  };
+
+  syncRulersAndGuidesMenuItems();
+
   const syncSmartGuidesMenuItem = () => {
     menuItemSmartGuides?.setAttribute('aria-checked', String(inputController.smartGuidesEnabled));
   };
@@ -999,6 +1072,11 @@ export function setupMenuBarBindings(
   menuItemZoomOut?.addEventListener('click', onMenuZoomOutClick);
   menuItemZoomFit?.addEventListener('click', onMenuZoomFitClick);
   menuItemZoom100?.addEventListener('click', onMenuZoom100Click);
+  menuItemRulers?.addEventListener('click', onMenuRulersClick);
+  menuItemShowGuides?.addEventListener('click', onMenuShowGuidesClick);
+  menuItemLockGuides?.addEventListener('click', onMenuLockGuidesClick);
+  menuItemSnapGuides?.addEventListener('click', onMenuSnapGuidesClick);
+  menuItemClearGuides?.addEventListener('click', onMenuClearGuidesClick);
   menuItemSmartGuides?.addEventListener('click', onMenuSmartGuidesClick);
   menuItemShortcuts?.addEventListener('click', onMenuShortcutsClick);
   menuItemAbout?.addEventListener('click', onMenuAboutClick);
@@ -1071,6 +1149,11 @@ export function setupMenuBarBindings(
       menuItemZoomOut?.removeEventListener('click', onMenuZoomOutClick);
       menuItemZoomFit?.removeEventListener('click', onMenuZoomFitClick);
       menuItemZoom100?.removeEventListener('click', onMenuZoom100Click);
+      menuItemRulers?.removeEventListener('click', onMenuRulersClick);
+      menuItemShowGuides?.removeEventListener('click', onMenuShowGuidesClick);
+      menuItemLockGuides?.removeEventListener('click', onMenuLockGuidesClick);
+      menuItemSnapGuides?.removeEventListener('click', onMenuSnapGuidesClick);
+      menuItemClearGuides?.removeEventListener('click', onMenuClearGuidesClick);
       menuItemSmartGuides?.removeEventListener('click', onMenuSmartGuidesClick);
       unsubscribeSmartGuides();
       menuItemShortcuts?.removeEventListener('click', onMenuShortcutsClick);

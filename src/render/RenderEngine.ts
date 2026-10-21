@@ -21,6 +21,7 @@ import {
   type Star,
   type Vector2D,
   type Gradient,
+  type Guide,
 } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import type { StateManager } from '../state/StateManager.ts';
@@ -88,6 +89,10 @@ export interface RenderEngineOptions {
    */
   textEditProvider?: () => TextEditRenderState | null;
   activeGuidesProvider?: () => readonly SnapGuide[];
+  /**
+   * Proveedor funcional opcional de la guía de usuario en arrastre interactivo.
+   */
+  activeGuideDragProvider?: () => Guide | null;
   /**
    * Proveedor funcional opcional de la vista previa del cuentagotas (muestreo de color bajo el cursor).
    */
@@ -305,6 +310,9 @@ export class RenderEngine {
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
     this.renderSelectionOverlay(documentState, zoom);
+
+    // Dibujar guías de usuario (cyan #06b6d4)
+    this.renderUserGuides(documentState, zoom);
 
     // Dibujar vista previa de creación de figura (trazo punteado y semitransparente)
     const activePreview = this.options.previewProvider?.() ?? null;
@@ -2080,6 +2088,66 @@ export class RenderEngine {
       }
     }
     this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /**
+   * Dibuja las guías de usuario (cyan #06b6d4) registradas en el Documento y la guía en arrastre activo.
+   */
+  private renderUserGuides(doc: Document, zoom: number): void {
+    if (!this.stateManager.isGuidesVisible()) return;
+
+    const guides = doc.guides ?? [];
+    const activeGuideDrag = this.options.activeGuideDragProvider?.() ?? null;
+    if (guides.length === 0 && !activeGuideDrag) return;
+
+    const isLocked = this.stateManager.isGuidesLocked();
+    const vp = this.viewportManager.getViewport();
+    const screenWidth = this.canvas.width / (this.options.highDpi ? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) : 1);
+    const screenHeight = this.canvas.height / (this.options.highDpi ? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) : 1);
+    const minWorldX = -vp.panX / vp.zoom - 1000;
+    const maxWorldX = (screenWidth - vp.panX) / vp.zoom + 1000;
+    const minWorldY = -vp.panY / vp.zoom - 1000;
+    const maxWorldY = (screenHeight - vp.panY) / vp.zoom + 1000;
+
+    this.ctx.save();
+    this.ctx.lineWidth = 1 / zoom;
+    this.ctx.strokeStyle = isLocked ? 'rgba(6, 182, 212, 0.6)' : '#06b6d4';
+    if (isLocked) {
+      this.ctx.setLineDash([4 / zoom, 4 / zoom]);
+    } else {
+      this.ctx.setLineDash([]);
+    }
+
+    if (guides.length > 0) {
+      this.ctx.beginPath();
+      for (const guide of guides) {
+        if (guide.axis === 'x') {
+          this.ctx.moveTo(guide.position, minWorldY);
+          this.ctx.lineTo(guide.position, maxWorldY);
+        } else {
+          this.ctx.moveTo(minWorldX, guide.position);
+          this.ctx.lineTo(maxWorldX, guide.position);
+        }
+      }
+      this.ctx.stroke();
+    }
+
+    if (activeGuideDrag) {
+      this.ctx.beginPath();
+      this.ctx.strokeStyle = '#38bdf8';
+      this.ctx.lineWidth = 1.5 / zoom;
+      this.ctx.setLineDash([6 / zoom, 3 / zoom]);
+      if (activeGuideDrag.axis === 'x') {
+        this.ctx.moveTo(activeGuideDrag.position, minWorldY);
+        this.ctx.lineTo(activeGuideDrag.position, maxWorldY);
+      } else {
+        this.ctx.moveTo(minWorldX, activeGuideDrag.position);
+        this.ctx.lineTo(maxWorldX, activeGuideDrag.position);
+      }
+      this.ctx.stroke();
+    }
+
     this.ctx.restore();
   }
 

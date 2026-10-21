@@ -15,6 +15,7 @@ import type {
   FillType,
   Gradient,
   GradientStop,
+  Guide,
 } from '../types/scene-graph.ts';
 
 /**
@@ -667,11 +668,41 @@ export async function parseDocument(jsonString: string): Promise<Document> {
     }
   }
 
-  const { selected: _sel, isDirty: _dirty, children: _ch, assets: _assets, ...restDoc } = candidate;
+  let cleanGuides: Guide[] | undefined;
+  if (candidate.guides !== undefined) {
+    if (!Array.isArray(candidate.guides)) {
+      throw new DocumentParseError('guides debe ser un array');
+    }
+    cleanGuides = [];
+    for (let g = 0; g < candidate.guides.length; g++) {
+      const guide = candidate.guides[g];
+      const guidePath = `guides[${g}]`;
+      if (!isObject(guide)) {
+        throw new DocumentParseError(`${guidePath} debe ser un objeto`);
+      }
+      if (typeof guide.id !== 'string' || guide.id.trim() === '') {
+        throw new DocumentParseError(`${guidePath}.id debe ser un string no vacío`);
+      }
+      if (guide.axis !== 'x' && guide.axis !== 'y') {
+        throw new DocumentParseError(`${guidePath}.axis debe ser 'x' o 'y'`);
+      }
+      if (!isFiniteNumber(guide.position)) {
+        throw new DocumentParseError(`${guidePath}.position debe ser un número finito`);
+      }
+      cleanGuides.push({
+        id: guide.id,
+        axis: guide.axis,
+        position: guide.position,
+      });
+    }
+  }
+
+  const { selected: _sel, isDirty: _dirty, children: _ch, assets: _assets, guides: _guides, ...restDoc } = candidate;
   return {
     ...(restDoc as unknown as Document),
     children: cleanLayers,
     ...(cleanAssets !== undefined ? { assets: cleanAssets } : {}),
+    ...(cleanGuides !== undefined ? { guides: cleanGuides } : {}),
   };
 }
 

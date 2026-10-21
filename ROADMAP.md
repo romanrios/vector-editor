@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **969 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **990 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -65,7 +65,7 @@ El objetivo de esta fase es ampliar las capacidades de composición gráfica y m
 
 El objetivo de esta fase es optimizar el flujo de trabajo continuo, la precisión de diseño y la seguridad ante fallos.
 
-- [ ] **3.1. Reglas Graduadas y Guías de Usuario (Rulers & Guides)**:
+- [x] **3.1. Reglas Graduadas y Guías de Usuario (Rulers & Guides)**:
   - Reglas horizontal y vertical en los bordes del canvas con escala métrica o en píxeles.
   - Marcador de posición del cursor en tiempo real sobre ambas reglas.
   - Posibilidad de arrastrar guías horizontales y verticales desde las reglas hacia la mesa de trabajo.

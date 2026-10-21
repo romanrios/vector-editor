@@ -222,11 +222,46 @@
               Vista
             </button>
             <div id="menu-dropdown-view" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-view" hidden>
+              <button id="menu-item-rulers" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
+                <span class="menu-check" aria-hidden="true">✓</span>
+                <span class="menu-item-label">Reglas</span>
+                <span class="menu-shortcut">Ctrl+R</span>
+              </button>
               <button id="menu-item-smart-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
                 <span class="menu-check" aria-hidden="true">✓</span>
                 <span class="menu-item-label">Guías inteligentes</span>
                 <span class="menu-shortcut">Ctrl+U</span>
               </button>
+
+              <!-- Submenú Guías -->
+              <div class="menu-submenu-container">
+                <button id="menu-item-guides" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                  <span class="menu-item-label">Guías</span>
+                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+                <div id="menu-dropdown-guides" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-guides" hidden>
+                  <button id="menu-item-show-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
+                    <span class="menu-check" aria-hidden="true">✓</span>
+                    <span class="menu-item-label">Mostrar guías</span>
+                    <span class="menu-shortcut">Ctrl+;</span>
+                  </button>
+                  <button id="menu-item-lock-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="false" tabindex="-1">
+                    <span class="menu-check" aria-hidden="true"></span>
+                    <span class="menu-item-label">Bloquear guías</span>
+                    <span class="menu-shortcut">Ctrl+Alt+;</span>
+                  </button>
+                  <button id="menu-item-snap-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
+                    <span class="menu-check" aria-hidden="true">✓</span>
+                    <span class="menu-item-label">Ajustar a guías</span>
+                  </button>
+                  <div class="menu-divider" role="separator" aria-hidden="true"></div>
+                  <button id="menu-item-clear-guides" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                    <span class="menu-item-label">Borrar guías</span>
+                  </button>
+                </div>
+              </div>
               <div class="menu-divider" role="separator" aria-hidden="true"></div>
               <button id="menu-item-zoom-in" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Acercar</span>
@@ -389,6 +424,9 @@
 
     <!-- 3. Área Principal con Canvas Adaptable -->
     <main class="canvas-viewport" id="canvas-container">
+      <div id="ruler-corner" class="ruler-corner" title="Origen (0, 0) - Clic para centrar" aria-hidden="true">px</div>
+      <canvas id="ruler-horizontal" class="ruler ruler-horizontal" aria-hidden="true"></canvas>
+      <canvas id="ruler-vertical" class="ruler ruler-vertical" aria-hidden="true"></canvas>
       <canvas id="viewport-canvas"></canvas>
     </main>
 

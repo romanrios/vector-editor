@@ -18,6 +18,7 @@ import type {
   FillType,
   StrokeLineCap,
   StrokeLineJoin,
+  Guide,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -200,6 +201,10 @@ export class StateManager {
     strokeLineCap: 'butt',
     strokeLineJoin: 'miter',
   };
+  private _rulersVisible: boolean = true;
+  private _guidesVisible: boolean = true;
+  private _guidesLocked: boolean = false;
+  private _guideSnappingEnabled: boolean = true;
 
   constructor(initialState?: Document, commandManager?: CommandManager) {
     const defaultState: Document = {
@@ -2167,5 +2172,160 @@ export class StateManager {
    */
   public getAssets(): Readonly<Record<string, AssetData>> {
     return this._state.assets ?? {};
+  }
+
+  // --- Gestión de Guías de Usuario y Reglas ---
+
+  /**
+   * Indica si las reglas graduadas están visibles.
+   */
+  public isRulersVisible(): boolean {
+    return this._rulersVisible;
+  }
+
+  /**
+   * Alterna o establece la visibilidad de las reglas graduadas.
+   */
+  public setRulersVisible(visible: boolean): void {
+    if (this._rulersVisible === visible) return;
+    this._rulersVisible = visible;
+    this._isDirty = true;
+    this.notify();
+  }
+
+  /**
+   * Indica si las guías de usuario están visibles.
+   */
+  public isGuidesVisible(): boolean {
+    return this._guidesVisible;
+  }
+
+  /**
+   * Alterna o establece la visibilidad de las guías de usuario.
+   */
+  public setGuidesVisible(visible: boolean): void {
+    if (this._guidesVisible === visible) return;
+    this._guidesVisible = visible;
+    this._isDirty = true;
+    this.notify();
+  }
+
+  /**
+   * Indica si las guías de usuario están bloqueadas contra selección o arrastre.
+   */
+  public isGuidesLocked(): boolean {
+    return this._guidesLocked;
+  }
+
+  /**
+   * Bloquea o desbloquea las guías de usuario.
+   */
+  public setGuidesLocked(locked: boolean): void {
+    if (this._guidesLocked === locked) return;
+    this._guidesLocked = locked;
+    this._isDirty = true;
+    this.notify();
+  }
+
+  /**
+   * Indica si la imantación (snapping) a guías de usuario está habilitada.
+   */
+  public isGuideSnappingEnabled(): boolean {
+    return this._guideSnappingEnabled;
+  }
+
+  /**
+   * Activa o desactiva la imantación (snapping) a guías de usuario.
+   */
+  public setGuideSnappingEnabled(enabled: boolean): void {
+    if (this._guideSnappingEnabled === enabled) return;
+    this._guideSnappingEnabled = enabled;
+    this._isDirty = true;
+    this.notify();
+  }
+
+  /**
+   * Obtiene la colección inmutable de guías de usuario registradas en el Documento actual.
+   */
+  public getGuides(): readonly Guide[] {
+    return this._state.guides ?? [];
+  }
+
+  /**
+   * Agrega una guía de usuario al Documento de forma inmutable.
+   */
+  public addGuide(guide: Guide): void {
+    const currentGuides = this._state.guides ?? [];
+    if (currentGuides.some((g) => g.id === guide.id)) {
+      return;
+    }
+    const frozenGuide = Object.freeze({ ...guide });
+    const nextGuides = Object.freeze([...currentGuides, frozenGuide]);
+    this.setState({
+      ...this._state,
+      guides: nextGuides,
+    });
+  }
+
+  /**
+   * Elimina una guía de usuario por su identificador. Retorna la guía eliminada si existía.
+   */
+  public removeGuide(guideId: string): Guide | undefined {
+    const currentGuides = this._state.guides ?? [];
+    const index = currentGuides.findIndex((g) => g.id === guideId);
+    if (index === -1) return undefined;
+    const removed = currentGuides[index];
+    const nextGuides = Object.freeze(removeAt(currentGuides, index));
+    this.setState({
+      ...this._state,
+      guides: nextGuides,
+    });
+    return removed;
+  }
+
+  /**
+   * Actualiza la posición de una guía de usuario existente. Retorna la posición previa si existía.
+   */
+  public updateGuide(guideId: string, position: number): number | undefined {
+    const currentGuides = this._state.guides ?? [];
+    const index = currentGuides.findIndex((g) => g.id === guideId);
+    if (index === -1) return undefined;
+    const oldGuide = currentGuides[index];
+    if (oldGuide.position === position) return oldGuide.position;
+    const updatedGuide = Object.freeze({ ...oldGuide, position });
+    const nextGuides = Object.freeze([
+      ...currentGuides.slice(0, index),
+      updatedGuide,
+      ...currentGuides.slice(index + 1),
+    ]);
+    this.setState({
+      ...this._state,
+      guides: nextGuides,
+    });
+    return oldGuide.position;
+  }
+
+  /**
+   * Elimina todas las guías de usuario del Documento. Retorna la colección de guías previas.
+   */
+  public clearGuides(): readonly Guide[] {
+    const currentGuides = this._state.guides ?? [];
+    if (currentGuides.length === 0) return currentGuides;
+    this.setState({
+      ...this._state,
+      guides: Object.freeze([]),
+    });
+    return currentGuides;
+  }
+
+  /**
+   * Reemplaza la colección completa de guías de usuario en el Documento.
+   */
+  public setGuides(guides: readonly Guide[]): void {
+    const frozenGuides = Object.freeze(guides.map((g) => Object.freeze({ ...g })));
+    this.setState({
+      ...this._state,
+      guides: frozenGuides,
+    });
   }
 }

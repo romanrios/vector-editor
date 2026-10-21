@@ -36,6 +36,7 @@ import { setupLayersPanelBindings, type LayersPanelController } from './ui/Layer
 import { setupContextMenuBindings, type ContextMenuController } from './ui/ContextMenuController.ts';
 import { setupMenuBarBindings, type MenuBarController } from './ui/MenuBarController.ts';
 import { setupPlacementController, type PlacementController } from './ui/PlacementController.ts';
+import { setupRulersController, type RulersController } from './ui/RulersController.ts';
 import { toValidHexColor } from './ui/uiUtils.ts';
 
 function debug(...args: unknown[]): void {
@@ -77,6 +78,7 @@ export function setupUIBindings(
   let contextMenuController: ContextMenuController;
   let menuBarController: MenuBarController;
   let placementController: PlacementController;
+  let rulersController: RulersController;
 
   toolbarController = setupToolbarBindings({
     inputController,
@@ -218,6 +220,16 @@ export function setupUIBindings(
     },
   });
 
+  rulersController = setupRulersController({
+    canvasContainer: document.querySelector<HTMLElement>('#canvas-container'),
+    rulerHorizontal: document.querySelector<HTMLCanvasElement>('#ruler-horizontal'),
+    rulerVertical: document.querySelector<HTMLCanvasElement>('#ruler-vertical'),
+    rulerCorner: document.querySelector<HTMLDivElement>('#ruler-corner'),
+    viewportManager,
+    stateManager,
+    commandManager,
+  });
+
   // Suscripciones reactivas del estado y de la entrada
   const unsubscribeState = stateManager.subscribe(() => {
     const sel = stateManager.getSelectedNodes();
@@ -271,6 +283,7 @@ export function setupUIBindings(
       contextMenuController.cleanup();
       menuBarController.cleanup();
       placementController.cleanup();
+      rulersController.cleanup();
     },
   };
 }
@@ -299,6 +312,7 @@ if (typeof document !== 'undefined') {
       textEditProvider: () => inputController?.textEditState ?? null,
       activeGuidesProvider: () => inputController?.activeGuides ?? [],
       eyedropperPreviewProvider: () => inputController?.eyedropperPreview ?? null,
+      activeGuideDragProvider: () => inputController?.activeGuideDrag ?? null,
     });
     renderEngine.start();
 

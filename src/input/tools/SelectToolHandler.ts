@@ -18,6 +18,7 @@ import {
   type Shape,
   type Vector2D,
   type Gradient,
+  type Guide,
 } from '../../types/scene-graph.ts';
 import {
   computeBoxScale,
@@ -49,6 +50,8 @@ import { ResizeCommand, type ShapeDimensions } from '../../commands/ResizeComman
 import { RotateCommand } from '../../commands/RotateCommand.ts';
 import { AddShapeCommand } from '../../commands/AddShapeCommand.ts';
 import { StyleCommand } from '../../commands/StyleCommand.ts';
+import { MoveGuideCommand } from '../../commands/MoveGuideCommand.ts';
+import { RemoveGuideCommand } from '../../commands/RemoveGuideCommand.ts';
 import {
   hitTestGradientHandles,
   worldToGradientCoord,
@@ -154,6 +157,27 @@ export class SelectToolHandler implements ToolHandler {
     readonly initialRadius: number;
     readonly startMouse: Vector2D;
   } | null = null;
+
+  // Estado de manipulación interactiva de guías de usuario
+  private _activeGuideDrag: {
+    readonly guide: Guide;
+    readonly initialPosition: number;
+    currentPosition: number;
+  } | null = null;
+  private _hoveredGuide: Guide | null = null;
+
+  public get activeGuideDrag(): Guide | null {
+    if (!this._activeGuideDrag) return null;
+    return {
+      id: this._activeGuideDrag.guide.id,
+      axis: this._activeGuideDrag.guide.axis,
+      position: this._activeGuideDrag.currentPosition,
+    };
+  }
+
+  public get hoveredGuide(): Guide | null {
+    return this._hoveredGuide;
+  }
 
   private _hoveredShapeId: string | null = null;
 
@@ -471,6 +495,22 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
+    // 1.5. Comprobar si se hizo clic sobre una guía de usuario
+    const currentZoom = this.getViewportManager().zoom;
+    const hitGuide = this.hitTestGuide(x, y, 6 / currentZoom);
+    if (hitGuide && !event.shiftKey) {
+      this._activeGuideDrag = {
+        guide: hitGuide,
+        initialPosition: hitGuide.position,
+        currentPosition: hitGuide.position,
+      };
+      this._isDragging = false;
+      this._isResizing = false;
+      this._isRotating = false;
+      this.canvas.style.cursor = hitGuide.axis === 'x' ? 'col-resize' : 'row-resize';
+      return;
+    }
+
     // 2. Si no hubo colisión con los manejadores, evaluar colisiones con figuras mediante hitTest
     const hitShape = this.hitTest(x, y);
 
@@ -552,6 +592,14 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseMove(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeGuideDrag) {
+      const newPos = Math.round(this._activeGuideDrag.guide.axis === 'x' ? x : y);
+      this._activeGuideDrag.currentPosition = newPos;
+      this.stateManager.updateGuide(this._activeGuideDrag.guide.id, newPos);
+      this.canvas.style.cursor = this._activeGuideDrag.guide.axis === 'x' ? 'col-resize' : 'row-resize';
+      return;
+    }
 
     if (this._activeCornerRadiusDrag) {
       const { handle, shapeId } = this._activeCornerRadiusDrag;
@@ -822,6 +870,14 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
+    const currentZoom = this.getViewportManager().zoom;
+    const hitGuide = this.hitTestGuide(x, y, 6 / currentZoom);
+    this._hoveredGuide = hitGuide;
+    if (hitGuide && !this._isDragging && !this._isResizing && !this._isRotating && !this._isMarqueeSelecting) {
+      this.canvas.style.cursor = hitGuide.axis === 'x' ? 'col-resize' : 'row-resize';
+      return;
+    }
+
     const hitShape = this.hitTest(x, y);
     this._hoveredShapeId = hitShape ? hitShape.id : null;
 
@@ -834,6 +890,27 @@ export class SelectToolHandler implements ToolHandler {
 
   public onMouseUp(event: MouseEvent, coords: Vector2D): void {
     const { x, y } = coords;
+
+    if (this._activeGuideDrag) {
+      const { guide, initialPosition, currentPosition } = this._activeGuideDrag;
+      this._activeGuideDrag = null;
+      const screenCoords = this.getScreenCoordinates(event);
+      const draggedToRuler =
+        this.stateManager.isRulersVisible() &&
+        ((guide.axis === 'x' && screenCoords.x <= 20) || (guide.axis === 'y' && screenCoords.y <= 20));
+
+      if (draggedToRuler) {
+        const cmd = new RemoveGuideCommand(this.stateManager, guide);
+        this.commandManager.recordCommand(cmd);
+      } else if (currentPosition !== initialPosition) {
+        const cmd = new MoveGuideCommand(this.stateManager, guide.id, initialPosition, currentPosition);
+        this.commandManager.recordCommand(cmd);
+      }
+
+      const hitShape = this.hitTest(x, y);
+      this.canvas.style.cursor = hitShape ? (this.stateManager.isSelected(hitShape.id) ? 'move' : 'pointer') : 'default';
+      return;
+    }
 
     if (this._activeCornerRadiusDrag) {
       const { handle, shapeId, initialRadius } = this._activeCornerRadiusDrag;
@@ -1555,6 +1632,31 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
+    if (this.stateManager.isGuidesVisible() && this.stateManager.isGuideSnappingEnabled()) {
+      const userGuides = this.stateManager.getGuides();
+      for (const g of userGuides) {
+        if (g.axis === 'x') {
+          targetAABBs.push({
+            minX: g.position,
+            maxX: g.position,
+            minY: -100000,
+            maxY: 100000,
+            width: 0,
+            height: 200000,
+          });
+        } else {
+          targetAABBs.push({
+            minX: -100000,
+            maxX: 100000,
+            minY: g.position,
+            maxY: g.position,
+            width: 200000,
+            height: 0,
+          });
+        }
+      }
+    }
+
     const tolerance = 5 / this.getViewportManager().zoom;
     if (fixedXFeature !== undefined && fixedYFeature !== undefined) {
       return calculateAnchoredSnapping(
@@ -2038,6 +2140,38 @@ export class SelectToolHandler implements ToolHandler {
       a.innerRadius !== b.innerRadius ||
       a.starPoints !== b.starPoints
     );
+  }
+
+  /**
+   * Evalúa si una coordenada (x, y) en el espacio del mundo colisiona con alguna guía de usuario.
+   */
+  public hitTestGuide(x: number, y: number, tolerance: number): Guide | null {
+    if (!this.stateManager.isGuidesVisible() || this.stateManager.isGuidesLocked()) {
+      return null;
+    }
+    const guides = this.stateManager.getGuides();
+    for (let i = guides.length - 1; i >= 0; i--) {
+      const g = guides[i];
+      const dist = g.axis === 'x' ? Math.abs(g.position - x) : Math.abs(g.position - y);
+      if (dist <= tolerance) {
+        return g;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Elimina la guía actualmente bajo el cursor (si existe y no está bloqueada) registrando Undo/Redo.
+   */
+  public deleteHoveredGuide(): boolean {
+    if (this._hoveredGuide && !this.stateManager.isGuidesLocked()) {
+      const cmd = new RemoveGuideCommand(this.stateManager, this._hoveredGuide);
+      this.commandManager.recordCommand(cmd);
+      this._hoveredGuide = null;
+      this.canvas.style.cursor = 'default';
+      return true;
+    }
+    return false;
   }
 
   public destroy(): void {

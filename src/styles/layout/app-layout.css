@@ -1,65 +1,121 @@
 /* Cuadrícula CSS Grid de pantalla completa */
-      body {
-        display: grid;
-        grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height);
-        grid-template-columns: var(--toolbar-width) 1fr var(--panel-width);
-      }
+body {
+  display: grid;
+  grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height);
+  grid-template-columns: var(--toolbar-width) 1fr var(--panel-width);
+}
 
-      /* 1. Header con Barra de Menú y Acciones Rápidas */
+/* 1. Header con Barra de Menú y Acciones Rápidas */
 
 /* 3. Contenedor del Lienzo Adaptable */
-      .canvas-viewport {
-        grid-column: 2;
-        grid-row: 2;
-        position: relative;
-        overflow: hidden;
-        background: var(--bg-canvas);
-        min-width: 0;
-        min-height: 0;
-      }
+.canvas-viewport {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  min-width: 0;
+  min-height: 0;
+}
 
-      #viewport-canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
+#viewport-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Reglas y Guías */
+.ruler-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+  border-bottom: 1px solid #27272a;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #71717a;
+  user-select: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ruler-corner:hover {
+  color: #e4e4e7;
+  background: #27272a;
+}
+
+.ruler-horizontal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 20px;
+  z-index: 10;
+  cursor: ns-resize;
+  display: block;
+}
+
+.ruler-vertical {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 100%;
+  z-index: 10;
+  cursor: ew-resize;
+  display: block;
+}
+
+.canvas-viewport.hide-rulers .ruler-corner,
+.canvas-viewport.hide-rulers .ruler-horizontal,
+.canvas-viewport.hide-rulers .ruler-vertical {
+  display: none !important;
+}
 
 /* Responsive (< 900px) */
-      @media (max-width: 900px) {
-        body {
-          grid-template-columns: var(--toolbar-width) 1fr 0px;
-        }
+@media (max-width: 900px) {
+  body {
+    grid-template-columns: var(--toolbar-width) 1fr 0px;
+  }
 
-        .properties-sidebar {
-          position: fixed;
-          top: var(--topbar-height);
-          right: 0;
-          bottom: var(--statusbar-height);
-          width: var(--panel-width);
-          transform: translateX(100%);
-          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
-          z-index: 50;
-        }
+  .properties-sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    right: 0;
+    bottom: var(--statusbar-height);
+    width: var(--panel-width);
+    transform: translateX(100%);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
+    z-index: 50;
+  }
 
-        body.panel-open .properties-sidebar {
-          transform: translateX(0);
-        }
+  body.panel-open .properties-sidebar {
+    transform: translateX(0);
+  }
 
-        .toggle-panel-btn {
-          display: inline-flex;
-        }
+  .toggle-panel-btn {
+    display: inline-flex;
+  }
 
-        .status-hints {
-          display: none;
-        }
-      }
+  .status-hints {
+    display: none;
+  }
+}
 
-      @media (min-width: 901px) {
-        .toggle-panel-btn {
-          display: none;
-        }
-      }
+@media (min-width: 901px) {
+  .toggle-panel-btn {
+    display: none;
+  }
+}

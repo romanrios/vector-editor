@@ -69,6 +69,10 @@ export * from './commands/BooleanOperationCommand.ts';
 export * from './commands/MakeClipMaskCommand.ts';
 export * from './commands/ReleaseClipMaskCommand.ts';
 export * from './commands/OutlineStrokeCommand.ts';
+export * from './commands/AddGuideCommand.ts';
+export * from './commands/RemoveGuideCommand.ts';
+export * from './commands/MoveGuideCommand.ts';
+export * from './commands/ClearGuidesCommand.ts';
 export * from './utils/strokeToPath.ts';
 export * from './utils/cornerSmoothing.ts';
 
