@@ -254,6 +254,20 @@ describe('MobileNavigationController (Fase 3)', () => {
     controller.cleanup();
   });
 
+  it('tocar o hacer clic dentro de #properties-panel no cierra el panel', () => {
+    const controller = setupMobileNavigationBindings();
+
+    controller.openPanel();
+    assert.equal(controller.isPanelOpen(), true);
+
+    // Clic dentro del panel de propiedades
+    elements['#properties-panel'].click();
+    assert.equal(controller.isPanelOpen(), true);
+    assert.equal(mockBody.classList.contains('panel-open'), true);
+
+    controller.cleanup();
+  });
+
   it('delega el clic desde un botón del drawer con data-trigger al botón real y cierra el drawer', () => {
     const controller = setupMobileNavigationBindings();
     controller.openDrawer();
@@ -347,6 +361,7 @@ describe('MobileNavigationController (Fase 3)', () => {
     assert.ok(elements['#mobile-menu-backdrop'].getListenerCount('click') > 0);
     assert.ok(elements['#btn-close-sheet'].getListenerCount('click') > 0);
     assert.ok(elements['#panel-backdrop'].getListenerCount('click') > 0);
+    assert.ok(elements['#properties-panel'].getListenerCount('click') > 0);
     assert.ok(docListeners.get('keydown')?.size ?? 0 > 0);
 
     controller.cleanup();
@@ -356,6 +371,7 @@ describe('MobileNavigationController (Fase 3)', () => {
     assert.equal(elements['#mobile-menu-backdrop'].getListenerCount('click'), 0);
     assert.equal(elements['#btn-close-sheet'].getListenerCount('click'), 0);
     assert.equal(elements['#panel-backdrop'].getListenerCount('click'), 0);
+    assert.equal(elements['#properties-panel'].getListenerCount('click'), 0);
     assert.equal(docListeners.get('keydown')?.size ?? 0, 0);
   });
 });

@@ -59,14 +59,24 @@
   display: flex;
   flex-direction: column;
   transform: translateX(-100%);
-  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.65);
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.26s ease, box-shadow 0.26s ease;
+  box-shadow: none;
+  visibility: hidden;
+  pointer-events: none;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
 }
 
 .mobile-menu-drawer.is-open {
   transform: translateX(0);
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.65);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.mobile-menu-drawer[hidden],
+.mobile-drawer-backdrop[hidden] {
+  display: none !important;
 }
 
 .mobile-drawer-header {
@@ -245,23 +255,14 @@
   color: var(--text-primary);
 }
 
-/* 6. Backdrop del panel de propiedades */
-.panel-backdrop {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  z-index: 180;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
+/* 6. Backdrop del panel de propiedades:
+   Completamente desactivado para que NO haya sombra general sobre el lienzo y no bloquee toques */
+.panel-backdrop,
 .panel-backdrop.is-open {
-  opacity: 1;
-  pointer-events: auto;
+  display: none !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
 }
 
 /* 7. Reglas de Adaptación Responsive (< 600px) */
@@ -279,8 +280,9 @@
   }
 
   body.panel-open .panel-backdrop {
-    display: block !important;
-    opacity: 1;
-    pointer-events: auto;
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
   }
 }

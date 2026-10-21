@@ -30,7 +30,7 @@ export function setupCanvasResizeObserver(options: CanvasResizeControllerOptions
         const width = Math.max(1, Math.floor(newCssWidth * dpr));
         const height = Math.max(1, Math.floor(newCssHeight * dpr));
 
-        if (canvas.width !== width || canvas.height !== height) {
+        if (Math.abs(canvas.width - width) > 1 || Math.abs(canvas.height - height) > 1) {
           if (prevCssWidth > 0 && prevCssHeight > 0 && (newCssWidth !== prevCssWidth || newCssHeight !== prevCssHeight)) {
             const oldCenterWorld = viewportManager.screenToWorld({
               x: prevCssWidth / 2,

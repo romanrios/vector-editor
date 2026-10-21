@@ -210,6 +210,12 @@ export function setupMobileNavigationBindings(
   };
 
   // 3. Eventos del Bottom Sheet (Panel de Propiedades)
+  const propertiesSidebar = document.querySelector<HTMLElement>('#properties-panel');
+
+  const onPropertiesPanelEvent = (e: Event): void => {
+    e.stopPropagation();
+  };
+
   const onCloseSheetClick = (e: MouseEvent): void => {
     e.stopPropagation();
     closePanel();
@@ -238,6 +244,8 @@ export function setupMobileNavigationBindings(
   mobileBackdrop?.addEventListener('click', onBackdropClick);
   mobileDrawer?.addEventListener('click', onDrawerClick);
 
+  propertiesSidebar?.addEventListener('click', onPropertiesPanelEvent);
+  propertiesSidebar?.addEventListener('pointerdown', onPropertiesPanelEvent);
   btnCloseSheet?.addEventListener('click', onCloseSheetClick);
   panelBackdrop?.addEventListener('click', onPanelBackdropClick);
 
@@ -265,6 +273,8 @@ export function setupMobileNavigationBindings(
       mobileBackdrop?.removeEventListener('click', onBackdropClick);
       mobileDrawer?.removeEventListener('click', onDrawerClick);
 
+      propertiesSidebar?.removeEventListener('click', onPropertiesPanelEvent);
+      propertiesSidebar?.removeEventListener('pointerdown', onPropertiesPanelEvent);
       btnCloseSheet?.removeEventListener('click', onCloseSheetClick);
       panelBackdrop?.removeEventListener('click', onPanelBackdropClick);
 

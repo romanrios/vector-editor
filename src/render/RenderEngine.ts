@@ -180,9 +180,10 @@ export class RenderEngine {
     const width = Math.max(1, Math.floor((rect.width || (typeof window !== 'undefined' ? window.innerWidth : 800)) * dpr));
     const height = Math.max(1, Math.floor((rect.height || (typeof window !== 'undefined' ? window.innerHeight : 600)) * dpr));
 
-    if (this.canvas.width !== width || this.canvas.height !== height) {
+    if (Math.abs(this.canvas.width - width) > 1 || Math.abs(this.canvas.height - height) > 1) {
       this.canvas.width = width;
       this.canvas.height = height;
+      this.render();
       this.stateManager.markDirty();
       return true;
     }
