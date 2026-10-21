@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **993 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1008 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -71,11 +71,16 @@ El objetivo de esta fase es optimizar el flujo de trabajo continuo, la precisió
   - Posibilidad de arrastrar guías horizontales y verticales desde las reglas hacia la mesa de trabajo.
   - Imantación (*snapping*) de figuras a las guías de usuario con opción de bloquear/ocultar guías.
 
-- [ ] **3.2. Persistencia y Autoguardado Local (Auto-Save & Recovery)**:
+- [x] **3.2. Soporte Móvil Completo y Experiencia Táctil (Mobile & Touch UX)**:
+  - **Fase 1 (Motor Táctil y Gestos)**: Soporte multitáctil nativo con `TouchGestureController`, *pinch-to-zoom* y paneo fluido con 2 dedos, *lift-off protection*, pulsación prolongada (*long-press*) con feedback háptico para menú contextual, doble toque (*double-tap*), hit-testing ampliado a 22px para manipulación precisa de tiradores con los dedos, y proxy invisible de teclado virtual para edición de texto sin zoom involuntario.
+  - **Fase 2 (Viewport Seguro y Layout)**: Adaptación a `viewport-fit=cover`, soporte de muescas (*safe area insets* `env(safe-area-inset-*)`), supresión de *overscroll* elástico y eventos sintéticos duplicados de ratón.
+  - **Fase 3 (Rediseño Responsivo de Interfaz)**: Header compacto con botón Hamburguesa (☰), cajón de navegación lateral *off-canvas* (`MobileNavigationController`), barra de herramientas inferior tipo *Bottom Dock* accesible al pulgar, panel de propiedades como *Bottom Sheet* emergente que solo se despliega a petición explícita mediante el botón "Panel", y ocultamiento automático de reglas y barra de estado en pantallas `< 600px`.
+
+- [ ] **3.3. Persistencia y Autoguardado Local (Auto-Save & Recovery)**:
   - Guardado en segundo plano en `IndexedDB` o `LocalStorage` ante cada mutación o por intervalos temporales (debounce).
   - Detección y diálogo de restauración automática de sesión si la pestaña se cierra o recarga accidentalmente.
 
-- [ ] **3.3. Múltiples Mesas de Trabajo (Multi-Artboards)**:
+- [ ] **3.4. Múltiples Mesas de Trabajo (Multi-Artboards)**:
   - Soporte en el Scene Graph para definir múltiples lienzos de trabajo independientes (`Artboard`).
   - Herramienta para crear, redimensionar y nombrar mesas de trabajo.
   - Exportación individual o en lote por mesa de trabajo.

@@ -22,6 +22,14 @@
     <!-- 1. Header con barra de menú y botones de acción rápida -->
     <header class="editor-header" role="region" aria-label="Barra de menú del editor">
       <div class="header-left">
+        <button type="button" id="btn-hamburger-menu" class="hamburger-btn" title="Menú principal" aria-label="Menú principal" aria-expanded="false" aria-controls="mobile-menu-drawer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+
         <button type="button" id="btn-about-brand" class="brand" title="Acerca de Vectedit" aria-label="Acerca de Vectedit">
           <span class="brand-icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -331,6 +339,175 @@
       </div>
     </header>
 
+    <!-- Cajón de Navegación Móvil (Off-canvas Drawer) -->
+    <div id="mobile-menu-backdrop" class="mobile-drawer-backdrop" hidden></div>
+    <aside id="mobile-menu-drawer" class="mobile-menu-drawer" role="dialog" aria-modal="true" aria-label="Menú principal" hidden>
+      <div class="mobile-drawer-header">
+        <div class="mobile-drawer-title">
+          <span class="brand-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+              <path d="M2 2l7.586 7.586"/>
+            </svg>
+          </span>
+          <span>Vectedit</span>
+        </div>
+        <button type="button" id="btn-close-drawer" class="mobile-drawer-close" aria-label="Cerrar menú">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="mobile-drawer-content">
+        <!-- Archivo -->
+        <details class="mobile-drawer-section" open>
+          <summary class="mobile-section-header">
+            <span>Archivo</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="mobile-section-items">
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-import">
+              <span class="item-label">Importar JSON…</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-place">
+              <span class="item-label">Colocar archivo…</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-modal">
+              <span class="item-label">Exportar…</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-svg">
+              <span class="item-label">Exportar como SVG</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-png">
+              <span class="item-label">Exportar como PNG</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-webp">
+              <span class="item-label">Exportar como WebP</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export">
+              <span class="item-label">Exportar JSON</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- Edición -->
+        <details class="mobile-drawer-section">
+          <summary class="mobile-section-header">
+            <span>Edición</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="mobile-section-items">
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-undo">
+              <span class="item-label">Deshacer</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-redo">
+              <span class="item-label">Rehacer</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-cut">
+              <span class="item-label">Cortar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-copy">
+              <span class="item-label">Copiar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-paste">
+              <span class="item-label">Pegar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-duplicate">
+              <span class="item-label">Duplicar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-delete">
+              <span class="item-label">Eliminar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#ctx-item-select-all">
+              <span class="item-label">Seleccionar todo</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- Objeto -->
+        <details class="mobile-drawer-section">
+          <summary class="mobile-section-header">
+            <span>Objeto</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="mobile-section-items">
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-group">
+              <span class="item-label">Agrupar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-ungroup">
+              <span class="item-label">Desagrupar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-bring-to-front">
+              <span class="item-label">Traer al frente</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-send-to-back">
+              <span class="item-label">Enviar al fondo</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-make-clip-mask">
+              <span class="item-label">Crear máscara de recorte</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-release-clip-mask">
+              <span class="item-label">Liberar máscara de recorte</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-outline-stroke">
+              <span class="item-label">Contornear trazado</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- Vista -->
+        <details class="mobile-drawer-section">
+          <summary class="mobile-section-header">
+            <span>Vista</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="mobile-section-items">
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-in">
+              <span class="item-label">Acercar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-out">
+              <span class="item-label">Alejar</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-100">
+              <span class="item-label">Tamaño real 100%</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-fit">
+              <span class="item-label">Ajustar al lienzo</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- Ayuda -->
+        <details class="mobile-drawer-section">
+          <summary class="mobile-section-header">
+            <span>Ayuda</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="mobile-section-items">
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-shortcuts">
+              <span class="item-label">Atajos de teclado</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-about">
+              <span class="item-label">Acerca de Vectedit</span>
+            </button>
+          </div>
+        </details>
+      </div>
+    </aside>
+
     <!-- 2. Barra de Herramientas Izquierda (Vertical, solo iconos SVG con title y aria-label) -->
     <aside class="tools-sidebar" role="toolbar" aria-label="Herramientas de dibujo">
       <button id="tool-select" class="tool-btn active" title="Selección (V)" aria-label="Selección (V)" aria-pressed="true">
@@ -434,7 +611,17 @@
     </main>
 
     <!-- 4. Panel Lateral Derecho (Propiedades y Capas) -->
+    <div id="panel-backdrop" class="panel-backdrop" hidden></div>
     <aside id="properties-panel" class="properties-sidebar" aria-label="Panel lateral">
+      <div class="mobile-sheet-handle-bar">
+        <div class="mobile-sheet-pill" aria-hidden="true"></div>
+        <button type="button" id="btn-close-sheet" class="mobile-sheet-close" aria-label="Cerrar panel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
       <div class="panel-tabs-header">
         <div class="panel-tabs" role="tablist" aria-label="Pestañas de la barra lateral">
           <button type="button" id="tab-btn-properties" class="panel-tab-btn active" role="tab" aria-selected="true" aria-controls="panel-tab-properties" tabindex="0">

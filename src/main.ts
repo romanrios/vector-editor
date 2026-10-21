@@ -38,6 +38,7 @@ import { setupContextMenuBindings, type ContextMenuController } from './ui/Conte
 import { setupMenuBarBindings, type MenuBarController } from './ui/MenuBarController.ts';
 import { setupPlacementController, type PlacementController } from './ui/PlacementController.ts';
 import { setupRulersController, type RulersController } from './ui/RulersController.ts';
+import { setupMobileNavigationBindings, type MobileNavigationController } from './ui/MobileNavigationController.ts';
 import { toValidHexColor } from './ui/uiUtils.ts';
 
 function debug(...args: unknown[]): void {
@@ -81,6 +82,9 @@ export function setupUIBindings(
   let menuBarController: MenuBarController;
   let placementController: PlacementController;
   let rulersController: RulersController;
+  let mobileNavigationController: MobileNavigationController;
+
+  mobileNavigationController = setupMobileNavigationBindings();
 
   toolbarController = setupToolbarBindings({
     inputController,
@@ -245,12 +249,14 @@ export function setupUIBindings(
     statusBarController.syncStatusBar(sel);
     menuBarController.syncMenuItems(sel);
     contextMenuController.syncContextMenu(sel);
+    mobileNavigationController.syncDrawerItems();
   });
 
   const unsubscribeHistory = commandManager.on('change', () => {
     toolbarController.syncHistoryButtons();
     menuBarController.syncMenuItems();
     contextMenuController.syncContextMenu();
+    mobileNavigationController.syncDrawerItems();
   });
 
   const unsubscribeToolChange = inputController.on('toolChange', (tool: ToolMode) => {
@@ -273,6 +279,7 @@ export function setupUIBindings(
   menuBarController.syncMenuItems(initialSel);
   contextMenuController.syncContextMenu(initialSel);
   statusBarController.syncStatusBar(initialSel);
+  mobileNavigationController.syncDrawerItems();
 
   return {
     cleanup: () => {
@@ -291,6 +298,7 @@ export function setupUIBindings(
       placementController.cleanup();
       activeRulerGuideDrag = null;
       rulersController.cleanup();
+      mobileNavigationController.cleanup();
     },
   };
 }
