@@ -561,7 +561,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     closeShortcutsDialog,
     openAboutDialog,
     closeAboutDialog,
-    exportJson: onExportClick,
+    exportJson,
     exportSvg,
     exportPng,
     exportWebp,
