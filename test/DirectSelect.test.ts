@@ -207,20 +207,23 @@ describe('DirectSelect & translatePathAnchors', () => {
         ],
       };
 
-      // Selección en ancla central (índice 1): debe tener handleIn(1), handleOut(1), handleOut(0) y handleIn(2)
+      // Selección en ancla central (índice 1): debe tener handleIn(1), handleOut(1), y ambos handles de los contiguos (0 y 2)
       const handles1 = getVisiblePathHandles(path, new Set([1]));
-      assert.equal(handles1.length, 4);
+      assert.equal(handles1.length, 6);
       assert.ok(handles1.some((h) => h.index === 1 && h.type === 'handleIn' && h.x === 40 && h.y === 50));
       assert.ok(handles1.some((h) => h.index === 1 && h.type === 'handleOut' && h.x === 60 && h.y === 50));
+      assert.ok(handles1.some((h) => h.index === 0 && h.type === 'handleIn' && h.x === -10 && h.y === 0));
       assert.ok(handles1.some((h) => h.index === 0 && h.type === 'handleOut' && h.x === 10 && h.y === 0));
       assert.ok(handles1.some((h) => h.index === 2 && h.type === 'handleIn' && h.x === 90 && h.y === 100));
+      assert.ok(handles1.some((h) => h.index === 2 && h.type === 'handleOut' && h.x === 110 && h.y === 100));
 
-      // Selección en ancla 0 (inicial): handleOut(-1) no existe al ser abierto (omite fuera de rango)
+      // Selección en ancla 0 (inicial): contiguo es solo 1 (al ser abierto, no hay wrap)
       const handles0 = getVisiblePathHandles(path, new Set([0]));
-      assert.equal(handles0.length, 3);
+      assert.equal(handles0.length, 4);
       assert.ok(handles0.some((h) => h.index === 0 && h.type === 'handleIn'));
       assert.ok(handles0.some((h) => h.index === 0 && h.type === 'handleOut'));
       assert.ok(handles0.some((h) => h.index === 1 && h.type === 'handleIn'));
+      assert.ok(handles0.some((h) => h.index === 1 && h.type === 'handleOut'));
 
       const handlesWithoutSelection = getVisiblePathHandles(path, new Set());
       assert.deepEqual(handlesWithoutSelection, []);
@@ -241,13 +244,15 @@ describe('DirectSelect & translatePathAnchors', () => {
         ],
       };
 
-      // Selección en ancla 0: al estar cerrado, i-1 hace wrap hacia el ancla 2 (handleOut(2))
+      // Selección en ancla 0: al estar cerrado, i-1 hace wrap hacia el ancla 2 y i+1 hacia el ancla 1
       const handles0 = getVisiblePathHandles(closedPath, new Set([0]));
-      assert.equal(handles0.length, 4);
+      assert.equal(handles0.length, 6);
       assert.ok(handles0.some((h) => h.index === 0 && h.type === 'handleIn'));
       assert.ok(handles0.some((h) => h.index === 0 && h.type === 'handleOut'));
+      assert.ok(handles0.some((h) => h.index === 2 && h.type === 'handleIn' && h.x === 90 && h.y === 100));
       assert.ok(handles0.some((h) => h.index === 2 && h.type === 'handleOut' && h.x === 110 && h.y === 100));
       assert.ok(handles0.some((h) => h.index === 1 && h.type === 'handleIn' && h.x === 40 && h.y === 50));
+      assert.ok(handles0.some((h) => h.index === 1 && h.type === 'handleOut' && h.x === 60 && h.y === 50));
     });
 
     it('manejador colapsado coincidente con su ancla o undefined es ignorado', () => {
@@ -320,6 +325,71 @@ describe('DirectSelect & translatePathAnchors', () => {
       canvas.dispatchSimulatedEvent('mousedown', { clientX: 500, clientY: 500, shiftKey: false });
       canvas.dispatchSimulatedEvent('mouseup', { clientX: 500, clientY: 500 });
       assert.equal(controller.pathEditState, null);
+
+      controller.destroy();
+    });
+
+    it('al seleccionar un nodo mediante secuencia de puntero completa (pointerdown/up/lostpointercapture), los manejadores permanecen activos y visibles', () => {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const layerId = stateManager.getState().children[0].id;
+
+      const path: Path = {
+        id: 'path-handles-persist',
+        type: 'path',
+        name: 'Persist Path',
+        x: 0,
+        y: 0,
+        points: [
+          { x: 100, y: 100, handleOut: { x: 150, y: 50 } },
+          { x: 300, y: 200, handleIn: { x: 250, y: 250 }, handleOut: { x: 350, y: 150 } },
+          { x: 500, y: 100, handleIn: { x: 450, y: 50 } },
+        ],
+        stroke: '#000',
+      };
+      stateManager.addShape(layerId, path);
+
+      const canvas = createMockCanvas();
+      const controller = new InputController(canvas, stateManager, commandManager);
+      controller.setTool('direct-select');
+
+      // Secuencia nativa del navegador con TouchGestureController: pointerdown -> mousedown -> pointerup -> lostpointercapture -> mouseup
+      canvas.dispatchSimulatedEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 });
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100 });
+      assert.ok(controller.pathEditState);
+      assert.ok(controller.pathEditState.selectedAnchors.has(0));
+
+      canvas.dispatchSimulatedEvent('pointerup', { pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 });
+      canvas.dispatchSimulatedEvent('lostpointercapture', { pointerId: 1, pointerType: 'mouse' });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100 });
+
+      // Tras soltar el clic y disparar lostpointercapture, el ancla DEBE seguir seleccionada
+      assert.ok(controller.pathEditState, 'pathEditState debe seguir activo tras soltar el clic');
+      assert.ok(controller.pathEditState.selectedAnchors.has(0), 'El ancla 0 debe seguir seleccionada');
+
+      // Comprobar que los manejadores del nodo seleccionado y contiguo siguen visibles
+      const shape = stateManager.findNode('path-handles-persist') as Path;
+      const handles = getVisiblePathHandles(shape, controller.pathEditState.selectedAnchors);
+      // Para el nodo 0 seleccionado, sus manejadores (handleOut(0)) y los del contiguo nodo 1 (handleIn(1), handleOut(1)) son visibles
+      assert.ok(handles.some((h) => h.index === 0 && h.type === 'handleOut'));
+      assert.ok(handles.some((h) => h.index === 1 && h.type === 'handleIn'));
+      assert.ok(handles.some((h) => h.index === 1 && h.type === 'handleOut'));
+
+      // Hacer clic en el manejador handleIn del nodo 1 (250, 250)
+      canvas.dispatchSimulatedEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', clientX: 250, clientY: 250 });
+      canvas.dispatchSimulatedEvent('mousedown', { clientX: 250, clientY: 250 });
+      canvas.dispatchSimulatedEvent('pointerup', { pointerId: 1, pointerType: 'mouse', clientX: 250, clientY: 250 });
+      canvas.dispatchSimulatedEvent('lostpointercapture', { pointerId: 1, pointerType: 'mouse' });
+      canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 250 });
+
+      // El ancla 1 queda seleccionada
+      assert.ok(controller.pathEditState.selectedAnchors.has(1), 'Clic en manejador debe seleccionar el ancla asociada');
+      const handlesAfter = getVisiblePathHandles(shape, controller.pathEditState.selectedAnchors);
+      // Al seleccionar el ancla 1 (central), handles de 0, 1 y 2 son visibles
+      assert.ok(handlesAfter.some((h) => h.index === 1 && h.type === 'handleIn'));
+      assert.ok(handlesAfter.some((h) => h.index === 1 && h.type === 'handleOut'));
+      assert.ok(handlesAfter.some((h) => h.index === 0 && h.type === 'handleOut'));
+      assert.ok(handlesAfter.some((h) => h.index === 2 && h.type === 'handleIn'));
 
       controller.destroy();
     });

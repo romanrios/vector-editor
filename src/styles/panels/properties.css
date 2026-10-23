@@ -106,6 +106,13 @@
         border-color: rgba(239, 68, 68, 0.4);
       }
 
+      .panel-btn:disabled,
+      .panel-btn[aria-disabled="true"] {
+        opacity: 0.45;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
       /* Cuadrícula de iconos en el panel de propiedades */
       .panel-icon-grid {
         display: grid;

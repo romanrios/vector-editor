@@ -197,7 +197,7 @@ export class DirectSelectToolHandler implements ToolHandler {
     }
   }
 
-  public resetDirectSelect(): void {
+  public resetDrag(): void {
     this._draggedPointIndex = null;
     this._draggedTargetType = null;
     this._draggedPointTarget = null;
@@ -208,6 +208,10 @@ export class DirectSelectToolHandler implements ToolHandler {
     this._directSelectOrigin = null;
     this._initialPathPoints = null;
     this._hoverInsertPoint = null;
+  }
+
+  public resetDirectSelect(): void {
+    this.resetDrag();
     this.clearSelectedAnchors();
   }
 
@@ -295,6 +299,18 @@ export class DirectSelectToolHandler implements ToolHandler {
       }
 
       if (hitPoint.type === 'handleIn' || hitPoint.type === 'handleOut') {
+        if (!shiftKey) {
+          if (!this._selectedAnchors.has(hitPoint.index)) {
+            this._selectedAnchors.clear();
+            this._selectedAnchors.add(hitPoint.index);
+            this._anchorsPathId = activePath.id;
+            this.stateManager.markDirty();
+          }
+        } else {
+          this._selectedAnchors.add(hitPoint.index);
+          this._anchorsPathId = activePath.id;
+          this.stateManager.markDirty();
+        }
         const pt = activePath.points[hitPoint.index];
         this._isDraggedPointSmooth = pt ? isSmoothPoint(pt) : false;
       } else {
@@ -501,10 +517,8 @@ export class DirectSelectToolHandler implements ToolHandler {
       }
     }
 
-    this._isDraggingPoint = false;
-    this._isDraggedPointSmooth = false;
-    this._directSelectOrigin = null;
-    this._initialPathPoints = null;
+    this.resetDrag();
+    this.stateManager.markDirty();
 
     const selectedNode = this.stateManager.getSelectedNode();
     if (selectedNode && selectedNode.type === 'path') {

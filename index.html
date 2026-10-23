@@ -794,39 +794,6 @@
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
-          <div class="control-group" id="group-stroke-dash">
-            <label for="select-stroke-dash">Trazo</label>
-            <select id="select-stroke-dash" class="control-select" aria-label="Estilo de trazo">
-              <option value="solid">Continuo</option>
-              <option value="dashed">Discontinuo (6, 6)</option>
-              <option value="dotted">Punteado (2, 4)</option>
-              <option value="dash-dot">Trazo y punto (8, 4, 2, 4)</option>
-            </select>
-          </div>
-          <div class="control-group" id="group-stroke-cap">
-            <label for="select-stroke-cap">Remate</label>
-            <select id="select-stroke-cap" class="control-select" aria-label="Terminación de línea">
-              <option value="round">Redondeado</option>
-              <option value="butt">Plano (butt)</option>
-              <option value="square">Cuadrado</option>
-            </select>
-          </div>
-          <div class="control-group" id="group-stroke-join">
-            <label for="select-stroke-join">Esquinas</label>
-            <select id="select-stroke-join" class="control-select" aria-label="Unión de esquinas">
-              <option value="round">Redondeada</option>
-              <option value="miter">En inglete (miter)</option>
-              <option value="bevel">Biselada</option>
-            </select>
-          </div>
-          <div class="control-group" id="group-outline-stroke" style="margin-top: 4px;">
-            <button type="button" id="btn-outline-stroke" class="btn-action-full" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-size: 12px; font-weight: 500; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-surface-secondary); color: var(--text-primary); cursor: pointer;" title="Contornear trazado (Ctrl+Shift+O)" aria-label="Contornear trazado">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M7 17l9.2-9.2M17 17V7H7"/>
-              </svg>
-              <span>Contornear trazado</span>
-            </button>
-          </div>
           <div class="control-group" id="group-opacity">
             <label for="input-opacity">Opacidad</label>
             <div class="range-control">
@@ -1279,6 +1246,51 @@
                 </svg>
                 <span>Eliminar</span>
               </button>
+            </div>
+            <div class="panel-btn-group" style="margin-top: 6px;">
+              <button type="button" id="btn-outline-stroke" class="panel-btn" title="Contornear trazado (Ctrl+Shift+O)" aria-label="Contornear trazado">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 17l9.2-9.2M17 17V7H7"/>
+                </svg>
+                <span>Contornear trazado</span>
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <!-- Sección 4: Trazo -->
+        <details class="collapsible-section" id="section-stroke" open>
+          <summary class="section-header" tabindex="0">
+            <span class="section-title">Trazo</span>
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </summary>
+          <div class="section-content">
+            <div class="control-group" id="group-stroke-dash">
+              <label for="select-stroke-dash">Trazo</label>
+              <select id="select-stroke-dash" class="control-select" aria-label="Estilo de trazo">
+                <option value="solid">Continuo</option>
+                <option value="dashed">Discontinuo (6, 6)</option>
+                <option value="dotted">Punteado (2, 4)</option>
+                <option value="dash-dot">Trazo y punto (8, 4, 2, 4)</option>
+              </select>
+            </div>
+            <div class="control-group" id="group-stroke-cap">
+              <label for="select-stroke-cap">Remate</label>
+              <select id="select-stroke-cap" class="control-select" aria-label="Terminación de línea">
+                <option value="round">Redondeado</option>
+                <option value="butt">Plano (butt)</option>
+                <option value="square">Cuadrado</option>
+              </select>
+            </div>
+            <div class="control-group" id="group-stroke-join">
+              <label for="select-stroke-join">Esquinas</label>
+              <select id="select-stroke-join" class="control-select" aria-label="Unión de esquinas">
+                <option value="round">Redondeada</option>
+                <option value="miter">En inglete (miter)</option>
+                <option value="bevel">Biselada</option>
+              </select>
             </div>
           </div>
         </details>

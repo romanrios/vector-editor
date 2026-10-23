@@ -55,6 +55,7 @@ export class TouchGestureController {
   private readonly onPointerMoveHandler = (e: PointerEvent) => this.handlePointerMove(e);
   private readonly onPointerUpHandler = (e: PointerEvent) => this.handlePointerUp(e);
   private readonly onPointerCancelHandler = (e: PointerEvent) => this.handlePointerCancel(e);
+  private readonly onLostPointerCaptureHandler = (e: PointerEvent) => this.handleLostPointerCapture(e);
 
   constructor(
     element: HTMLElement | HTMLCanvasElement,
@@ -108,7 +109,7 @@ export class TouchGestureController {
     this.element.addEventListener('pointermove', this.onPointerMoveHandler as EventListener);
     this.element.addEventListener('pointerup', this.onPointerUpHandler as EventListener);
     this.element.addEventListener('pointercancel', this.onPointerCancelHandler as EventListener);
-    this.element.addEventListener('lostpointercapture', this.onPointerCancelHandler as EventListener);
+    this.element.addEventListener('lostpointercapture', this.onLostPointerCaptureHandler as EventListener);
   }
 
   public destroy(): void {
@@ -122,7 +123,7 @@ export class TouchGestureController {
     this.element.removeEventListener('pointermove', this.onPointerMoveHandler as EventListener);
     this.element.removeEventListener('pointerup', this.onPointerUpHandler as EventListener);
     this.element.removeEventListener('pointercancel', this.onPointerCancelHandler as EventListener);
-    this.element.removeEventListener('lostpointercapture', this.onPointerCancelHandler as EventListener);
+    this.element.removeEventListener('lostpointercapture', this.onLostPointerCaptureHandler as EventListener);
 
     this.activePointers.clear();
   }
@@ -281,8 +282,16 @@ export class TouchGestureController {
     }
   }
 
+  public handleLostPointerCapture(event: PointerEvent): void {
+    this.activePointers.delete(event.pointerId);
+    if (this.activePointers.size === 0) {
+      this.isPinching = false;
+    }
+  }
+
   public handlePointerCancel(event: PointerEvent): void {
     this.clearLongPressTimer();
+    const wasActive = this.activePointers.has(event.pointerId);
     this.activePointers.delete(event.pointerId);
 
     try {
@@ -291,7 +300,7 @@ export class TouchGestureController {
       // Ignorar fallos de captura
     }
 
-    if (this.activePointers.size === 0) {
+    if (wasActive && this.activePointers.size === 0) {
       this.isPinching = false;
       this.longPressTriggered = false;
       this.callbacks.onCancelSinglePointer?.();

@@ -439,7 +439,7 @@ export class InputController {
     this.selectToolHandler?.resetDrag();
     this.selectToolHandler?.resetResize();
     this.selectToolHandler?.resetRotate();
-    this.directSelectToolHandler?.resetDirectSelect();
+    this.directSelectToolHandler?.resetDrag();
     this._isPanning = false;
     this._panStartScreen = null;
     this.stateManager.markDirty();

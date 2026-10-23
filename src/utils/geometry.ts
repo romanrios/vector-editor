@@ -2719,8 +2719,10 @@ export interface PathHandleRef {
 
 /**
  * Determina los manejadores de control Bézier visibles según las anclas seleccionadas.
- * Para cada índice válido i de `selected`: handleIn(i), handleOut(i), handleOut(i-1) y handleIn(i+1).
- * Si path.closed, i-1 e i+1 hacen wrap; si no, se omiten los que salen de rango.
+ * Replicando el comportamiento estándar de programas como Adobe Illustrator:
+ * - Para cada ancla seleccionada `i`: se exponen sus manejadores `handleIn` y `handleOut`.
+ * - Para las anclas contiguas adyacentes (`i-1` e `i+1` dentro del mismo subtrazado): se exponen sus manejadores (`handleIn` y `handleOut`).
+ * Si el trazado o el subtrazado está cerrado, `i-1` e `i+1` hacen wrap cíclico; si es abierto, se omiten los que salgan de los límites.
  * Ignora manejadores undefined o coincidentes con su ancla. Sin duplicados. Ignora índices >= points.length.
  */
 export function getVisiblePathHandles(
@@ -2763,24 +2765,46 @@ export function getVisiblePathHandles(
       continue;
     }
 
-    // handleIn(i) y handleOut(i)
+    // 1. Manejadores del nodo seleccionado i
     checkAndAdd(i, 'handleIn');
     checkAndAdd(i, 'handleOut');
 
-    // handleOut(i - 1)
-    if (isClosed) {
-      const prevIdx = (i - 1 + n) % n;
-      checkAndAdd(prevIdx, 'handleOut');
-    } else if (i - 1 >= 0) {
-      checkAndAdd(i - 1, 'handleOut');
+    // 2. Determinar límites del subtrazado al que pertenece el ancla i
+    let subpathStart = i;
+    while (subpathStart > 0 && !path.points[subpathStart].moveTo) {
+      subpathStart--;
+    }
+    let subpathEnd = i;
+    while (subpathEnd < n - 1 && !path.points[subpathEnd + 1].moveTo) {
+      subpathEnd++;
+    }
+    const subpathLen = subpathEnd - subpathStart + 1;
+    const subpathClosed = isClosed || Boolean(path.points[subpathEnd].closeSubpath);
+
+    let prevIdx = -1;
+    let nextIdx = -1;
+
+    if (subpathClosed && subpathLen > 1) {
+      prevIdx = subpathStart + (i - subpathStart - 1 + subpathLen) % subpathLen;
+      nextIdx = subpathStart + (i - subpathStart + 1) % subpathLen;
+    } else {
+      if (i > subpathStart) {
+        prevIdx = i - 1;
+      }
+      if (i < subpathEnd) {
+        nextIdx = i + 1;
+      }
     }
 
-    // handleIn(i + 1)
-    if (isClosed) {
-      const nextIdx = (i + 1) % n;
+    // 3. Manejadores de los nodos contiguos
+    if (prevIdx >= 0) {
+      checkAndAdd(prevIdx, 'handleIn');
+      checkAndAdd(prevIdx, 'handleOut');
+    }
+
+    if (nextIdx >= 0) {
       checkAndAdd(nextIdx, 'handleIn');
-    } else if (i + 1 < n) {
-      checkAndAdd(i + 1, 'handleIn');
+      checkAndAdd(nextIdx, 'handleOut');
     }
   }
 
