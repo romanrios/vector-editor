@@ -49,6 +49,20 @@ export const ARTBOARD_PRESETS: readonly ArtboardPreset[] = Object.freeze([
     width: 1080,
     height: 1080,
   },
+  {
+    id: 'portrait-4-5',
+    name: 'Retrato',
+    label: 'Retrato (1080 × 1350)',
+    width: 1080,
+    height: 1350,
+  },
+  {
+    id: 'story-9-16',
+    name: 'Historia / Reel',
+    label: 'Historia / Reel (1080 × 1920)',
+    width: 1080,
+    height: 1920,
+  },
 ]);
 
 /**

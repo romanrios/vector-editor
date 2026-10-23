@@ -454,4 +454,264 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
       (globalThis as any).document = origDoc;
     }
   });
+
+  it('permite iniciar el flujo de Nuevo Documento y cancelar el diálogo de confirmación', () => {
+    const confirmNewDialog = createMockElement('confirm-new-dialog', 'dialog');
+    const btnCloseConfirmNew = createMockElement('btn-close-confirm-new', 'button');
+    const btnConfirmNewCancel = createMockElement('btn-confirm-new-cancel', 'button');
+    const btnConfirmNewDiscard = createMockElement('btn-confirm-new-discard', 'button');
+    const btnConfirmNewSave = createMockElement('btn-confirm-new-save', 'button');
+    const newDocumentDialog = createMockElement('new-document-dialog', 'dialog');
+    const btnMenuNew = createMockElement('menu-item-new', 'button');
+
+    const elements: Record<string, any> = {
+      '#confirm-new-dialog': confirmNewDialog,
+      '#btn-close-confirm-new': btnCloseConfirmNew,
+      '#btn-confirm-new-cancel': btnConfirmNewCancel,
+      '#btn-confirm-new-discard': btnConfirmNewDiscard,
+      '#btn-confirm-new-save': btnConfirmNewSave,
+      '#new-document-dialog': newDocumentDialog,
+      '#menu-item-new': btnMenuNew,
+    };
+
+    const docMock: Document = {
+      id: 'doc-1',
+      name: 'Mi Proyecto',
+      type: 'document',
+      width: 1920,
+      height: 1080,
+      children: [],
+    };
+
+    const origDoc = (globalThis as any).document;
+    const documentListeners: Record<string, ((e: any) => void)[]> = {};
+    (globalThis as any).document = {
+      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelectorAll: () => [],
+      addEventListener: (type: string, h: (e: any) => void) => {
+        documentListeners[type] = documentListeners[type] || [];
+        documentListeners[type].push(h);
+      },
+      removeEventListener: (type: string, h: (e: any) => void) => {
+        documentListeners[type] = (documentListeners[type] || []).filter((l) => l !== h);
+      },
+      activeElement: null,
+    };
+
+    try {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(docMock, commandManager);
+      const inputController = new InputController(
+        { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+        stateManager,
+        commandManager,
+        { enableKeyboardShortcuts: false }
+      );
+
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      // Clic en Nuevo en el menú abre el diálogo de confirmación
+      btnMenuNew.click();
+      assert.strictEqual(confirmNewDialog.open, true);
+      assert.strictEqual(newDocumentDialog.open, false);
+
+      // Cancelar con el botón Cancelar cierra el diálogo y no abre el selector de tamaño
+      btnConfirmNewCancel.click();
+      assert.strictEqual(confirmNewDialog.open, false);
+      assert.strictEqual(newDocumentDialog.open, false);
+
+      // Reabrir y cerrar con Escape
+      btnMenuNew.click();
+      assert.strictEqual(confirmNewDialog.open, true);
+      const keydownHandlers = documentListeners['keydown'] || [];
+      for (const h of keydownHandlers) {
+        h({ key: 'Escape', preventDefault: () => {} });
+      }
+      assert.strictEqual(confirmNewDialog.open, false);
+      assert.strictEqual(newDocumentDialog.open, false);
+
+      bindings.cleanup();
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
+  });
+
+  it('permite crear un nuevo documento eligiendo "No guardar" y seleccionando el preset 1080x1350', () => {
+    const confirmNewDialog = createMockElement('confirm-new-dialog', 'dialog');
+    const btnConfirmNewDiscard = createMockElement('btn-confirm-new-discard', 'button');
+    const newDocumentDialog = createMockElement('new-document-dialog', 'dialog');
+    const newDocPreset = createMockElement('new-doc-preset', 'select');
+    const newDocWidth = createMockElement('new-doc-width', 'input');
+    const newDocHeight = createMockElement('new-doc-height', 'input');
+    const btnConfirmNewDoc = createMockElement('btn-confirm-new-doc', 'button');
+    const formNewDocument = createMockElement('form-new-document', 'form');
+    const btnMenuNew = createMockElement('menu-item-new', 'button');
+
+    const elements: Record<string, any> = {
+      '#confirm-new-dialog': confirmNewDialog,
+      '#btn-confirm-new-discard': btnConfirmNewDiscard,
+      '#new-document-dialog': newDocumentDialog,
+      '#new-doc-preset': newDocPreset,
+      '#new-doc-width': newDocWidth,
+      '#new-doc-height': newDocHeight,
+      '#btn-confirm-new-doc': btnConfirmNewDoc,
+      '#form-new-document': formNewDocument,
+      '#menu-item-new': btnMenuNew,
+    };
+
+    const docMock: Document = {
+      id: 'doc-1',
+      name: 'Proyecto Viejo',
+      type: 'document',
+      width: 800,
+      height: 600,
+      children: [],
+    };
+
+    const origDoc = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      activeElement: null,
+    };
+
+    try {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(docMock, commandManager);
+      const inputController = new InputController(
+        { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+        stateManager,
+        commandManager,
+        { enableKeyboardShortcuts: false }
+      );
+
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      btnMenuNew.click();
+      assert.strictEqual(confirmNewDialog.open, true);
+
+      // Clic en "No guardar" cierra confirmación y abre configuración de mesa de trabajo
+      btnConfirmNewDiscard.click();
+      assert.strictEqual(confirmNewDialog.open, false);
+      assert.strictEqual(newDocumentDialog.open, true);
+
+      // Seleccionar preset 1080x1350 (portrait-4-5)
+      newDocPreset.value = 'portrait-4-5';
+      newDocPreset.dispatchEvent({ type: 'change' });
+      assert.strictEqual(newDocWidth.value, '1080');
+      assert.strictEqual(newDocHeight.value, '1350');
+
+      // Confirmar creación
+      btnConfirmNewDoc.click();
+      assert.strictEqual(newDocumentDialog.open, false);
+
+      const newDoc = stateManager.getState();
+      assert.strictEqual(newDoc.width, 1080);
+      assert.strictEqual(newDoc.height, 1350);
+      assert.strictEqual(newDoc.name, 'Nuevo Documento');
+      assert.strictEqual(commandManager.canUndo(), false);
+      assert.strictEqual(stateManager.getSelection().length, 0);
+
+      bindings.cleanup();
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
+  });
+
+  it('permite crear un nuevo documento con preset historia 1080x1920 tras guardar JSON', () => {
+    const confirmNewDialog = createMockElement('confirm-new-dialog', 'dialog');
+    const btnConfirmNewSave = createMockElement('btn-confirm-new-save', 'button');
+    const saveJsonDialog = createMockElement('save-json-dialog', 'dialog');
+    const saveJsonFilenameInput = createMockElement('save-json-filename-input', 'input');
+    const btnConfirmSaveJson = createMockElement('btn-confirm-save-json', 'button');
+    const formSaveJson = createMockElement('form-save-json', 'form');
+    const newDocumentDialog = createMockElement('new-document-dialog', 'dialog');
+    const newDocPreset = createMockElement('new-doc-preset', 'select');
+    const newDocWidth = createMockElement('new-doc-width', 'input');
+    const newDocHeight = createMockElement('new-doc-height', 'input');
+    const btnConfirmNewDoc = createMockElement('btn-confirm-new-doc', 'button');
+    const formNewDocument = createMockElement('form-new-document', 'form');
+    const btnMenuNew = createMockElement('menu-item-new', 'button');
+
+    const elements: Record<string, any> = {
+      '#confirm-new-dialog': confirmNewDialog,
+      '#btn-confirm-new-save': btnConfirmNewSave,
+      '#save-json-dialog': saveJsonDialog,
+      '#save-json-filename-input': saveJsonFilenameInput,
+      '#btn-confirm-save-json': btnConfirmSaveJson,
+      '#form-save-json': formSaveJson,
+      '#new-document-dialog': newDocumentDialog,
+      '#new-doc-preset': newDocPreset,
+      '#new-doc-width': newDocWidth,
+      '#new-doc-height': newDocHeight,
+      '#btn-confirm-new-doc': btnConfirmNewDoc,
+      '#form-new-document': formNewDocument,
+      '#menu-item-new': btnMenuNew,
+    };
+
+    const docMock: Document = {
+      id: 'doc-1',
+      name: 'Boceto Inicial',
+      type: 'document',
+      width: 500,
+      height: 500,
+      children: [],
+    };
+
+    const origDoc = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      activeElement: null,
+    };
+
+    try {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(docMock, commandManager);
+      const inputController = new InputController(
+        { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+        stateManager,
+        commandManager,
+        { enableKeyboardShortcuts: false }
+      );
+
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      btnMenuNew.click();
+      assert.strictEqual(confirmNewDialog.open, true);
+
+      // Clic en "Guardar" abre el diálogo de Guardar JSON
+      btnConfirmNewSave.click();
+      assert.strictEqual(confirmNewDialog.open, false);
+      assert.strictEqual(saveJsonDialog.open, true);
+
+      // Guardar el JSON abre a continuación el diálogo de Nuevo Documento
+      btnConfirmSaveJson.click();
+      assert.strictEqual(saveJsonDialog.open, false);
+      assert.strictEqual(newDocumentDialog.open, true);
+
+      // Seleccionar preset historia 9:16 (1080x1920)
+      newDocPreset.value = 'story-9-16';
+      newDocPreset.dispatchEvent({ type: 'change' });
+      assert.strictEqual(newDocWidth.value, '1080');
+      assert.strictEqual(newDocHeight.value, '1920');
+
+      // Confirmar creación
+      btnConfirmNewDoc.click();
+      assert.strictEqual(newDocumentDialog.open, false);
+
+      const newDoc = stateManager.getState();
+      assert.strictEqual(newDoc.width, 1080);
+      assert.strictEqual(newDoc.height, 1920);
+      assert.strictEqual(newDoc.name, 'Nuevo Documento');
+
+      bindings.cleanup();
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
+  });
 });

@@ -716,6 +716,13 @@ export function setupMenuBarBindings(
       return;
     }
 
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key && e.key.toLowerCase() === 'n') {
+      e.preventDefault?.();
+      closeAllMenus();
+      options.onNewClick?.();
+      return;
+    }
+
     if (e.key === 'Escape' && activeMenuIndex !== -1) {
       e.preventDefault?.();
       const trigger = menuEntries[activeMenuIndex]?.trigger;

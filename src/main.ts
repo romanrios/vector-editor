@@ -106,6 +106,14 @@ export function setupUIBindings(
     stateManager,
     commandManager,
     inputController,
+    onNewDocumentCreated: () => {
+      const sel = stateManager.getSelectedNodes();
+      contextMenuController?.syncContextMenu(sel);
+      propertiesPanelController?.syncPropertiesPanel(sel);
+      statusBarController?.syncStatusBar(sel);
+      layersPanelController?.renderLayersTree();
+      menuBarController?.syncMenuItems(sel);
+    },
   });
 
   propertiesPanelController = setupPropertiesPanelBindings({
@@ -165,6 +173,10 @@ export function setupUIBindings(
     canvas,
     onCloseContextMenu: () => {
       contextMenuController?.closeContextMenu();
+    },
+    onNewClick: () => {
+      const menuBtnFile = document.querySelector<HTMLElement>('#menu-btn-file');
+      dialogsController?.openNewDocumentFlow?.(menuBtnFile);
     },
     onImportClick: () => {
       const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');

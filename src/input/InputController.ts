@@ -90,6 +90,7 @@ export interface KeyboardShortcut {
  * Lista maestra de atajos de teclado reales implementados en InputController
  */
 export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
+  { key: 'Ctrl+N / Cmd+N', description: 'Crear nuevo documento', category: 'Archivo' },
   { key: 'Ctrl+E / Cmd+E', description: 'Abrir diálogo de exportación', category: 'Archivo' },
   { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
   { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
@@ -987,6 +988,40 @@ export class InputController {
     const canvasSize = this.getCanvasSize();
     const bounds = this.getVisibleWorldBounds();
     this.viewportManager.fitToBounds(canvasSize, bounds, 40);
+  }
+
+  /**
+   * Centra la mesa de trabajo (Artboard) en el espacio visible del canvas.
+   * Si `fit` es true, ajusta el nivel de zoom para que toda la mesa de trabajo sea visible con un margen.
+   */
+  public centerArtboard(fit: boolean = true, margin: number = 40): void {
+    const doc = this.stateManager.getState();
+    const canvasSize = this.getCanvasSize();
+    const docWidth = doc?.width ?? 1920;
+    const docHeight = doc?.height ?? 1080;
+    const artboardBounds: AABB = {
+      minX: 0,
+      minY: 0,
+      maxX: docWidth,
+      maxY: docHeight,
+      width: docWidth,
+      height: docHeight,
+    };
+
+    if (fit) {
+      this.viewportManager.fitToBounds(canvasSize, artboardBounds, margin);
+    } else {
+      const zoom = this.viewportManager.zoom;
+      const canvasCenterX = canvasSize.width / 2;
+      const canvasCenterY = canvasSize.height / 2;
+      const boxCenterX = docWidth / 2;
+      const boxCenterY = docHeight / 2;
+      this.viewportManager.setViewport({
+        zoom,
+        panX: Math.round(canvasCenterX - boxCenterX * zoom),
+        panY: Math.round(canvasCenterY - boxCenterY * zoom),
+      });
+    }
   }
 
   private hitTestNode(

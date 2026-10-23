@@ -806,4 +806,40 @@ describe('Controles de Navegación, Atajos y Vista (Menú Vista, Atajos, Mano, Z
     cleanup();
     delete (globalThis as any).ResizeObserver;
   });
+
+  it('9. centerArtboard centra la mesa de trabajo en el espacio visible', () => {
+    setupMockEnvironment();
+    const stateManager = new StateManager({
+      id: 'doc-root',
+      type: 'document',
+      name: 'Test Doc',
+      width: 1000,
+      height: 800,
+      children: [],
+    });
+    const commandManager = new CommandManager();
+    const viewportManager = new ViewportManager();
+    const canvas = createMockCanvas();
+    (canvas as any).width = 1000;
+    (canvas as any).height = 1000;
+    (canvas as any).getBoundingClientRect = () => ({ width: 1000, height: 1000, left: 0, top: 0 });
+
+    const inputController = new InputController(canvas, stateManager, commandManager, { viewportManager });
+
+    // Centrar con fit = true (margin = 40):
+    // maxZoom = min((1000 - 80) / 1000, (1000 - 80) / 800) = min(0.92, 1.15) = 0.92
+    // panX = 1000/2 - (1000/2)*0.92 = 500 - 460 = 40
+    // panY = 1000/2 - (800/2)*0.92 = 500 - 368 = 132
+    inputController.centerArtboard(true, 40);
+    assert.strictEqual(Math.abs(viewportManager.zoom - 0.92) < 1e-4, true);
+    assert.strictEqual(Math.abs(viewportManager.panX - 40) < 1e-4, true);
+    assert.strictEqual(Math.abs(viewportManager.panY - 132) < 1e-4, true);
+
+    // Centrar con fit = false manteniendo zoom en 1.0:
+    viewportManager.setViewport({ zoom: 1.0, panX: 0, panY: 0 });
+    inputController.centerArtboard(false);
+    assert.strictEqual(viewportManager.zoom, 1.0);
+    assert.strictEqual(Math.abs(viewportManager.panX - 0) < 1e-4, true);
+    assert.strictEqual(Math.abs(viewportManager.panY - 100) < 1e-4, true);
+  });
 });

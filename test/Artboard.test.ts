@@ -1709,7 +1709,7 @@ describe('Bloquear proporción en el tamaño de la Mesa de Trabajo', () => {
 describe('Presets de tamaño de la Mesa de Trabajo (Definición y Búsqueda)', () => {
   it('contiene los presets requeridos con sus dimensiones exactas en píxeles', () => {
     const ids = ARTBOARD_PRESETS.map((p) => p.id);
-    assert.deepEqual(ids, ['a4-portrait', 'a4-landscape', 'hd', 'full-hd', 'square']);
+    assert.deepEqual(ids, ['a4-portrait', 'a4-landscape', 'hd', 'full-hd', 'square', 'portrait-4-5', 'story-9-16']);
 
     const a4Portrait = getPresetById('a4-portrait');
     assert.ok(a4Portrait);
@@ -1735,6 +1735,16 @@ describe('Presets de tamaño de la Mesa de Trabajo (Definición y Búsqueda)', (
     assert.ok(square);
     assert.equal(square?.width, 1080);
     assert.equal(square?.height, 1080);
+
+    const portrait = getPresetById('portrait-4-5');
+    assert.ok(portrait);
+    assert.equal(portrait?.width, 1080);
+    assert.equal(portrait?.height, 1350);
+
+    const story = getPresetById('story-9-16');
+    assert.ok(story);
+    assert.equal(story?.width, 1080);
+    assert.equal(story?.height, 1920);
   });
 
   it('findPresetForSize identifica el preset correspondiente o retorna null si es personalizado', () => {
@@ -1743,6 +1753,8 @@ describe('Presets de tamaño de la Mesa de Trabajo (Definición y Búsqueda)', (
     assert.equal(findPresetForSize(1280, 720)?.id, 'hd');
     assert.equal(findPresetForSize(1920, 1080)?.id, 'full-hd');
     assert.equal(findPresetForSize(1080, 1080)?.id, 'square');
+    assert.equal(findPresetForSize(1080, 1350)?.id, 'portrait-4-5');
+    assert.equal(findPresetForSize(1080, 1920)?.id, 'story-9-16');
 
     assert.equal(findPresetForSize(1500, 900), null, 'Dimensiones arbitrarias deben retornar null (Personalizado)');
     assert.equal(findPresetForSize(1920, 1000), null);

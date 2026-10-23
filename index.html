@@ -49,6 +49,7 @@
             <div id="menu-dropdown-file" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-file" hidden>
               <button id="menu-item-new" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Nuevo</span>
+                <span class="menu-shortcut">Ctrl+N</span>
               </button>
               <button id="menu-item-open" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Abrir JSON…</span>
@@ -855,6 +856,8 @@
               <option value="hd">HD (1280 × 720)</option>
               <option value="full-hd">Full HD (1920 × 1080)</option>
               <option value="square">Cuadrado (1080 × 1080)</option>
+              <option value="portrait-4-5">Retrato (1080 × 1350)</option>
+              <option value="story-9-16">Historia / Reel (1080 × 1920)</option>
             </select>
           </div>
           <div class="control-group">
@@ -1549,6 +1552,68 @@
         <div class="export-dialog-footer">
           <button type="button" id="btn-cancel-save-json" class="dialog-btn secondary">Cancelar</button>
           <button type="submit" id="btn-confirm-save-json" class="dialog-btn primary">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Diálogo modal de Confirmar Guardado para Nuevo Documento -->
+    <dialog id="confirm-new-dialog" class="export-dialog confirm-new-dialog" aria-labelledby="confirm-new-dialog-title">
+      <div class="export-dialog-header">
+        <h3 id="confirm-new-dialog-title" class="export-dialog-title">¿Guardar trabajo actual?</h3>
+        <button id="btn-close-confirm-new" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <div class="export-dialog-body">
+        <p class="confirm-dialog-message">¿Deseas guardar los cambios del proyecto actual antes de crear un nuevo documento?</p>
+      </div>
+      <div class="export-dialog-footer confirm-dialog-footer">
+        <button type="button" id="btn-confirm-new-cancel" class="dialog-btn secondary">Cancelar</button>
+        <button type="button" id="btn-confirm-new-discard" class="dialog-btn secondary">No guardar</button>
+        <button type="button" id="btn-confirm-new-save" class="dialog-btn primary">Guardar</button>
+      </div>
+    </dialog>
+
+    <!-- Diálogo modal de Nuevo Documento (Tamaño de la Mesa de Trabajo) -->
+    <dialog id="new-document-dialog" class="export-dialog new-document-dialog" aria-labelledby="new-document-dialog-title">
+      <div class="export-dialog-header">
+        <h3 id="new-document-dialog-title" class="export-dialog-title">Nuevo documento</h3>
+        <button id="btn-close-new-doc" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <form id="form-new-document" method="dialog">
+        <div class="export-dialog-body">
+          <div class="export-field-group">
+            <label class="export-field-label" for="new-doc-preset">Preset de mesa de trabajo</label>
+            <select id="new-doc-preset" class="control-select new-doc-select" aria-label="Preset de tamaño de mesa de trabajo">
+              <option value="full-hd" selected>Full HD (1920 × 1080)</option>
+              <option value="square">Cuadrado (1080 × 1080)</option>
+              <option value="portrait-4-5">Retrato (1080 × 1350)</option>
+              <option value="story-9-16">Historia / Reel (1080 × 1920)</option>
+              <option value="hd">HD (1280 × 720)</option>
+              <option value="a4-portrait">A4 vertical (794 × 1123)</option>
+              <option value="a4-landscape">A4 horizontal (1123 × 794)</option>
+              <option value="custom">Personalizado</option>
+            </select>
+          </div>
+          <div class="new-doc-dimensions-row">
+            <div class="export-field-group">
+              <label class="export-field-label" for="new-doc-width">Ancho</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="new-doc-width" min="1" step="1" value="1920" required aria-label="Ancho de la mesa de trabajo en píxeles" />
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+            <div class="export-field-group">
+              <label class="export-field-label" for="new-doc-height">Alto</label>
+              <div class="input-number-wrapper">
+                <input type="number" id="new-doc-height" min="1" step="1" value="1080" required aria-label="Alto de la mesa de trabajo en píxeles" />
+                <span class="input-unit" aria-hidden="true">px</span>
+              </div>
+            </div>
+          </div>
+          <p class="export-field-hint">Al crear el documento, el lienzo se limpiará y la nueva mesa de trabajo aparecerá centrada.</p>
+        </div>
+        <div class="export-dialog-footer">
+          <button type="button" id="btn-cancel-new-doc" class="dialog-btn secondary">Cancelar</button>
+          <button type="submit" id="btn-confirm-new-doc" class="dialog-btn primary">Crear documento</button>
         </div>
       </form>
     </dialog>

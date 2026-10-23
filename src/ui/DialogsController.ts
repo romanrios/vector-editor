@@ -6,17 +6,27 @@ import { exportDocumentToSvg, downloadSvg } from '../utils/exportSvg.ts';
 import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } from '../utils/exportRaster.ts';
 import { sanitizeFilename } from '../utils/sanitizeFilename.ts';
 
+import type { Document } from '../types/scene-graph.ts';
+import { getPresetById, findPresetForSize } from '../utils/artboardPresets.ts';
+
 export interface DialogsControllerOptions {
   readonly stateManager: StateManager;
   readonly commandManager: CommandManager;
   readonly inputController: InputController;
+  readonly onNewDocumentCreated?: () => void;
 }
 
 export interface DialogsController {
   readonly openExportDialog: (restoreTarget?: HTMLElement | null) => void;
   readonly closeExportDialog: () => void;
-  readonly openSaveJsonDialog?: (restoreTarget?: HTMLElement | null) => void;
+  readonly openSaveJsonDialog?: (restoreTarget?: HTMLElement | null, onSaved?: () => void) => void;
   readonly closeSaveJsonDialog?: () => void;
+  readonly openConfirmNewDialog?: (restoreTarget?: HTMLElement | null) => void;
+  readonly closeConfirmNewDialog?: () => void;
+  readonly openNewDocumentDialog?: (restoreTarget?: HTMLElement | null) => void;
+  readonly closeNewDocumentDialog?: () => void;
+  readonly openNewDocumentFlow?: (restoreTarget?: HTMLElement | null) => void;
+  readonly createNewDocument?: (width: number, height: number, name?: string) => void;
   readonly openShortcutsDialog: () => void;
   readonly closeShortcutsDialog: () => void;
   readonly openAboutDialog: (restoreFocus?: HTMLButtonElement | null) => void;
@@ -61,6 +71,24 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   const saveJsonFilenameInput = document.querySelector<HTMLInputElement>('#save-json-filename-input');
   const formSaveJson = document.querySelector<HTMLFormElement>('#form-save-json');
   let saveJsonRestoreFocus: HTMLElement | null = null;
+  let pendingSaveJsonCallback: (() => void) | null = null;
+
+  const confirmNewDialog = document.querySelector<HTMLDialogElement>('#confirm-new-dialog');
+  const btnCloseConfirmNew = document.querySelector<HTMLButtonElement>('#btn-close-confirm-new');
+  const btnConfirmNewCancel = document.querySelector<HTMLButtonElement>('#btn-confirm-new-cancel');
+  const btnConfirmNewDiscard = document.querySelector<HTMLButtonElement>('#btn-confirm-new-discard');
+  const btnConfirmNewSave = document.querySelector<HTMLButtonElement>('#btn-confirm-new-save');
+  let confirmNewRestoreFocus: HTMLElement | null = null;
+
+  const newDocumentDialog = document.querySelector<HTMLDialogElement>('#new-document-dialog');
+  const btnCloseNewDoc = document.querySelector<HTMLButtonElement>('#btn-close-new-doc');
+  const formNewDocument = document.querySelector<HTMLFormElement>('#form-new-document');
+  const newDocPreset = document.querySelector<HTMLSelectElement>('#new-doc-preset');
+  const newDocWidth = document.querySelector<HTMLInputElement>('#new-doc-width');
+  const newDocHeight = document.querySelector<HTMLInputElement>('#new-doc-height');
+  const btnCancelNewDoc = document.querySelector<HTMLButtonElement>('#btn-cancel-new-doc');
+  const btnConfirmNewDoc = document.querySelector<HTMLButtonElement>('#btn-confirm-new-doc');
+  let newDocumentRestoreFocus: HTMLElement | null = null;
 
   const shortcutsDialog = document.querySelector<HTMLDialogElement>('#shortcuts-dialog');
   const shortcutsDialogList = document.querySelector<HTMLElement>('#shortcuts-dialog-list');
@@ -292,9 +320,15 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   exportFilenameInput?.addEventListener('input', onExportFilenameInputChange);
 
   // Guardar JSON Modal Dialog
-  const openSaveJsonDialog = (restoreTarget?: HTMLElement | null) => {
+  const openSaveJsonDialog = (restoreTarget?: HTMLElement | null, onSaved?: () => void) => {
+    pendingSaveJsonCallback = onSaved ?? null;
     if (!saveJsonDialog) {
       onExportClick();
+      if (pendingSaveJsonCallback) {
+        const cb = pendingSaveJsonCallback;
+        pendingSaveJsonCallback = null;
+        cb();
+      }
       return;
     }
     saveJsonRestoreFocus = restoreTarget ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
@@ -331,6 +365,11 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     saveJsonRestoreFocus?.focus?.();
   };
 
+  const onCancelSaveJsonClick = () => {
+    pendingSaveJsonCallback = null;
+    closeSaveJsonDialog();
+  };
+
   const onConfirmSaveJson = (e?: Event) => {
     e?.preventDefault?.();
     if (!stateManager) return;
@@ -344,12 +383,173 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const jsonContent = Serializer.serializeDocument(doc);
     Serializer.downloadJson(`${cleanName}.json`, jsonContent);
     debug(`💾 [Serializer] Documento guardado como ${cleanName}.json`);
+
+    if (pendingSaveJsonCallback) {
+      const cb = pendingSaveJsonCallback;
+      pendingSaveJsonCallback = null;
+      cb();
+    }
   };
 
-  btnCloseSaveJson?.addEventListener('click', closeSaveJsonDialog);
-  btnCancelSaveJson?.addEventListener('click', closeSaveJsonDialog);
+  btnCloseSaveJson?.addEventListener('click', onCancelSaveJsonClick);
+  btnCancelSaveJson?.addEventListener('click', onCancelSaveJsonClick);
   formSaveJson?.addEventListener('submit', onConfirmSaveJson);
   btnConfirmSaveJson?.addEventListener('click', onConfirmSaveJson);
+
+  // Flujo Nuevo Documento: Diálogo de Confirmación de Guardado
+  const openConfirmNewDialog = (restoreTarget?: HTMLElement | null) => {
+    if (!confirmNewDialog) {
+      openNewDocumentDialog(restoreTarget);
+      return;
+    }
+    confirmNewRestoreFocus = restoreTarget ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+    if (typeof confirmNewDialog.showModal === 'function') {
+      confirmNewDialog.showModal();
+    } else {
+      confirmNewDialog.setAttribute('open', '');
+      if (confirmNewDialog.style) {
+        confirmNewDialog.style.display = 'block';
+      }
+    }
+    btnConfirmNewSave?.focus?.();
+  };
+
+  const closeConfirmNewDialog = () => {
+    if (!confirmNewDialog) return;
+    if (typeof confirmNewDialog.close === 'function') {
+      confirmNewDialog.close();
+    } else {
+      confirmNewDialog.removeAttribute('open');
+      if (confirmNewDialog.style) {
+        confirmNewDialog.style.display = 'none';
+      }
+    }
+    confirmNewRestoreFocus?.focus?.();
+  };
+
+  const onConfirmNewSaveClick = () => {
+    closeConfirmNewDialog();
+    openSaveJsonDialog(confirmNewRestoreFocus, () => {
+      openNewDocumentDialog(confirmNewRestoreFocus);
+    });
+  };
+
+  const onConfirmNewDiscardClick = () => {
+    closeConfirmNewDialog();
+    openNewDocumentDialog(confirmNewRestoreFocus);
+  };
+
+  btnCloseConfirmNew?.addEventListener('click', closeConfirmNewDialog);
+  btnConfirmNewCancel?.addEventListener('click', closeConfirmNewDialog);
+  btnConfirmNewDiscard?.addEventListener('click', onConfirmNewDiscardClick);
+  btnConfirmNewSave?.addEventListener('click', onConfirmNewSaveClick);
+
+  // Flujo Nuevo Documento: Diálogo de Dimensiones de Mesa de Trabajo
+  const openNewDocumentDialog = (restoreTarget?: HTMLElement | null) => {
+    if (!newDocumentDialog) return;
+    newDocumentRestoreFocus = restoreTarget ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+
+    if (newDocPreset) newDocPreset.value = 'full-hd';
+    if (newDocWidth) newDocWidth.value = '1920';
+    if (newDocHeight) newDocHeight.value = '1080';
+
+    if (typeof newDocumentDialog.showModal === 'function') {
+      newDocumentDialog.showModal();
+    } else {
+      newDocumentDialog.setAttribute('open', '');
+      if (newDocumentDialog.style) {
+        newDocumentDialog.style.display = 'block';
+      }
+    }
+    newDocPreset?.focus?.();
+  };
+
+  const closeNewDocumentDialog = () => {
+    if (!newDocumentDialog) return;
+    if (typeof newDocumentDialog.close === 'function') {
+      newDocumentDialog.close();
+    } else {
+      newDocumentDialog.removeAttribute('open');
+      if (newDocumentDialog.style) {
+        newDocumentDialog.style.display = 'none';
+      }
+    }
+    newDocumentRestoreFocus?.focus?.();
+  };
+
+  const onNewDocPresetChange = () => {
+    if (!newDocPreset) return;
+    const presetId = newDocPreset.value;
+    if (presetId === 'custom') return;
+    const preset = getPresetById(presetId);
+    if (preset) {
+      if (newDocWidth) newDocWidth.value = String(preset.width);
+      if (newDocHeight) newDocHeight.value = String(preset.height);
+    }
+  };
+
+  const onNewDocDimensionInput = () => {
+    if (!newDocWidth || !newDocHeight || !newDocPreset) return;
+    const w = parseInt(newDocWidth.value, 10);
+    const h = parseInt(newDocHeight.value, 10);
+    if (w > 0 && h > 0) {
+      const matching = findPresetForSize(w, h);
+      newDocPreset.value = matching ? matching.id : 'custom';
+    }
+  };
+
+  const createNewDocument = (width: number, height: number, name: string = 'Nuevo Documento') => {
+    const validWidth = Math.max(1, Math.round(width || 1920));
+    const validHeight = Math.max(1, Math.round(height || 1080));
+
+    const newDoc: Document = {
+      id: 'doc-root',
+      type: 'document',
+      name,
+      width: validWidth,
+      height: validHeight,
+      children: [
+        {
+          id: `layer-${Date.now()}`,
+          type: 'layer',
+          name: 'Capa 1',
+          visible: true,
+          locked: false,
+          opacity: 1,
+          children: [],
+        },
+      ],
+      guides: [],
+    };
+
+    stateManager.loadState(newDoc);
+    commandManager.clear();
+    stateManager.setSelection([]);
+    inputController?.setTool('select');
+    inputController?.centerArtboard?.(true);
+    options.onNewDocumentCreated?.();
+    debug(`📄 [Nuevo Documento] Creado con éxito (${validWidth} × ${validHeight}) y mesa de trabajo centrada.`);
+  };
+
+  const onConfirmNewDocSubmit = (e?: Event) => {
+    e?.preventDefault?.();
+    const w = parseInt(newDocWidth?.value || '1920', 10);
+    const h = parseInt(newDocHeight?.value || '1080', 10);
+    closeNewDocumentDialog();
+    createNewDocument(w, h);
+  };
+
+  btnCloseNewDoc?.addEventListener('click', closeNewDocumentDialog);
+  btnCancelNewDoc?.addEventListener('click', closeNewDocumentDialog);
+  formNewDocument?.addEventListener('submit', onConfirmNewDocSubmit);
+  btnConfirmNewDoc?.addEventListener('click', onConfirmNewDocSubmit);
+  newDocPreset?.addEventListener('change', onNewDocPresetChange);
+  newDocWidth?.addEventListener('input', onNewDocDimensionInput);
+  newDocHeight?.addEventListener('input', onNewDocDimensionInput);
+
+  const openNewDocumentFlow = (restoreTarget?: HTMLElement | null) => {
+    openConfirmNewDialog(restoreTarget);
+  };
 
   btnCloseExport?.addEventListener('click', closeExportDialog);
   btnCancelExport?.addEventListener('click', closeExportDialog);
@@ -538,12 +738,18 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
   const onDocumentKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      if (exportDialog && (exportDialog.open || exportDialog.hasAttribute?.('open'))) {
+      if (confirmNewDialog && (confirmNewDialog.open || confirmNewDialog.hasAttribute?.('open'))) {
+        e.preventDefault?.();
+        closeConfirmNewDialog();
+      } else if (newDocumentDialog && (newDocumentDialog.open || newDocumentDialog.hasAttribute?.('open'))) {
+        e.preventDefault?.();
+        closeNewDocumentDialog();
+      } else if (exportDialog && (exportDialog.open || exportDialog.hasAttribute?.('open'))) {
         e.preventDefault?.();
         closeExportDialog();
       } else if (saveJsonDialog && (saveJsonDialog.open || saveJsonDialog.hasAttribute?.('open'))) {
         e.preventDefault?.();
-        closeSaveJsonDialog();
+        onCancelSaveJsonClick();
       }
     }
   };
@@ -553,6 +759,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   }
 
   return {
+    openNewDocumentFlow,
+    openConfirmNewDialog,
+    closeConfirmNewDialog,
+    openNewDocumentDialog,
+    closeNewDocumentDialog,
+    createNewDocument,
     openExportDialog,
     closeExportDialog,
     openSaveJsonDialog,
@@ -567,10 +779,23 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     exportWebp,
     cleanup: () => {
       exportFilenameInput?.removeEventListener('input', onExportFilenameInputChange);
-      btnCloseSaveJson?.removeEventListener('click', closeSaveJsonDialog);
-      btnCancelSaveJson?.removeEventListener('click', closeSaveJsonDialog);
+      btnCloseSaveJson?.removeEventListener('click', onCancelSaveJsonClick);
+      btnCancelSaveJson?.removeEventListener('click', onCancelSaveJsonClick);
       formSaveJson?.removeEventListener('submit', onConfirmSaveJson);
       btnConfirmSaveJson?.removeEventListener('click', onConfirmSaveJson);
+
+      btnCloseConfirmNew?.removeEventListener('click', closeConfirmNewDialog);
+      btnConfirmNewCancel?.removeEventListener('click', closeConfirmNewDialog);
+      btnConfirmNewDiscard?.removeEventListener('click', onConfirmNewDiscardClick);
+      btnConfirmNewSave?.removeEventListener('click', onConfirmNewSaveClick);
+
+      btnCloseNewDoc?.removeEventListener('click', closeNewDocumentDialog);
+      btnCancelNewDoc?.removeEventListener('click', closeNewDocumentDialog);
+      formNewDocument?.removeEventListener('submit', onConfirmNewDocSubmit);
+      btnConfirmNewDoc?.removeEventListener('click', onConfirmNewDocSubmit);
+      newDocPreset?.removeEventListener('change', onNewDocPresetChange);
+      newDocWidth?.removeEventListener('input', onNewDocDimensionInput);
+      newDocHeight?.removeEventListener('input', onNewDocDimensionInput);
 
       btnExport?.removeEventListener('click', onExportClick);
       btnImport?.removeEventListener('click', onImportClick);

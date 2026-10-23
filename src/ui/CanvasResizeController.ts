@@ -47,6 +47,18 @@ export function setupCanvasResizeObserver(options: CanvasResizeControllerOptions
               panX: newPanX,
               panY: newPanY,
             });
+          } else if (prevCssWidth === 0 && prevCssHeight === 0 && viewportManager.panX === 0 && viewportManager.panY === 0) {
+            const doc = stateManager.getState();
+            const docWidth = doc?.width ?? 1920;
+            const docHeight = doc?.height ?? 1080;
+            const zoom = viewportManager.zoom;
+            const panX = Math.round((newCssWidth / 2) - (docWidth / 2) * zoom);
+            const panY = Math.round((newCssHeight / 2) - (docHeight / 2) * zoom);
+            viewportManager.setViewport({
+              zoom,
+              panX,
+              panY,
+            });
           }
 
           canvas.width = width;
