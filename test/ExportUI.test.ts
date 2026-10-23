@@ -6,10 +6,13 @@ import { InputController } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
 import type { Document } from '../src/types/scene-graph.ts';
 
+import { sanitizeFilename } from '../src/utils/sanitizeFilename.ts';
+
 // Mock DOM elemental para pruebas de UI del diálogo de exportación
 function createMockElement(id: string, tag: string = 'div'): any {
   const listeners: Record<string, ((e: any) => void)[]> = {};
   const attrs: Record<string, string> = {};
+  const dataset: Record<string, string> = {};
   let text = '';
   let val = '';
   let isChecked = false;
@@ -20,6 +23,8 @@ function createMockElement(id: string, tag: string = 'div'): any {
     id,
     tagName: tag.toUpperCase(),
     style: { display: '' },
+    dataset,
+    select: () => {},
     classList: {
       toggle: () => false,
       add: () => {},
@@ -279,6 +284,170 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
       btnOpen.click();
       assert.strictEqual(radioSelection.disabled, false);
       assert.match(textSelection.textContent, /Solo selección \(1 figura\)/);
+
+      bindings.cleanup();
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
+  });
+
+  it('sanitizeFilename limpia caracteres prohibidos, recorta espacios y remueve extensiones duplicadas', () => {
+    assert.strictEqual(sanitizeFilename('mi diseño'), 'mi diseño');
+    assert.strictEqual(sanitizeFilename('  mi diseño.svg  '), 'mi diseño');
+    assert.strictEqual(sanitizeFilename('proyecto.JSON'), 'proyecto');
+    assert.strictEqual(sanitizeFilename('archivo/con:caracteres*malos?'), 'archivo_con_caracteres_malos_');
+    assert.strictEqual(sanitizeFilename(''), '');
+    assert.strictEqual(sanitizeFilename(null, 'fallback'), 'fallback');
+    assert.strictEqual(sanitizeFilename(undefined, 'default-name'), 'default-name');
+  });
+
+  it('permite nombrar el archivo en el diálogo de exportación y actualiza el resumen en tiempo real', () => {
+    const filenameInput = createMockElement('export-filename-input', 'input');
+    const filenameExt = createMockElement('export-filename-extension', 'span');
+    const summaryFilename = createMockElement('export-summary-filename', 'span');
+    const summaryDim = createMockElement('export-summary-dim', 'span');
+    const dialog = createMockElement('export-dialog', 'dialog');
+    const btnOpen = createMockElement('menu-item-export-modal', 'button');
+    const btnConfirm = createMockElement('btn-confirm-export', 'button');
+
+    const elements: Record<string, any> = {
+      '#menu-item-export-modal': btnOpen,
+      '#export-dialog': dialog,
+      '#export-filename-input': filenameInput,
+      '#export-filename-extension': filenameExt,
+      '#export-summary-dim': summaryDim,
+      '#export-summary-filename': summaryFilename,
+      '#btn-confirm-export': btnConfirm,
+    };
+
+    const docMock: Document = {
+      id: 'doc-1',
+      name: 'Logo Empresa',
+      type: 'document',
+      width: 1200,
+      height: 800,
+      children: [],
+    };
+
+    const origDoc = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      activeElement: null,
+    };
+
+    try {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(docMock, commandManager);
+      const inputController = new InputController(
+        { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+        stateManager,
+        commandManager,
+        { enableKeyboardShortcuts: false }
+      );
+
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      // Abrir diálogo de exportación
+      btnOpen.click();
+
+      // Verifica que el nombre por defecto se cargue desde doc.name
+      assert.strictEqual(filenameInput.value, 'Logo Empresa');
+      assert.match(summaryFilename.textContent, /Archivo: Logo Empresa\.svg/);
+
+      // Cambiar el nombre del archivo manualmente
+      filenameInput.value = 'marca-vectorial';
+      filenameInput.dispatchEvent({ type: 'input' });
+
+      // El resumen debe reflejar el nombre personalizado en tiempo real
+      assert.match(summaryFilename.textContent, /Archivo: marca-vectorial\.svg/);
+
+      bindings.cleanup();
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
+  });
+
+  it('permite nombrar el archivo antes de guardar JSON mediante el diálogo #save-json-dialog', () => {
+    const dialog = createMockElement('save-json-dialog', 'dialog');
+    const filenameInput = createMockElement('save-json-filename-input', 'input');
+    const btnClose = createMockElement('btn-close-save-json', 'button');
+    const btnCancel = createMockElement('btn-cancel-save-json', 'button');
+    const btnConfirm = createMockElement('btn-confirm-save-json', 'button');
+    const form = createMockElement('form-save-json', 'form');
+    const btnMenuSave = createMockElement('menu-item-save-json', 'button');
+
+    const elements: Record<string, any> = {
+      '#save-json-dialog': dialog,
+      '#save-json-filename-input': filenameInput,
+      '#btn-close-save-json': btnClose,
+      '#btn-cancel-save-json': btnCancel,
+      '#btn-confirm-save-json': btnConfirm,
+      '#form-save-json': form,
+      '#menu-item-save-json': btnMenuSave,
+    };
+
+    const docMock: Document = {
+      id: 'doc-1',
+      name: 'Mi Proyecto Especial',
+      type: 'document',
+      width: 1920,
+      height: 1080,
+      children: [],
+    };
+
+    const origDoc = (globalThis as any).document;
+    const documentListeners: Record<string, ((e: any) => void)[]> = {};
+    (globalThis as any).document = {
+      querySelector: (selector: string) => elements[selector] ?? null,
+      querySelectorAll: () => [],
+      addEventListener: (type: string, h: (e: any) => void) => {
+        documentListeners[type] = documentListeners[type] || [];
+        documentListeners[type].push(h);
+      },
+      removeEventListener: (type: string, h: (e: any) => void) => {
+        documentListeners[type] = (documentListeners[type] || []).filter((l) => l !== h);
+      },
+      activeElement: null,
+    };
+
+    try {
+      const commandManager = new CommandManager();
+      const stateManager = new StateManager(docMock, commandManager);
+      const inputController = new InputController(
+        { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+        stateManager,
+        commandManager,
+        { enableKeyboardShortcuts: false }
+      );
+
+      const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+      // Clic en Guardar JSON en el menú abre el diálogo
+      btnMenuSave.click();
+      assert.strictEqual(dialog.open, true);
+      assert.strictEqual(filenameInput.value, 'Mi Proyecto Especial');
+
+      // Cancelar cierra el diálogo
+      btnCancel.click();
+      assert.strictEqual(dialog.open, false);
+
+      // Abrir de nuevo, cambiar nombre y cerrar con Escape
+      btnMenuSave.click();
+      assert.strictEqual(dialog.open, true);
+      const keydownHandlers = documentListeners['keydown'] || [];
+      for (const h of keydownHandlers) {
+        h({ key: 'Escape', preventDefault: () => {} });
+      }
+      assert.strictEqual(dialog.open, false);
+
+      // Abrir, personalizar nombre y confirmar guardado
+      btnMenuSave.click();
+      filenameInput.value = 'escena-final-2026';
+      btnConfirm.click();
+      assert.strictEqual(dialog.open, false);
 
       bindings.cleanup();
     } finally {

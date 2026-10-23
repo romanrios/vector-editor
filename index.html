@@ -1495,6 +1495,21 @@
           </div>
         </div>
 
+        <div class="export-field-group">
+          <label class="export-field-label" for="export-filename-input">Nombre del archivo</label>
+          <div class="export-filename-container">
+            <input
+              type="text"
+              id="export-filename-input"
+              class="export-filename-input"
+              placeholder="escena"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <span id="export-filename-extension" class="export-filename-extension">.svg</span>
+          </div>
+        </div>
+
         <div class="export-summary-box">
           <span id="export-summary-dim">Dimensiones: 800 × 600 px</span>
           <span id="export-summary-filename">Archivo: escena.svg</span>
@@ -1504,6 +1519,38 @@
         <button id="btn-cancel-export" class="dialog-btn secondary">Cancelar</button>
         <button id="btn-confirm-export" class="dialog-btn primary">Exportar</button>
       </div>
+    </dialog>
+
+    <!-- Diálogo modal de Guardar JSON -->
+    <dialog id="save-json-dialog" class="export-dialog save-json-dialog" aria-labelledby="save-json-dialog-title">
+      <div class="export-dialog-header">
+        <h3 id="save-json-dialog-title" class="export-dialog-title">Guardar JSON</h3>
+        <button id="btn-close-save-json" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <form id="form-save-json" method="dialog">
+        <div class="export-dialog-body">
+          <div class="export-field-group">
+            <label class="export-field-label" for="save-json-filename-input">Nombre del archivo</label>
+            <div class="export-filename-container">
+              <input
+                type="text"
+                id="save-json-filename-input"
+                class="export-filename-input"
+                placeholder="vector-scene"
+                spellcheck="false"
+                autocomplete="off"
+                required
+              />
+              <span class="export-filename-extension">.json</span>
+            </div>
+            <p class="export-field-hint">El archivo se guardará en formato JSON nativo editable de Vectedit.</p>
+          </div>
+        </div>
+        <div class="export-dialog-footer">
+          <button type="button" id="btn-cancel-save-json" class="dialog-btn secondary">Cancelar</button>
+          <button type="submit" id="btn-confirm-save-json" class="dialog-btn primary">Guardar</button>
+        </div>
+      </form>
     </dialog>
 
     <!-- Menú Contextual del Lienzo (Click Derecho) -->

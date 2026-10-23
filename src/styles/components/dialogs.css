@@ -145,6 +145,59 @@
         color: var(--text-muted);
       }
 
+      .export-filename-container {
+        display: flex;
+        align-items: center;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        padding: 0 10px;
+        transition: all var(--transition);
+      }
+
+      .export-filename-container:focus-within {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+        background: var(--bg-control-hover);
+      }
+
+      .export-filename-input {
+        flex: 1;
+        min-width: 0;
+        height: 32px;
+        background: transparent;
+        border: none;
+        outline: none;
+        font-family: var(--font-base);
+        font-size: 13px;
+        color: var(--text-primary);
+        padding: 0;
+      }
+
+      .export-filename-input::placeholder {
+        color: var(--text-muted);
+        opacity: 0.7;
+      }
+
+      .export-filename-extension {
+        font-size: 12px;
+        font-family: var(--font-mono, monospace);
+        color: var(--text-muted);
+        user-select: none;
+        padding-left: 6px;
+      }
+
+      .export-field-hint {
+        margin: 4px 0 0;
+        font-size: 11px;
+        color: var(--text-muted);
+        line-height: 1.4;
+      }
+
+      .save-json-dialog {
+        max-width: 420px;
+      }
+
       .export-format-options {
         display: grid;
         grid-template-columns: repeat(2, 1fr);

@@ -4,6 +4,7 @@ import { InputController } from '../input/InputController.ts';
 import { Serializer } from '../state/Serializer.ts';
 import { exportDocumentToSvg, downloadSvg } from '../utils/exportSvg.ts';
 import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } from '../utils/exportRaster.ts';
+import { sanitizeFilename } from '../utils/sanitizeFilename.ts';
 
 export interface DialogsControllerOptions {
   readonly stateManager: StateManager;
@@ -14,14 +15,16 @@ export interface DialogsControllerOptions {
 export interface DialogsController {
   readonly openExportDialog: (restoreTarget?: HTMLElement | null) => void;
   readonly closeExportDialog: () => void;
+  readonly openSaveJsonDialog?: (restoreTarget?: HTMLElement | null) => void;
+  readonly closeSaveJsonDialog?: () => void;
   readonly openShortcutsDialog: () => void;
   readonly closeShortcutsDialog: () => void;
   readonly openAboutDialog: (restoreFocus?: HTMLButtonElement | null) => void;
   readonly closeAboutDialog: () => void;
-  readonly exportJson?: () => void;
-  readonly exportSvg: () => void;
-  readonly exportPng: () => Promise<void>;
-  readonly exportWebp: () => Promise<void>;
+  readonly exportJson?: (customFilename?: string) => void;
+  readonly exportSvg: (customFilename?: string) => void;
+  readonly exportPng: (customFilename?: string) => Promise<void>;
+  readonly exportWebp: (customFilename?: string) => Promise<void>;
   readonly cleanup: () => void;
 }
 
@@ -48,6 +51,16 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   const exportSummaryFilename = document.querySelector<HTMLElement>('#export-summary-filename');
   const radioExportSelection = document.querySelector<HTMLInputElement>('#radio-export-selection');
   const textExportScopeSelection = document.querySelector<HTMLElement>('#text-export-scope-selection');
+  const exportFilenameInput = document.querySelector<HTMLInputElement>('#export-filename-input');
+  const exportFilenameExtension = document.querySelector<HTMLElement>('#export-filename-extension');
+
+  const saveJsonDialog = document.querySelector<HTMLDialogElement>('#save-json-dialog');
+  const btnCloseSaveJson = document.querySelector<HTMLButtonElement>('#btn-close-save-json');
+  const btnCancelSaveJson = document.querySelector<HTMLButtonElement>('#btn-cancel-save-json');
+  const btnConfirmSaveJson = document.querySelector<HTMLButtonElement>('#btn-confirm-save-json');
+  const saveJsonFilenameInput = document.querySelector<HTMLInputElement>('#save-json-filename-input');
+  const formSaveJson = document.querySelector<HTMLFormElement>('#form-save-json');
+  let saveJsonRestoreFocus: HTMLElement | null = null;
 
   const shortcutsDialog = document.querySelector<HTMLDialogElement>('#shortcuts-dialog');
   const shortcutsDialogList = document.querySelector<HTMLElement>('#shortcuts-dialog-list');
@@ -60,12 +73,20 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   let exportRestoreFocus: HTMLElement | null = null;
   let aboutRestoreFocus: HTMLButtonElement | null = null;
 
-  const onExportClick = () => {
+  const exportJson = (customFilename?: string) => {
     if (stateManager) {
-      const jsonContent = Serializer.serializeDocument(stateManager.getState());
-      Serializer.downloadJson('vector-scene.json', jsonContent);
-      debug('💾 [Serializer] Documento serializado y descargado como vector-scene.json');
+      const doc = stateManager.getState();
+      const cleanName = customFilename
+        ? sanitizeFilename(customFilename)
+        : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'vector-scene');
+      const jsonContent = Serializer.serializeDocument(doc);
+      Serializer.downloadJson(`${cleanName}.json`, jsonContent);
+      debug(`💾 [Serializer] Documento serializado y descargado como ${cleanName}.json`);
     }
+  };
+
+  const onExportClick = () => {
+    exportJson();
   };
 
   const getSelectedExportFormat = (): 'svg' | 'png' | 'webp' | 'json' => {
@@ -97,6 +118,9 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     if (groupExportBackground) {
       groupExportBackground.style.display = format === 'json' ? 'none' : 'flex';
     }
+    if (exportFilenameExtension) {
+      exportFilenameExtension.textContent = `.${format}`;
+    }
 
     const scope = getSelectedExportScope();
     const selection = stateManager.getSelection();
@@ -116,7 +140,9 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
     if (exportSummaryFilename) {
       const scaleSuffix = isRaster && scale > 1 ? `@${scale}x` : '';
-      const baseName = onlySelected ? 'seleccion' : 'escena';
+      const defaultBaseName = onlySelected ? 'seleccion' : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+      const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
+      const baseName = userFilename || defaultBaseName;
       exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
     }
   };
@@ -140,6 +166,17 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     if (!hasSelection) {
       const docScopeRadio = document.querySelector<HTMLInputElement>('input[name="export-scope"][value="document"]');
       if (docScopeRadio) docScopeRadio.checked = true;
+    }
+
+    if (exportFilenameInput) {
+      if (!exportFilenameInput.value.trim() || exportFilenameInput.dataset.autoName === 'true') {
+        const doc = stateManager.getState();
+        const defaultName = hasSelection && radioExportSelection?.checked
+          ? 'seleccion'
+          : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+        exportFilenameInput.value = defaultName;
+        exportFilenameInput.dataset.autoName = 'true';
+      }
     }
 
     updateExportDialogUI();
@@ -175,7 +212,9 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const doc = stateManager.getState();
     const selection = stateManager.getSelection();
     const onlySelected = scope === 'selection' && selection.length > 0;
-    const baseName = onlySelected ? 'seleccion' : 'escena';
+    const defaultBaseName = onlySelected ? 'seleccion' : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+    const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
+    const baseName = userFilename || defaultBaseName;
 
     closeExportDialog();
 
@@ -213,19 +252,22 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     }
   };
 
-  const exportSvg = () => {
+  const exportSvg = (customFilename?: string) => {
+    const defaultName = sanitizeFilename(customFilename) || 'escena';
     const svgContent = exportDocumentToSvg(stateManager.getState());
-    downloadSvg('escena.svg', svgContent);
+    downloadSvg(`${defaultName}.svg`, svgContent);
   };
 
-  const exportPng = async () => {
+  const exportPng = async (customFilename?: string) => {
+    const defaultName = sanitizeFilename(customFilename) || 'escena';
     const blob = await exportDocumentToRasterBlob(stateManager.getState(), { format: 'png', scale: 1 });
-    downloadRaster('escena.png', blob);
+    downloadRaster(`${defaultName}.png`, blob);
   };
 
-  const exportWebp = async () => {
+  const exportWebp = async (customFilename?: string) => {
+    const defaultName = sanitizeFilename(customFilename) || 'escena';
     const blob = await exportDocumentToRasterBlob(stateManager.getState(), { format: 'webp', scale: 1 });
-    downloadRaster('escena.webp', blob);
+    downloadRaster(`${defaultName}.webp`, blob);
   };
 
   const onExportRadioChange = () => {
@@ -240,6 +282,74 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   exportRadioInputs.forEach((input) => {
     input.addEventListener('change', onExportRadioChange);
   });
+
+  const onExportFilenameInputChange = () => {
+    if (exportFilenameInput) {
+      exportFilenameInput.dataset.autoName = 'false';
+    }
+    updateExportDialogUI();
+  };
+  exportFilenameInput?.addEventListener('input', onExportFilenameInputChange);
+
+  // Guardar JSON Modal Dialog
+  const openSaveJsonDialog = (restoreTarget?: HTMLElement | null) => {
+    if (!saveJsonDialog) {
+      onExportClick();
+      return;
+    }
+    saveJsonRestoreFocus = restoreTarget ?? (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null);
+
+    const doc = stateManager?.getState();
+    const defaultName = doc?.name?.trim() ? sanitizeFilename(doc.name) : 'vector-scene';
+    if (saveJsonFilenameInput) {
+      saveJsonFilenameInput.value = defaultName;
+    }
+
+    if (typeof saveJsonDialog.showModal === 'function') {
+      saveJsonDialog.showModal();
+    } else {
+      saveJsonDialog.setAttribute('open', '');
+      if (saveJsonDialog.style) {
+        saveJsonDialog.style.display = 'block';
+      }
+    }
+
+    saveJsonFilenameInput?.focus?.();
+    saveJsonFilenameInput?.select?.();
+  };
+
+  const closeSaveJsonDialog = () => {
+    if (!saveJsonDialog) return;
+    if (typeof saveJsonDialog.close === 'function') {
+      saveJsonDialog.close();
+    } else {
+      saveJsonDialog.removeAttribute('open');
+      if (saveJsonDialog.style) {
+        saveJsonDialog.style.display = 'none';
+      }
+    }
+    saveJsonRestoreFocus?.focus?.();
+  };
+
+  const onConfirmSaveJson = (e?: Event) => {
+    e?.preventDefault?.();
+    if (!stateManager) return;
+
+    const doc = stateManager.getState();
+    const rawName = saveJsonFilenameInput?.value.trim() || '';
+    const cleanName = sanitizeFilename(rawName) || (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'vector-scene');
+
+    closeSaveJsonDialog();
+
+    const jsonContent = Serializer.serializeDocument(doc);
+    Serializer.downloadJson(`${cleanName}.json`, jsonContent);
+    debug(`💾 [Serializer] Documento guardado como ${cleanName}.json`);
+  };
+
+  btnCloseSaveJson?.addEventListener('click', closeSaveJsonDialog);
+  btnCancelSaveJson?.addEventListener('click', closeSaveJsonDialog);
+  formSaveJson?.addEventListener('submit', onConfirmSaveJson);
+  btnConfirmSaveJson?.addEventListener('click', onConfirmSaveJson);
 
   btnCloseExport?.addEventListener('click', closeExportDialog);
   btnCancelExport?.addEventListener('click', closeExportDialog);
@@ -427,9 +537,14 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   btnCloseAbout?.addEventListener('click', closeAboutDialog);
 
   const onDocumentKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && exportDialog && (exportDialog.open || exportDialog.hasAttribute?.('open'))) {
-      e.preventDefault?.();
-      closeExportDialog();
+    if (e.key === 'Escape') {
+      if (exportDialog && (exportDialog.open || exportDialog.hasAttribute?.('open'))) {
+        e.preventDefault?.();
+        closeExportDialog();
+      } else if (saveJsonDialog && (saveJsonDialog.open || saveJsonDialog.hasAttribute?.('open'))) {
+        e.preventDefault?.();
+        closeSaveJsonDialog();
+      }
     }
   };
 
@@ -440,6 +555,8 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   return {
     openExportDialog,
     closeExportDialog,
+    openSaveJsonDialog,
+    closeSaveJsonDialog,
     openShortcutsDialog,
     closeShortcutsDialog,
     openAboutDialog,
@@ -449,6 +566,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     exportPng,
     exportWebp,
     cleanup: () => {
+      exportFilenameInput?.removeEventListener('input', onExportFilenameInputChange);
+      btnCloseSaveJson?.removeEventListener('click', closeSaveJsonDialog);
+      btnCancelSaveJson?.removeEventListener('click', closeSaveJsonDialog);
+      formSaveJson?.removeEventListener('submit', onConfirmSaveJson);
+      btnConfirmSaveJson?.removeEventListener('click', onConfirmSaveJson);
+
       btnExport?.removeEventListener('click', onExportClick);
       btnImport?.removeEventListener('click', onImportClick);
       fileImportInput?.removeEventListener('click', onFileInputClick);

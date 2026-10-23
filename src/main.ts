@@ -175,7 +175,10 @@ export function setupUIBindings(
       fileImportInput?.click();
     },
     onSaveJsonClick: () => {
-      if (dialogsController?.exportJson) {
+      const menuBtnFile = document.querySelector<HTMLElement>('#menu-btn-file');
+      if (dialogsController?.openSaveJsonDialog) {
+        dialogsController.openSaveJsonDialog(menuBtnFile);
+      } else if (dialogsController?.exportJson) {
         dialogsController.exportJson();
       } else {
         const jsonContent = Serializer.serializeDocument(stateManager.getState());
