@@ -12,12 +12,12 @@ export interface MenuBarControllerOptions {
   viewportManager: ViewportManager;
   canvas?: HTMLCanvasElement | null;
   onCloseContextMenu?: () => void;
+  onNewClick?: () => void;
+  onOpenClick?: () => void;
   onImportClick?: () => void;
+  onSaveJsonClick?: () => void;
   onPlaceClick?: () => void;
   onExportClick?: () => void;
-  onExportSvg?: () => void;
-  onExportPng?: () => void;
-  onExportWebp?: () => void;
   openExportDialog?: (restoreFocus?: HTMLElement | null) => void;
   openShortcutsDialog?: () => void;
   openAboutDialog?: (restoreFocus?: HTMLElement | null) => void;
@@ -67,13 +67,14 @@ export function setupMenuBarBindings(
   const menuDropdownView = document.querySelector<HTMLElement>('#menu-dropdown-view');
   const menuDropdownHelp = document.querySelector<HTMLElement>('#menu-dropdown-help');
 
-  const menuItemImport = document.querySelector<HTMLButtonElement>('#menu-item-import');
+  const menuItemNew = document.querySelector<HTMLButtonElement>('#menu-item-new');
+  const menuItemOpen = document.querySelector<HTMLButtonElement>('#menu-item-open')
+    ?? document.querySelector<HTMLButtonElement>('#menu-item-import');
+  const menuItemSaveJson = document.querySelector<HTMLButtonElement>('#menu-item-save-json')
+    ?? document.querySelector<HTMLButtonElement>('#menu-item-save')
+    ?? document.querySelector<HTMLButtonElement>('#menu-item-export');
   const menuItemPlace = document.querySelector<HTMLButtonElement>('#menu-item-place');
   const menuItemExportModal = document.querySelector<HTMLButtonElement>('#menu-item-export-modal');
-  const menuItemExportSvg = document.querySelector<HTMLButtonElement>('#menu-item-export-svg');
-  const menuItemExportPng = document.querySelector<HTMLButtonElement>('#menu-item-export-png');
-  const menuItemExportWebp = document.querySelector<HTMLButtonElement>('#menu-item-export-webp');
-  const menuItemExport = document.querySelector<HTMLButtonElement>('#menu-item-export');
   const menuItemUndo = document.querySelector<HTMLButtonElement>('#menu-item-undo');
   const menuItemRedo = document.querySelector<HTMLButtonElement>('#menu-item-redo');
   const menuItemCut = document.querySelector<HTMLButtonElement>('#menu-item-cut');
@@ -135,13 +136,11 @@ export function setupMenuBarBindings(
       trigger: menuBtnFile,
       dropdown: menuDropdownFile,
       items: [
-        menuItemImport,
+        menuItemNew,
+        menuItemOpen,
+        menuItemSaveJson,
         menuItemPlace,
         menuItemExportModal,
-        menuItemExportSvg,
-        menuItemExportPng,
-        menuItemExportWebp,
-        menuItemExport,
       ],
     },
     {
@@ -731,9 +730,27 @@ export function setupMenuBarBindings(
   }
 
   // Menu item click handlers
-  const onMenuImportClick = () => {
+  const onMenuNewClick = () => {
     closeAllMenus();
-    options.onImportClick?.();
+    options.onNewClick?.();
+  };
+
+  const onMenuOpenClick = () => {
+    closeAllMenus();
+    if (options.onOpenClick) {
+      options.onOpenClick();
+    } else {
+      options.onImportClick?.();
+    }
+  };
+
+  const onMenuSaveJsonClick = () => {
+    closeAllMenus();
+    if (options.onSaveJsonClick) {
+      options.onSaveJsonClick();
+    } else {
+      options.onExportClick?.();
+    }
   };
 
   const onMenuPlaceClick = () => {
@@ -744,26 +761,6 @@ export function setupMenuBarBindings(
   const onMenuExportModalClick = () => {
     closeAllMenus();
     options.openExportDialog?.(menuBtnFile);
-  };
-
-  const onMenuExportSvgClick = () => {
-    closeAllMenus();
-    options.onExportSvg?.();
-  };
-
-  const onMenuExportPngClick = () => {
-    closeAllMenus();
-    options.onExportPng?.();
-  };
-
-  const onMenuExportWebpClick = () => {
-    closeAllMenus();
-    options.onExportWebp?.();
-  };
-
-  const onMenuExportClick = () => {
-    closeAllMenus();
-    options.onExportClick?.();
   };
 
   const onMenuUndoClick = () => {
@@ -1031,13 +1028,11 @@ export function setupMenuBarBindings(
     options.openAboutDialog?.(btnAboutBrand);
   };
 
-  menuItemImport?.addEventListener('click', onMenuImportClick);
+  menuItemNew?.addEventListener('click', onMenuNewClick);
+  menuItemOpen?.addEventListener('click', onMenuOpenClick);
+  menuItemSaveJson?.addEventListener('click', onMenuSaveJsonClick);
   menuItemPlace?.addEventListener('click', onMenuPlaceClick);
   menuItemExportModal?.addEventListener('click', onMenuExportModalClick);
-  menuItemExportSvg?.addEventListener('click', onMenuExportSvgClick);
-  menuItemExportPng?.addEventListener('click', onMenuExportPngClick);
-  menuItemExportWebp?.addEventListener('click', onMenuExportWebpClick);
-  menuItemExport?.addEventListener('click', onMenuExportClick);
   menuItemUndo?.addEventListener('click', onMenuUndoClick);
   menuItemRedo?.addEventListener('click', onMenuRedoClick);
   menuItemCut?.addEventListener('click', onMenuCutClick);
@@ -1108,13 +1103,11 @@ export function setupMenuBarBindings(
         trigger?.removeEventListener?.('click', handler);
       });
 
-      menuItemImport?.removeEventListener('click', onMenuImportClick);
+      menuItemNew?.removeEventListener('click', onMenuNewClick);
+      menuItemOpen?.removeEventListener('click', onMenuOpenClick);
+      menuItemSaveJson?.removeEventListener('click', onMenuSaveJsonClick);
       menuItemPlace?.removeEventListener('click', onMenuPlaceClick);
       menuItemExportModal?.removeEventListener('click', onMenuExportModalClick);
-      menuItemExportSvg?.removeEventListener('click', onMenuExportSvgClick);
-      menuItemExportPng?.removeEventListener('click', onMenuExportPngClick);
-      menuItemExportWebp?.removeEventListener('click', onMenuExportWebpClick);
-      menuItemExport?.removeEventListener('click', onMenuExportClick);
       menuItemUndo?.removeEventListener('click', onMenuUndoClick);
       menuItemRedo?.removeEventListener('click', onMenuRedoClick);
       menuItemCut?.removeEventListener('click', onMenuCutClick);

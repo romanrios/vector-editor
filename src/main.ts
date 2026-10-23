@@ -170,20 +170,28 @@ export function setupUIBindings(
       const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');
       fileImportInput?.click();
     },
-    onPlaceClick: () => {
-      placementController?.openFilePicker();
+    onOpenClick: () => {
+      const fileImportInput = document.querySelector<HTMLInputElement>('#file-import-input');
+      fileImportInput?.click();
+    },
+    onSaveJsonClick: () => {
+      if (dialogsController?.exportJson) {
+        dialogsController.exportJson();
+      } else {
+        const jsonContent = Serializer.serializeDocument(stateManager.getState());
+        Serializer.downloadJson('vector-scene.json', jsonContent);
+      }
     },
     onExportClick: () => {
-      dialogsController?.openExportDialog();
+      if (dialogsController?.exportJson) {
+        dialogsController.exportJson();
+      } else {
+        const jsonContent = Serializer.serializeDocument(stateManager.getState());
+        Serializer.downloadJson('vector-scene.json', jsonContent);
+      }
     },
-    onExportSvg: () => {
-      dialogsController?.exportSvg();
-    },
-    onExportPng: () => {
-      void dialogsController?.exportPng();
-    },
-    onExportWebp: () => {
-      void dialogsController?.exportWebp();
+    onPlaceClick: () => {
+      placementController?.openFilePicker();
     },
     openExportDialog: (restoreFocus) => {
       dialogsController?.openExportDialog(restoreFocus);

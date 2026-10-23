@@ -47,9 +47,16 @@
               Archivo
             </button>
             <div id="menu-dropdown-file" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-file" hidden>
-              <button id="menu-item-import" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Importar JSON…</span>
+              <button id="menu-item-new" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Nuevo</span>
               </button>
+              <button id="menu-item-open" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Abrir JSON…</span>
+              </button>
+              <button id="menu-item-save-json" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                <span class="menu-item-label">Guardar JSON…</span>
+              </button>
+              <div class="menu-divider" role="separator" aria-hidden="true"></div>
               <button id="menu-item-place" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Colocar archivo…</span>
                 <span class="menu-shortcut">Ctrl+Shift+P</span>
@@ -58,19 +65,6 @@
               <button id="menu-item-export-modal" class="menu-dropdown-item" role="menuitem" tabindex="-1">
                 <span class="menu-item-label">Exportar…</span>
                 <span class="menu-shortcut">Ctrl+E</span>
-              </button>
-              <button id="menu-item-export-svg" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Exportar como SVG</span>
-              </button>
-              <button id="menu-item-export-png" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Exportar como PNG</span>
-              </button>
-              <button id="menu-item-export-webp" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Exportar como WebP</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-export" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Exportar JSON</span>
               </button>
             </div>
           </div>
@@ -371,26 +365,20 @@
             </svg>
           </summary>
           <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-import">
-              <span class="item-label">Importar JSON…</span>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-new">
+              <span class="item-label">Nuevo</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-open">
+              <span class="item-label">Abrir JSON…</span>
+            </button>
+            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-save-json">
+              <span class="item-label">Guardar JSON…</span>
             </button>
             <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-place">
               <span class="item-label">Colocar archivo…</span>
             </button>
             <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-modal">
               <span class="item-label">Exportar…</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-svg">
-              <span class="item-label">Exportar como SVG</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-png">
-              <span class="item-label">Exportar como PNG</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-webp">
-              <span class="item-label">Exportar como WebP</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export">
-              <span class="item-label">Exportar JSON</span>
             </button>
           </div>
         </details>

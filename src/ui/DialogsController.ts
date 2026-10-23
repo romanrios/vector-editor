@@ -18,6 +18,7 @@ export interface DialogsController {
   readonly closeShortcutsDialog: () => void;
   readonly openAboutDialog: (restoreFocus?: HTMLButtonElement | null) => void;
   readonly closeAboutDialog: () => void;
+  readonly exportJson?: () => void;
   readonly exportSvg: () => void;
   readonly exportPng: () => Promise<void>;
   readonly exportWebp: () => Promise<void>;
@@ -443,6 +444,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     closeShortcutsDialog,
     openAboutDialog,
     closeAboutDialog,
+    exportJson: onExportClick,
     exportSvg,
     exportPng,
     exportWebp,

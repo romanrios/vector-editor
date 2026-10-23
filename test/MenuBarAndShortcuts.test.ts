@@ -5,6 +5,8 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
 import { InputController, KEYBOARD_SHORTCUTS } from '../src/input/InputController.ts';
 import { setupUIBindings } from '../src/main.ts';
+import { setupMenuBarBindings } from '../src/ui/MenuBarController.ts';
+import { ViewportManager } from '../src/utils/viewport.ts';
 import type { Rectangle } from '../src/types/scene-graph.ts';
 
 // Mock de elemento DOM con compatibilidad estricta para --experimental-strip-types
@@ -636,5 +638,141 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     assert.equal(elements['#btn-close-about'].getListenerCount('click'), 0);
     assert.equal(doc.getListenerCount('click'), 0);
     assert.equal(doc.getListenerCount('keydown'), 0);
+  });
+
+  it('el menú Archivo reestructurado soporta Nuevo, Abrir JSON, Guardar JSON, Colocar archivo y Exportar', () => {
+    let newClicked = false;
+    let saveJsonClicked = false;
+    let placeClicked = false;
+    let exportModalClicked = false;
+
+    const elements: Record<string, MockElement> = {
+      '.menu-bar': new MockElement('menu-bar', 'nav'),
+      '#menu-btn-file': new MockElement('menu-btn-file', 'button'),
+      '#menu-dropdown-file': new MockElement('menu-dropdown-file', 'div'),
+      '#menu-item-new': new MockElement('menu-item-new', 'button'),
+      '#menu-item-open': new MockElement('menu-item-open', 'button'),
+      '#menu-item-save-json': new MockElement('menu-item-save-json', 'button'),
+      '#menu-item-place': new MockElement('menu-item-place', 'button'),
+      '#menu-item-export-modal': new MockElement('menu-item-export-modal', 'button'),
+      '#file-import-input': new MockElement('file-import-input', 'input'),
+    };
+
+    elements['.menu-bar'].appendChild(elements['#menu-btn-file']);
+    elements['.menu-bar'].appendChild(elements['#menu-dropdown-file']);
+    elements['#menu-dropdown-file'].appendChild(elements['#menu-item-new']);
+    elements['#menu-dropdown-file'].appendChild(elements['#menu-item-open']);
+    elements['#menu-dropdown-file'].appendChild(elements['#menu-item-save-json']);
+    elements['#menu-dropdown-file'].appendChild(elements['#menu-item-place']);
+    elements['#menu-dropdown-file'].appendChild(elements['#menu-item-export-modal']);
+
+    const origDoc = (globalThis as any).document;
+    const docListeners: Map<string, Set<(e: any) => void>> = new Map();
+    (globalThis as any).document = {
+      activeElement: null as any,
+      querySelector: (sel: string) => elements[sel] || null,
+      querySelectorAll: () => [],
+      addEventListener: (type: string, fn: any) => {
+        let set = docListeners.get(type);
+        if (!set) {
+          set = new Set();
+          docListeners.set(type, set);
+        }
+        set.add(fn);
+      },
+      removeEventListener: (type: string, fn: any) => {
+        docListeners.get(type)?.delete(fn);
+      },
+      dispatchEvent: (e: any) => {
+        docListeners.get(e.type)?.forEach((fn) => fn(e));
+      },
+    };
+
+    try {
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const canvas = createMockCanvas();
+      const inputController = new InputController(canvas, stateManager, commandManager);
+      const viewportManager = new ViewportManager();
+
+      const menuBarController = setupMenuBarBindings(inputController, commandManager, stateManager, {
+        viewportManager,
+        canvas,
+        onNewClick: () => {
+          newClicked = true;
+        },
+        onOpenClick: () => {
+          elements['#file-import-input'].click();
+        },
+        onSaveJsonClick: () => {
+          saveJsonClicked = true;
+        },
+        onPlaceClick: () => {
+          placeClicked = true;
+        },
+        openExportDialog: () => {
+          exportModalClicked = true;
+        },
+      });
+
+      // 1. Abrir menú Archivo
+      elements['#menu-btn-file'].click();
+      assert.equal(elements['#menu-dropdown-file'].hidden, false);
+
+      // 2. Clic en Nuevo cierra menú y llama onNewClick
+      elements['#menu-item-new'].click();
+      assert.equal(newClicked, true);
+      assert.equal(elements['#menu-dropdown-file'].hidden, true);
+
+      // 3. Abrir de nuevo y clic en Abrir JSON
+      elements['#menu-btn-file'].click();
+      elements['#menu-item-open'].click();
+      assert.equal(elements['#file-import-input'].clickCount, 1);
+      assert.equal(elements['#menu-dropdown-file'].hidden, true);
+
+      // 4. Abrir de nuevo y clic en Guardar JSON
+      elements['#menu-btn-file'].click();
+      elements['#menu-item-save-json'].click();
+      assert.equal(saveJsonClicked, true);
+      assert.equal(elements['#menu-dropdown-file'].hidden, true);
+
+      // 5. Colocar archivo
+      elements['#menu-btn-file'].click();
+      elements['#menu-item-place'].click();
+      assert.equal(placeClicked, true);
+      assert.equal(elements['#menu-dropdown-file'].hidden, true);
+
+      // 6. Exportar modal
+      elements['#menu-btn-file'].click();
+      elements['#menu-item-export-modal'].click();
+      assert.equal(exportModalClicked, true);
+      assert.equal(elements['#menu-dropdown-file'].hidden, true);
+
+      // 7. Navegación por teclado en el nuevo orden
+      elements['#menu-btn-file'].focus();
+      elements['#menu-btn-file'].dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+      assert.equal((globalThis as any).document.activeElement, elements['#menu-item-new']);
+
+      elements['#menu-dropdown-file'].dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+      assert.equal((globalThis as any).document.activeElement, elements['#menu-item-open']);
+
+      elements['#menu-dropdown-file'].dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+      assert.equal((globalThis as any).document.activeElement, elements['#menu-item-save-json']);
+
+      elements['#menu-dropdown-file'].dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+      assert.equal((globalThis as any).document.activeElement, elements['#menu-item-place']);
+
+      elements['#menu-dropdown-file'].dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+      assert.equal((globalThis as any).document.activeElement, elements['#menu-item-export-modal']);
+
+      menuBarController.cleanup();
+      assert.equal(elements['#menu-item-new'].getListenerCount('click'), 0);
+      assert.equal(elements['#menu-item-open'].getListenerCount('click'), 0);
+      assert.equal(elements['#menu-item-save-json'].getListenerCount('click'), 0);
+      assert.equal(elements['#menu-item-place'].getListenerCount('click'), 0);
+      assert.equal(elements['#menu-item-export-modal'].getListenerCount('click'), 0);
+    } finally {
+      (globalThis as any).document = origDoc;
+    }
   });
 });
