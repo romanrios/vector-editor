@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { StateManager } from '../src/state/StateManager.ts';
 import { CommandManager } from '../src/commands/CommandManager.ts';
 import { TranslateCommand } from '../src/commands/TranslateCommand.ts';
@@ -774,5 +776,33 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     } finally {
       (globalThis as any).document = origDoc;
     }
+  });
+
+  it('la barra lateral izquierda en index.html contiene las 12 herramientas en el orden especificado', () => {
+    const htmlPath = path.resolve('index.html');
+    const html = fs.readFileSync(htmlPath, 'utf8');
+
+    const sidebarMatch = html.match(/<aside[^>]*class="[^"]*tools-sidebar[^"]*"[^>]*>([\s\S]*?)<\/aside>/);
+    assert.ok(sidebarMatch, 'index.html debe contener el elemento aside con clase tools-sidebar');
+
+    const sidebarContent = sidebarMatch[1];
+    const buttonIdMatches = [...sidebarContent.matchAll(/id="(tool-[a-z-]+)"/g)].map((m) => m[1]);
+
+    const expectedOrder = [
+      'tool-select',
+      'tool-direct-select',
+      'tool-pen',
+      'tool-text',
+      'tool-line',
+      'tool-rectangle',
+      'tool-ellipse',
+      'tool-polygon',
+      'tool-star',
+      'tool-pencil',
+      'tool-eyedropper',
+      'tool-hand',
+    ];
+
+    assert.deepEqual(buttonIdMatches, expectedOrder);
   });
 });
