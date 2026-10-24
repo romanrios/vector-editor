@@ -143,3 +143,43 @@
         background: var(--bg-control-hover);
         color: var(--accent);
       }
+
+      /* Indicador de Autoguardado */
+      .status-autosave-container {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--text-muted);
+        user-select: none;
+        transition: color var(--transition);
+      }
+
+      .status-autosave-dot {
+        font-size: 7px;
+        line-height: 1;
+        color: #10b981;
+        transition: color var(--transition);
+      }
+
+      .status-autosave-container.is-saving {
+        color: var(--text-secondary);
+      }
+
+      .status-autosave-container.is-saving .status-autosave-dot {
+        color: #f59e0b;
+        animation: pulse-autosave 1s infinite alternate;
+      }
+
+      .status-autosave-container.is-error {
+        color: #ef4444;
+      }
+
+      .status-autosave-container.is-error .status-autosave-dot {
+        color: #ef4444;
+      }
+
+      @keyframes pulse-autosave {
+        from { opacity: 0.4; }
+        to { opacity: 1; }
+      }

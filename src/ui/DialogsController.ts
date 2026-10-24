@@ -13,6 +13,7 @@ export interface DialogsControllerOptions {
   readonly stateManager: StateManager;
   readonly commandManager: CommandManager;
   readonly inputController: InputController;
+  readonly autoSaveManager?: { clearBackup: () => Promise<void>; saveImmediate: () => Promise<any> };
   readonly onNewDocumentCreated?: () => void;
 }
 
@@ -527,6 +528,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     stateManager.setSelection([]);
     inputController?.setTool('select');
     inputController?.centerArtboard?.(true);
+    options.autoSaveManager?.clearBackup?.();
     options.onNewDocumentCreated?.();
     debug(`📄 [Nuevo Documento] Creado con éxito (${validWidth} × ${validHeight}) y mesa de trabajo centrada.`);
   };

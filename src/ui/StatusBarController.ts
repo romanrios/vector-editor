@@ -21,6 +21,7 @@ export interface StatusBarController {
   readonly syncStatusBar: (selectedNodes?: readonly SelectableNode[]) => void;
   readonly syncToolLabel: (tool: ToolMode) => void;
   readonly updateZoomIndicator: (zoom: number) => void;
+  readonly updateAutoSaveStatus?: (status: 'saved' | 'saving' | 'error', customLabel?: string) => void;
   readonly closeZoomMenu: () => void;
   readonly cleanup: () => void;
 }
@@ -36,6 +37,8 @@ export function setupStatusBarBindings(options: StatusBarControllerOptions): Sta
   const statusZoomBtn = document.querySelector<HTMLButtonElement>('#status-zoom-btn');
   const statusZoomLabel = document.querySelector<HTMLElement>('#status-zoom-label');
   const zoomDropdown = document.querySelector<HTMLElement>('#zoom-dropdown');
+  const statusAutoSaveContainer = document.querySelector<HTMLElement>('#status-autosave-container');
+  const statusAutoSaveLabel = document.querySelector<HTMLElement>('#status-autosave-label');
   const zoomPresetItems = (typeof document.querySelectorAll === 'function'
     ? Array.from(document.querySelectorAll<HTMLButtonElement>('.zoom-dropdown-item'))
     : []) as HTMLButtonElement[];
@@ -266,14 +269,43 @@ export function setupStatusBarBindings(options: StatusBarControllerOptions): Sta
     document.addEventListener('keydown', onDocumentKeyDown);
   }
 
+  const updateAutoSaveStatus = (status: 'saved' | 'saving' | 'error', customLabel?: string) => {
+    if (statusAutoSaveContainer) {
+      statusAutoSaveContainer.classList.remove('is-saving');
+      statusAutoSaveContainer.classList.remove('is-error');
+      statusAutoSaveContainer.classList.remove('is-saved');
+      if (status === 'saving') {
+        statusAutoSaveContainer.classList.add('is-saving');
+      } else if (status === 'error') {
+        statusAutoSaveContainer.classList.add('is-error');
+      } else {
+        statusAutoSaveContainer.classList.add('is-saved');
+      }
+    }
+
+    if (statusAutoSaveLabel) {
+      if (customLabel) {
+        statusAutoSaveLabel.textContent = customLabel;
+      } else if (status === 'saving') {
+        statusAutoSaveLabel.textContent = 'Guardando...';
+      } else if (status === 'error') {
+        statusAutoSaveLabel.textContent = 'Error al guardar';
+      } else {
+        statusAutoSaveLabel.textContent = 'Guardado';
+      }
+    }
+  };
+
   // Inicializar estado
   syncToolLabel(inputController.currentTool);
   syncStatusBar();
+  updateAutoSaveStatus('saved');
 
   return {
     syncStatusBar,
     syncToolLabel,
     updateZoomIndicator,
+    updateAutoSaveStatus,
     closeZoomMenu,
     cleanup: () => {
       unsubscribeViewport();

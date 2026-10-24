@@ -39,6 +39,8 @@ import { setupMenuBarBindings, type MenuBarController } from './ui/MenuBarContro
 import { setupPlacementController, type PlacementController } from './ui/PlacementController.ts';
 import { setupRulersController, type RulersController } from './ui/RulersController.ts';
 import { setupMobileNavigationBindings, type MobileNavigationController } from './ui/MobileNavigationController.ts';
+import { AutoSaveManager } from './state/AutoSaveManager.ts';
+import { setupRecoveryDialogBindings, type RecoveryDialogController } from './ui/RecoveryDialogController.ts';
 import { toValidHexColor } from './ui/uiUtils.ts';
 
 function debug(...args: unknown[]): void {
@@ -62,8 +64,13 @@ debug('✅ Documento predeterminado cargado con zoom inicial al 50%.');
 export function setupUIBindings(
   inputController: InputController,
   commandManager: CommandManager,
-  stateManagerInstance?: StateManager
-): { cleanup: () => void } {
+  stateManagerInstance?: StateManager,
+  autoSaveManagerInstance?: AutoSaveManager
+): {
+  cleanup: () => void;
+  recoveryDialogController?: RecoveryDialogController;
+  autoSaveManager?: AutoSaveManager;
+} {
   if (typeof document === 'undefined') {
     return { cleanup: () => {} };
   }
@@ -83,13 +90,7 @@ export function setupUIBindings(
   let placementController: PlacementController;
   let rulersController: RulersController;
   let mobileNavigationController: MobileNavigationController;
-
-  mobileNavigationController = setupMobileNavigationBindings();
-
-  toolbarController = setupToolbarBindings({
-    inputController,
-    commandManager,
-  });
+  let recoveryDialogController: RecoveryDialogController;
 
   statusBarController = setupStatusBarBindings({
     stateManager,
@@ -102,10 +103,44 @@ export function setupUIBindings(
     },
   });
 
+  const autoSaveManager = autoSaveManagerInstance ?? new AutoSaveManager(stateManager, {
+    onStatusChange: (status) => {
+      statusBarController?.updateAutoSaveStatus?.(status);
+    },
+  });
+  autoSaveManager.start();
+
+  recoveryDialogController = setupRecoveryDialogBindings({
+    autoSaveManager,
+    stateManager,
+    commandManager,
+    inputController,
+    onRestored: () => {
+      const sel = stateManager.getSelectedNodes();
+      contextMenuController?.syncContextMenu(sel);
+      propertiesPanelController?.syncPropertiesPanel(sel);
+      statusBarController?.syncStatusBar(sel);
+      layersPanelController?.renderLayersTree();
+      menuBarController?.syncMenuItems(sel);
+      statusBarController?.updateAutoSaveStatus?.('saved', 'Sesión restaurada');
+    },
+    onDiscarded: () => {
+      statusBarController?.updateAutoSaveStatus?.('saved', 'Guardado');
+    },
+  });
+
+  mobileNavigationController = setupMobileNavigationBindings();
+
+  toolbarController = setupToolbarBindings({
+    inputController,
+    commandManager,
+  });
+
   dialogsController = setupDialogsBindings({
     stateManager,
     commandManager,
     inputController,
+    autoSaveManager,
     onNewDocumentCreated: () => {
       const sel = stateManager.getSelectedNodes();
       contextMenuController?.syncContextMenu(sel);
@@ -113,6 +148,7 @@ export function setupUIBindings(
       statusBarController?.syncStatusBar(sel);
       layersPanelController?.renderLayersTree();
       menuBarController?.syncMenuItems(sel);
+      statusBarController?.updateAutoSaveStatus?.('saved', 'Nuevo documento');
     },
   });
 
@@ -306,6 +342,8 @@ export function setupUIBindings(
 
   return {
     cleanup: () => {
+      autoSaveManager.stop();
+      recoveryDialogController.cleanup();
       unsubscribeState();
       unsubscribeHistory();
       unsubscribeToolChange();
@@ -323,13 +361,15 @@ export function setupUIBindings(
       rulersController.cleanup();
       mobileNavigationController.cleanup();
     },
+    recoveryDialogController,
+    autoSaveManager,
   };
 }
 
 // 3. Vincular el RenderEngine e InputController al elemento <canvas> de pantalla completa
 let renderEngine: RenderEngine | null = null;
 let inputController: InputController | null = null;
-let uiBindings: { cleanup: () => void } | null = null;
+let uiBindings: { cleanup: () => void; recoveryDialogController?: RecoveryDialogController; autoSaveManager?: AutoSaveManager } | null = null;
 
 if (typeof document !== 'undefined') {
   const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
@@ -377,6 +417,7 @@ if (typeof document !== 'undefined') {
 
     // Sistema de observabilidad DOM <-> Estado
     uiBindings = setupUIBindings(inputController, commandManager, stateManager);
+    uiBindings.recoveryDialogController?.checkAndPromptRecovery?.();
 
     debug('🚀 RenderEngine iniciado con soporte para primitivas Path (bezierCurveTo) y Viewport (Zoom/Pan).');
     debug('✒️  Herramienta Pluma:');
@@ -412,6 +453,8 @@ const globals = {
   toValidHexColor,
   injectSampleShapes,
   setupUIBindings,
+  AutoSaveManager,
+  setupRecoveryDialogBindings,
   Serializer,
   serializeDocument: Serializer.serializeDocument,
   downloadJson: Serializer.downloadJson,

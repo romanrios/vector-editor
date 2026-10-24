@@ -1353,6 +1353,11 @@
         <span id="status-selection-info" class="status-selection-info" style="display: none;"></span>
       </div>
       <div class="status-right">
+        <div id="status-autosave-container" class="status-autosave-container is-saved" title="Autoguardado local activo" aria-live="polite">
+          <span class="status-autosave-dot" aria-hidden="true">●</span>
+          <span id="status-autosave-label" class="status-autosave-label">Guardado</span>
+        </div>
+        <span class="separator" aria-hidden="true">|</span>
         <div class="zoom-control-container">
           <button id="status-zoom-btn" class="status-zoom-btn" title="Nivel de zoom actual. Haz clic para cambiar" aria-label="Nivel de zoom" aria-haspopup="true" aria-expanded="false">
             <span id="status-zoom-label">100 %</span>
@@ -1628,6 +1633,43 @@
           <button type="submit" id="btn-confirm-new-doc" class="dialog-btn primary">Crear documento</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Diálogo modal de Restaurar Sesión Previa (Auto-Save Recovery) -->
+    <dialog id="recovery-dialog" class="export-dialog recovery-dialog" aria-labelledby="recovery-dialog-title">
+      <div class="export-dialog-header">
+        <h3 id="recovery-dialog-title" class="export-dialog-title">Restaurar sesión anterior</h3>
+        <button id="btn-close-recovery" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      </div>
+      <div class="export-dialog-body recovery-dialog-body">
+        <div class="recovery-icon-badge" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <polyline points="12 7 12 12 15 15"/>
+          </svg>
+        </div>
+        <p class="confirm-dialog-message">Se ha detectado un trabajo previo guardado automáticamente en este navegador:</p>
+        <div class="recovery-details-box">
+          <div class="recovery-detail-row">
+            <span class="recovery-detail-label">Guardado el:</span>
+            <span id="recovery-dialog-time" class="recovery-detail-value">-</span>
+          </div>
+          <div class="recovery-detail-row">
+            <span class="recovery-detail-label">Documento:</span>
+            <span id="recovery-dialog-summary" class="recovery-detail-value">-</span>
+          </div>
+          <div class="recovery-detail-row">
+            <span class="recovery-detail-label">Contenido:</span>
+            <span id="recovery-dialog-meta" class="recovery-detail-value">-</span>
+          </div>
+        </div>
+        <p class="export-field-hint">¿Deseas restaurar los elementos de esa sesión o descartarla para comenzar con un lienzo en blanco?</p>
+      </div>
+      <div class="export-dialog-footer confirm-dialog-footer">
+        <button type="button" id="btn-recovery-discard" class="dialog-btn secondary">Descartar</button>
+        <button type="button" id="btn-recovery-restore" class="dialog-btn primary">Restaurar sesión</button>
+      </div>
     </dialog>
 
     <!-- Menú Contextual del Lienzo (Click Derecho) -->

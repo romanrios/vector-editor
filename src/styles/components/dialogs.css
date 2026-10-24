@@ -517,3 +517,56 @@
       }
 
       /* 2. Barra de Herramientas Izquierda (Vertical, solo iconos) */
+
+      /* Diálogo modal de Recuperación de Sesión (Auto-Save Recovery) */
+      .recovery-dialog {
+        max-width: 460px;
+      }
+
+      .recovery-dialog-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .recovery-icon-badge {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--accent-muted);
+        color: var(--accent);
+        margin-bottom: 2px;
+      }
+
+      .recovery-details-box {
+        background: var(--bg-app);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .recovery-detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .recovery-detail-label {
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .recovery-detail-value {
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        font-weight: 500;
+        text-align: right;
+      }
