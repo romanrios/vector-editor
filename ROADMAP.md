@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **1080 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1098 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -95,8 +95,10 @@ El objetivo de esta fase es garantizar fluidez a 60 FPS en documentos con miles 
   - Estructura de aceleración espacial para búsqueda de colisiones y *hit-testing* en tiempo $O(\log n)$ en lugar de $O(n)$ lineal.
   - Actualización incremental de AABBs al transformar nodos.
 
-- [ ] **4.2. Caching de Capas en OffscreenCanvas**:
+- [x] **4.2. Caching de Capas en OffscreenCanvas**:
   - Rasterización temporal de grupos o capas estáticas en lienzos fuera de pantalla para acelerar el redibujado durante navegación (pan/zoom).
+  - Invalidación instantánea en tiempo $O(1)$ mediante verificación estructural (`entry.nodeRef === node`).
+  - Bypassing inteligente durante selección y edición activa para mantener manipulación vectorial precisa a 60 FPS.
 
 ---
 

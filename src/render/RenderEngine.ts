@@ -51,6 +51,11 @@ import {
   smoothPathPoints,
   getShapeCornerRadiusHandles,
 } from '../utils/cornerSmoothing.ts';
+import {
+  LayerCacheManager,
+  type CachedRenderEntry,
+  type LayerCacheManagerOptions,
+} from './LayerCacheManager.ts';
 
 export interface TextEditRenderState {
   textId: string;
@@ -113,6 +118,21 @@ export interface RenderEngineOptions {
    * Por defecto es true.
    */
   showArtboard?: boolean;
+  /**
+   * Habilita el caché de capas o grupos estáticos en OffscreenCanvas
+   * para acelerar el redibujado durante navegación (pan / zoom).
+   * Por defecto false en tests headless, true en producción.
+   */
+  enableLayerCache?: boolean;
+  /**
+   * Opciones de configuración para el gestor de caché de capas.
+   */
+  layerCacheOptions?: LayerCacheManagerOptions;
+  /**
+   * Instancia opcional de LayerCacheManager. Si no se provee y enableLayerCache es true,
+   * RenderEngine crea una internamente.
+   */
+  layerCacheManager?: LayerCacheManager;
 }
 
 /**
@@ -126,6 +146,7 @@ export class RenderEngine {
   private readonly stateManager: StateManager;
   private readonly options: RenderEngineOptions;
   public readonly viewportManager: ViewportManager;
+  public readonly layerCacheManager: LayerCacheManager | null = null;
   private unsubscribeViewport: (() => void) | null = null;
 
   private animationFrameId: number | null = null;
@@ -147,6 +168,11 @@ export class RenderEngine {
       ...options,
     };
     this.viewportManager = options.viewportManager ?? new ViewportManager();
+
+    if (options.enableLayerCache || options.layerCacheManager) {
+      this.layerCacheManager =
+        options.layerCacheManager ?? new LayerCacheManager(options.layerCacheOptions);
+    }
 
     const context = this.canvas.getContext('2d');
     if (!context) {
@@ -260,6 +286,9 @@ export class RenderEngine {
    */
   public destroy(): void {
     this.stop();
+    if (this.layerCacheManager) {
+      this.layerCacheManager.clear();
+    }
     if (this.unsubscribeViewport) {
       this.unsubscribeViewport();
       this.unsubscribeViewport = null;
@@ -313,8 +342,33 @@ export class RenderEngine {
       this.renderArtboard(documentState, zoom);
     }
 
+    // Colección de IDs en edición activa (selección, edición de anclas de trazado, edición de texto)
+    const activeIds = new Set(this.stateManager.getSelection());
+    const pathEdit = this.options.pathEditProvider?.();
+    if (pathEdit?.pathId) {
+      activeIds.add(pathEdit.pathId);
+    }
+    const textEdit = this.options.textEditProvider?.();
+    if (textEdit?.textId) {
+      activeIds.add(textEdit.textId);
+    }
+
+    // Poda de capas o grupos huérfanos del caché si está activo
+    if (this.layerCacheManager) {
+      const existingIds: string[] = [];
+      for (const layer of documentState.children) {
+        existingIds.push(layer.id);
+        for (const child of layer.children) {
+          if (isGroup(child)) {
+            existingIds.push(child.id);
+          }
+        }
+      }
+      this.layerCacheManager.prune(existingIds);
+    }
+
     // Iterar sobre el array de nodos (Document -> Layers -> Shapes)
-    this.renderDocument(documentState, zoom);
+    this.renderDocument(documentState, zoom, activeIds, dpr);
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
     this.renderSelectionOverlay(documentState, zoom);
@@ -494,19 +548,68 @@ export class RenderEngine {
   /**
    * Itera sobre las capas (Layer) del Documento
    */
-  private renderDocument(document: Document, zoom: number): void {
+  private renderDocument(
+    document: Document,
+    zoom: number,
+    activeIds?: ReadonlySet<string>,
+    dpr?: number
+  ): void {
     for (const layer of document.children) {
       if (layer.visible === false) {
         continue;
       }
-      this.renderLayer(layer, zoom);
+      this.renderLayer(layer, zoom, activeIds, dpr);
     }
   }
 
   /**
    * Renderiza el contenido de una capa respetando opacidad y visibilidad heredadas.
+   * Utiliza LayerCacheManager para blitear la capa pre-rasterizada si es estática.
    */
-  private renderLayer(layer: Layer, zoom: number): void {
+  private renderLayer(
+    layer: Layer,
+    zoom: number,
+    activeIds?: ReadonlySet<string>,
+    dpr?: number
+  ): void {
+    if (this.layerCacheManager && this.options.enableLayerCache && activeIds && typeof dpr === 'number') {
+      const cached = this.layerCacheManager.get(layer, zoom, dpr);
+      if (cached) {
+        this.ctx.save();
+        if (typeof layer.opacity === 'number') {
+          this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
+        }
+        this.ctx.drawImage(
+          cached.canvas as any,
+          cached.bounds.minX,
+          cached.bounds.minY,
+          cached.bounds.width,
+          cached.bounds.height
+        );
+        this.ctx.restore();
+        return;
+      }
+
+      if (this.layerCacheManager.isEligible(layer, activeIds)) {
+        const entry = this.rasterizeNodeToCache(layer, zoom, dpr);
+        if (entry) {
+          this.ctx.save();
+          if (typeof layer.opacity === 'number') {
+            this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
+          }
+          this.ctx.drawImage(
+            entry.canvas as any,
+            entry.bounds.minX,
+            entry.bounds.minY,
+            entry.bounds.width,
+            entry.bounds.height
+          );
+          this.ctx.restore();
+          return;
+        }
+      }
+    }
+
     this.ctx.save();
 
     if (typeof layer.opacity === 'number') {
@@ -514,22 +617,81 @@ export class RenderEngine {
     }
 
     for (const child of layer.children) {
-      this.renderChildNode(child, zoom);
+      this.renderChildNode(child, zoom, activeIds, dpr);
     }
 
     this.ctx.restore();
   }
 
   /**
+   * Rasteriza un nodo (capa o grupo) fuera de pantalla para acelerar futuros redibujados.
+   */
+  private rasterizeNodeToCache(
+    node: Layer | Group,
+    zoom: number,
+    dpr: number
+  ): CachedRenderEntry | null {
+    if (!this.layerCacheManager) return null;
+    const bounds = this.layerCacheManager.calculatePaddedBounds(node, zoom);
+    if (!bounds) return null;
+
+    const scale = zoom * dpr;
+    const pixelWidth = Math.ceil(bounds.width * scale);
+    const pixelHeight = Math.ceil(bounds.height * scale);
+
+    if (
+      pixelWidth > this.layerCacheManager.maxDimension ||
+      pixelHeight > this.layerCacheManager.maxDimension
+    ) {
+      return null;
+    }
+
+    const offscreen = this.layerCacheManager.createCanvas(pixelWidth, pixelHeight);
+    if (!offscreen) return null;
+
+    const offscreenCtx = (offscreen as HTMLCanvasElement).getContext('2d') as CanvasRenderingContext2D | null;
+    if (!offscreenCtx) return null;
+
+    offscreenCtx.setTransform(scale, 0, 0, scale, -bounds.minX * scale, -bounds.minY * scale);
+
+    const prevCtx = this.ctx;
+    try {
+      (this as any).ctx = offscreenCtx;
+      for (const child of node.children) {
+        this.renderChildNode(child, zoom);
+      }
+    } finally {
+      (this as any).ctx = prevCtx;
+    }
+
+    const entry: CachedRenderEntry = {
+      id: node.id,
+      nodeRef: node,
+      canvas: offscreen,
+      bounds,
+      zoom,
+      dpr,
+      lastUsedFrame: this._renderCount,
+    };
+    this.layerCacheManager.set(entry);
+    return entry;
+  }
+
+  /**
    * Renderiza recursivamente un nodo hijo (Shape o Group).
    * Si el nodo está oculto (visible === false), se omite junto con todos sus descendientes.
    */
-  private renderChildNode(child: LayerChildNode, zoom: number): void {
+  private renderChildNode(
+    child: LayerChildNode,
+    zoom: number,
+    activeIds?: ReadonlySet<string>,
+    dpr?: number
+  ): void {
     if (child.visible === false) {
       return;
     }
     if (isGroup(child)) {
-      this.renderGroup(child, zoom);
+      this.renderGroup(child, zoom, activeIds, dpr);
     } else if (isShape(child)) {
       this.renderShape(child, zoom);
     }
@@ -539,10 +701,59 @@ export class RenderEngine {
    * Renderiza un Grupo de forma recursiva multiplicando su opacidad acumulada
    * y aislando el estado gráfico mediante save/restore.
    */
-  private renderGroup(group: Group, zoom: number): void {
+  private renderGroup(
+    group: Group,
+    zoom: number,
+    activeIds?: ReadonlySet<string>,
+    dpr?: number
+  ): void {
     if (group.visible === false) {
       return;
     }
+
+    if (
+      this.layerCacheManager &&
+      this.options.enableLayerCache &&
+      activeIds &&
+      typeof dpr === 'number'
+    ) {
+      const cached = this.layerCacheManager.get(group, zoom, dpr);
+      if (cached) {
+        this.ctx.save();
+        if (typeof group.opacity === 'number') {
+          this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
+        }
+        this.ctx.drawImage(
+          cached.canvas as any,
+          cached.bounds.minX,
+          cached.bounds.minY,
+          cached.bounds.width,
+          cached.bounds.height
+        );
+        this.ctx.restore();
+        return;
+      }
+
+      if (this.layerCacheManager.isEligible(group, activeIds)) {
+        const entry = this.rasterizeNodeToCache(group, zoom, dpr);
+        if (entry) {
+          this.ctx.save();
+          if (typeof group.opacity === 'number') {
+            this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
+          }
+          this.ctx.drawImage(
+            entry.canvas as any,
+            entry.bounds.minX,
+            entry.bounds.minY,
+            entry.bounds.width,
+            entry.bounds.height
+          );
+          this.ctx.restore();
+          return;
+        }
+      }
+    }
+
     this.ctx.save();
 
     if (typeof group.opacity === 'number') {
@@ -560,7 +771,7 @@ export class RenderEngine {
           if (child.id === maskChild.id) {
             continue;
           }
-          this.renderChildNode(child, zoom);
+          this.renderChildNode(child, zoom, activeIds, dpr);
         }
         this.ctx.restore();
         return;
@@ -568,7 +779,7 @@ export class RenderEngine {
     }
 
     for (const child of group.children) {
-      this.renderChildNode(child, zoom);
+      this.renderChildNode(child, zoom, activeIds, dpr);
     }
 
     this.ctx.restore();

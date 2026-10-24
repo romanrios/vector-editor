@@ -384,6 +384,7 @@ if (typeof document !== 'undefined') {
     renderEngine = new RenderEngine(canvas, stateManager, {
       highDpi: true,
       backgroundColor: '#141416',
+      enableLayerCache: true,
       viewportManager,
       previewProvider: () => inputController?.shapePreview ?? null,
       pathEditProvider: () => inputController?.pathEditState ?? null,
