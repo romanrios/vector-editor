@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **1062 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1080 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -91,7 +91,7 @@ El objetivo de esta fase es optimizar el flujo de trabajo continuo, la precisió
 
 El objetivo de esta fase es garantizar fluidez a 60 FPS en documentos con miles de elementos complejos.
 
-- [ ] **4.1. Indexación Espacial (R-Tree / BVH)**:
+- [x] **4.1. Indexación Espacial (R-Tree / BVH)**:
   - Estructura de aceleración espacial para búsqueda de colisiones y *hit-testing* en tiempo $O(\log n)$ en lugar de $O(n)$ lineal.
   - Actualización incremental de AABBs al transformar nodos.
 

@@ -1050,7 +1050,7 @@ export class InputController {
     }
   }
 
-  private hitTestNode(
+  public hitTestNode(
     node: LayerChildNode,
     x: number,
     y: number,
@@ -1125,22 +1125,19 @@ export class InputController {
     const ctx = typeof this.canvas.getContext === 'function' ? this.canvas.getContext('2d') : null;
     const zoom = this.viewportManager.zoom;
 
-    for (let l = state.children.length - 1; l >= 0; l--) {
-      const layer = state.children[l];
-      if (layer.visible === false || layer.locked === true) {
-        continue;
-      }
-
-      const children = layer.children;
-      for (let s = children.length - 1; s >= 0; s--) {
-        const hit = this.hitTestNode(children[s], x, y, ctx, zoom);
-        if (hit) {
-          return hit;
-        }
-      }
-    }
-
-    return null;
+    return this.stateManager.getSpatialIndex().hitTest(x, y, {
+      zoom,
+      isTouch: this.isTouch,
+      ctx,
+      activeTextEdit:
+        this.textEditManager.isEditingText && this.textEditManager.textEditingState
+          ? {
+              textId: this.textEditManager.textEditingState.textId,
+              currentText: this.textEditManager.textEditingState.currentText,
+            }
+          : null,
+      document: state,
+    });
   }
 
   private getOutermostGroupOrSelf(node: SelectableNode): SelectableNode {

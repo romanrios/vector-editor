@@ -35,6 +35,7 @@ import {
   deletePathPointsFromPath,
   applyPointType,
 } from '../utils/geometry.ts';
+import { SpatialIndex } from '../spatial/SpatialIndex.ts';
 
 export type StateListener = (state: Readonly<Document>) => void;
 
@@ -206,6 +207,7 @@ export class StateManager {
   private _guidesVisible: boolean = true;
   private _guidesLocked: boolean = false;
   private _guideSnappingEnabled: boolean = true;
+  private _spatialIndex: SpatialIndex | null = null;
 
   constructor(initialState?: Document, commandManager?: CommandManager) {
     const defaultState: Document = {
@@ -310,6 +312,18 @@ export class StateManager {
    */
   public getState(): Readonly<Document> {
     return this._state;
+  }
+
+  /**
+   * Obtiene el índice espacial (Árbol-R / BVH) acelerado del Scene Graph.
+   * Acelera el hit-testing de puntos y consultas de ventana en O(log n).
+   */
+  public getSpatialIndex(): SpatialIndex {
+    if (!this._spatialIndex) {
+      this._spatialIndex = new SpatialIndex();
+      this._spatialIndex.buildFromDocument(this._state);
+    }
+    return this._spatialIndex;
   }
 
   /**
@@ -562,6 +576,7 @@ export class StateManager {
     }
 
     this._isDirty = true;
+    this._spatialIndex = null;
     const cloned = structuredClone(newState);
     this._state = deepFreeze(cloned);
 
@@ -599,6 +614,11 @@ export class StateManager {
   private setState(nextState: Document): void {
     this._isDirty = true;
     this._state = deepFreeze(nextState);
+
+    // Si el índice espacial estaba instanciado pero no se sincronizó incrementalmente con este documento
+    if (this._spatialIndex && this._spatialIndex.lastDocument !== this._state) {
+      this._spatialIndex = null;
+    }
 
     // Purgar IDs seleccionados que ya no existan en nextState
     if (this._selectedIds.length > 0) {
@@ -736,6 +756,19 @@ export class StateManager {
 
       const nextState = this.updateHierarchy(parent.id, (children) => insertAt(children, node, index));
       if (nextState) {
+        if (this._spatialIndex) {
+          const docIndex = getDocumentIndex(this._state);
+          let layerId = parent.id;
+          let curr: ParentNode | undefined = parent;
+          while (curr && curr.type !== 'layer' && curr.type !== 'document') {
+            curr = docIndex.parentMap.get(curr.id);
+          }
+          if (curr && isLayer(curr)) {
+            layerId = curr.id;
+          }
+          this._spatialIndex.insertNode(node, layerId);
+          this._spatialIndex.setLastDocument(nextState);
+        }
         this.setState(nextState);
       }
       return;
@@ -784,6 +817,9 @@ export class StateManager {
     });
 
     if (nextState) {
+      if (this._spatialIndex) {
+        this._spatialIndex.removeNode(nodeId, nextState);
+      }
       this.setState(nextState);
       return true;
     }
@@ -1531,10 +1567,16 @@ export class StateManager {
       return false;
     }
 
-    this.setState({
+    const nextState: Document = {
       ...this._state,
       children: nextLayers,
-    });
+    };
+
+    if (this._spatialIndex) {
+      this._spatialIndex.updateShapesPositions(entries, nextState);
+    }
+
+    this.setState(nextState);
 
     return true;
   }
@@ -1940,10 +1982,16 @@ export class StateManager {
       return false;
     }
 
-    this.setState({
+    const nextState: Document = {
       ...this._state,
       children: nextLayers,
-    });
+    };
+
+    if (this._spatialIndex) {
+      this._spatialIndex.updateShapesDimensions(entries, nextState);
+    }
+
+    this.setState(nextState);
 
     return true;
   }

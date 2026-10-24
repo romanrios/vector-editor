@@ -30,7 +30,6 @@ import {
   getSelectionBoxHandles,
   getSelectionHandles,
   getShapeAABB,
-  getShapesIntersectingRect,
   getTextBaseAABB,
   isPointInAABB,
   type HandleType,
@@ -744,27 +743,14 @@ export class SelectToolHandler implements ToolHandler {
         };
 
         const docState = this.stateManager.getState();
-        const candidates: SelectableNode[] = [];
-        for (const layer of docState.children) {
-          if (layer.visible === false || layer.locked === true) {
-            continue;
-          }
-          for (const child of layer.children) {
-            if (child.visible === false || child.locked === true) {
-              continue;
-            }
-            if (isSelectable(child)) {
-              candidates.push(child);
-            }
-          }
-        }
-
-        const intersecting = getShapesIntersectingRect(candidates, {
-          x: minX,
-          y: minY,
-          width,
-          height,
-        });
+        const intersecting = this.stateManager
+          .getSpatialIndex()
+          .querySelectableNodesInBox(docState, {
+            x: minX,
+            y: minY,
+            width,
+            height,
+          });
 
         const hitIds = intersecting.map((s) => s.id);
 

@@ -13,6 +13,10 @@ export * from './utils/color.ts';
 // Gestor de Estado Inmutable
 export * from './state/StateManager.ts';
 
+// Aceleración Espacial e Indexación (R-Tree / BVH)
+export * from './spatial/RTree.ts';
+export * from './spatial/SpatialIndex.ts';
+
 // Inyección de Figuras de Prueba
 export * from './state/injectSampleShapes.ts';
 export * from './state/defaultDocument.ts';
