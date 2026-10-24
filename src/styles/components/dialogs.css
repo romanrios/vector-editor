@@ -318,6 +318,45 @@
         accent-color: var(--accent);
       }
 
+      .export-artboard-select-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: var(--bg-app);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        padding: 8px 10px;
+      }
+
+      .export-field-sublabel {
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      .export-select-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 10px;
+        background: var(--bg-control);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-size: 12px;
+        outline: none;
+        transition: all var(--transition);
+      }
+
+      .export-select-input:hover {
+        background: var(--bg-control-hover);
+        border-color: var(--border-hover);
+      }
+
+      .export-select-input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+      }
+
       .export-summary-box {
         display: flex;
         flex-direction: column;

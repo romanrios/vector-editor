@@ -340,6 +340,51 @@ describe('Hito 3.4: Múltiples Mesas de Trabajo (Multi-Artboards)', () => {
         height: 1080,
       });
     });
+
+    it('calculateExportBounds y exportDocumentToSvg abarcan la unión de todas las mesas de trabajo en "Todo el documento"', () => {
+      const docMock: Document = {
+        id: 'doc-export-bounds',
+        name: 'Doc Multi',
+        type: 'document',
+        width: 1000,
+        height: 800,
+        children: [],
+        artboards: [
+          {
+            id: 'ab-1',
+            name: 'Mesa 1',
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: 800,
+          },
+          {
+            id: 'ab-2',
+            name: 'Mesa 2',
+            x: 1400,
+            y: 100,
+            width: 600,
+            height: 900,
+          },
+        ],
+      };
+      const sm = new StateManager(docMock);
+
+      // calculateExportBounds sin artboardId abarca desde minX=0, minY=0 hasta maxX=2000, maxY=1000
+      const bounds = calculateExportBounds(sm.getState(), false, []);
+      assert.deepEqual(bounds, {
+        x: 0,
+        y: 0,
+        width: 2000,
+        height: 1000,
+      });
+
+      // exportDocumentToSvg sin artboardId genera viewBox abarcando ambas mesas
+      const svg = exportDocumentToSvg(sm.getState());
+      assert.ok(svg.includes('viewBox="0 0 2000 1000"'));
+      assert.ok(svg.includes('width="2000"'));
+      assert.ok(svg.includes('height="1000"'));
+    });
   });
 
   describe('5. Herramienta ArtboardTool en InputController', () => {

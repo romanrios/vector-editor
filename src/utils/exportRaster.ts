@@ -241,6 +241,30 @@ export function calculateExportBounds(
     }
   }
 
+  // Si no se especificó mesa concreta ni selección, calcular la unión de todas las mesas de trabajo
+  if (doc.artboards && doc.artboards.length > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const ab of doc.artboards) {
+      minX = Math.min(minX, ab.x);
+      minY = Math.min(minY, ab.y);
+      maxX = Math.max(maxX, ab.x + ab.width);
+      maxY = Math.max(maxY, ab.y + ab.height);
+    }
+
+    if (Number.isFinite(minX) && maxX > minX && maxY > minY) {
+      return {
+        x: minX,
+        y: minY,
+        width: Math.max(1, maxX - minX),
+        height: Math.max(1, maxY - minY),
+      };
+    }
+  }
+
   return {
     x: 0,
     y: 0,

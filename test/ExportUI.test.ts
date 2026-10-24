@@ -98,6 +98,17 @@ function createMockElement(id: string, tag: string = 'div'): any {
     },
     querySelectorAll: () => [],
     querySelector: () => null,
+    children: [] as any[],
+    appendChild: (child: any) => {
+      el.children.push(child);
+      return child;
+    },
+    get innerHTML() {
+      return '';
+    },
+    set innerHTML(_v: string) {
+      el.children.length = 0;
+    },
   };
 
   return el;
@@ -713,5 +724,218 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
     } finally {
       (globalThis as any).document = origDoc;
     }
+  });
+
+  describe('Adaptación de Exportación a Múltiples Mesas de Trabajo (Illustrator Style)', () => {
+    it('puebla el selector con "Todas las mesas de trabajo" y mesas individuales, actualizando el resumen', () => {
+      const dialog = createMockElement('export-dialog', 'dialog');
+      const btnOpen = createMockElement('menu-item-export-modal', 'button');
+      const btnConfirm = createMockElement('btn-confirm-export', 'button');
+      const radioScopeDoc = createMockElement('radio-export-doc', 'input');
+      radioScopeDoc.value = 'document';
+      radioScopeDoc.checked = true;
+      const radioScopeArtboard = createMockElement('radio-export-artboard', 'input');
+      radioScopeArtboard.value = 'artboard';
+      const textScopeArtboard = createMockElement('text-export-scope-artboard', 'span');
+      const groupArtboardSelect = createMockElement('group-export-artboard-select', 'div');
+      const selectArtboard = createMockElement('select-export-artboard', 'select');
+      const filenameInput = createMockElement('export-filename-input', 'input');
+      const filenameExt = createMockElement('export-filename-extension', 'span');
+      const summaryDim = createMockElement('export-summary-dim', 'span');
+      const summaryFilename = createMockElement('export-summary-filename', 'span');
+
+      const elements: Record<string, any> = {
+        '#menu-item-export-modal': btnOpen,
+        '#export-dialog': dialog,
+        '#btn-confirm-export': btnConfirm,
+        '#radio-export-artboard': radioScopeArtboard,
+        '#text-export-scope-artboard': textScopeArtboard,
+        '#group-export-artboard-select': groupArtboardSelect,
+        '#select-export-artboard': selectArtboard,
+        '#export-filename-input': filenameInput,
+        '#export-filename-extension': filenameExt,
+        '#export-summary-dim': summaryDim,
+        '#export-summary-filename': summaryFilename,
+        'input[name="export-scope"][value="document"]': radioScopeDoc,
+        'input[name="export-scope"]:checked': radioScopeDoc,
+      };
+
+      const docMock: Document = {
+        id: 'doc-multi-ab',
+        name: 'Campaña Redes',
+        type: 'document',
+        width: 1920,
+        height: 1080,
+        children: [],
+        artboards: [
+          {
+            id: 'ab-post',
+            name: 'Post Cuadrado',
+            x: 0,
+            y: 0,
+            width: 1080,
+            height: 1080,
+          },
+          {
+            id: 'ab-story',
+            name: 'Story Vertical',
+            x: 1200,
+            y: 0,
+            width: 1080,
+            height: 1920,
+          },
+        ],
+        activeArtboardId: 'ab-post',
+      };
+
+      const origDoc = (globalThis as any).document;
+      (globalThis as any).document = {
+        querySelector: (selector: string) => elements[selector] ?? null,
+        querySelectorAll: (selector: string) => {
+          if (selector.includes('export-scope')) {
+            return [radioScopeDoc, radioScopeArtboard];
+          }
+          return [];
+        },
+        createElement: (tag: string) => createMockElement(`elem-${tag}`, tag),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        activeElement: null,
+      };
+
+      try {
+        const commandManager = new CommandManager();
+        const stateManager = new StateManager(docMock, commandManager);
+        const inputController = new InputController(
+          { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+          stateManager,
+          commandManager,
+          { enableKeyboardShortcuts: false }
+        );
+
+        const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+        // Abrir diálogo de exportación
+        btnOpen.click();
+        assert.strictEqual(dialog.open, true);
+
+        // Verifica que se hayan poblado las opciones del select: "all", "ab-post", "ab-story"
+        assert.strictEqual(selectArtboard.children.length, 3);
+        assert.strictEqual(selectArtboard.children[0].value, 'all');
+        assert.match(selectArtboard.children[0].textContent, /Todas las mesas de trabajo \(2 mesas\)/);
+        assert.strictEqual(selectArtboard.children[1].value, 'ab-post');
+        assert.strictEqual(selectArtboard.children[2].value, 'ab-story');
+
+        // Preselecciona la mesa activa (ab-post)
+        assert.strictEqual(selectArtboard.value, 'ab-post');
+
+        // Cambiar alcance a "Mesas de trabajo"
+        radioScopeDoc.checked = false;
+        radioScopeArtboard.checked = true;
+        elements['input[name="export-scope"]:checked'] = radioScopeArtboard;
+        radioScopeArtboard.dispatchEvent({ type: 'change' });
+
+        // El contenedor del selector de mesas ahora es visible
+        assert.strictEqual(groupArtboardSelect.style.display, 'flex');
+
+        // Con ab-post seleccionado, el resumen muestra sus dimensiones y nombre
+        assert.match(summaryDim.textContent, /1080 × 1080 px/);
+        assert.match(summaryFilename.textContent, /Post Cuadrado\.svg/);
+
+        // Cambiar a "Todas las mesas de trabajo"
+        selectArtboard.value = 'all';
+        selectArtboard.dispatchEvent({ type: 'change' });
+
+        assert.match(summaryDim.textContent, /2 mesas de trabajo independientes/);
+        assert.match(summaryFilename.textContent, /Archivos: Campaña Redes_\[mesa\]\.svg \(2 archivos\)/);
+
+        // Cambiar a "Story Vertical"
+        selectArtboard.value = 'ab-story';
+        selectArtboard.dispatchEvent({ type: 'change' });
+
+        assert.match(summaryDim.textContent, /1080 × 1920 px/);
+        assert.match(summaryFilename.textContent, /Story Vertical\.svg/);
+
+        bindings.cleanup();
+      } finally {
+        (globalThis as any).document = origDoc;
+      }
+    });
+
+    it('adapta la etiqueta y opciones si el documento tiene una sola mesa de trabajo', () => {
+      const dialog = createMockElement('export-dialog', 'dialog');
+      const btnOpen = createMockElement('menu-item-export-modal', 'button');
+      const radioScopeDoc = createMockElement('radio-export-doc', 'input');
+      radioScopeDoc.value = 'document';
+      radioScopeDoc.checked = true;
+      const radioScopeArtboard = createMockElement('radio-export-artboard', 'input');
+      radioScopeArtboard.value = 'artboard';
+      const textScopeArtboard = createMockElement('text-export-scope-artboard', 'span');
+      const groupArtboardSelect = createMockElement('group-export-artboard-select', 'div');
+      const selectArtboard = createMockElement('select-export-artboard', 'select');
+
+      const elements: Record<string, any> = {
+        '#menu-item-export-modal': btnOpen,
+        '#export-dialog': dialog,
+        '#radio-export-artboard': radioScopeArtboard,
+        '#text-export-scope-artboard': textScopeArtboard,
+        '#group-export-artboard-select': groupArtboardSelect,
+        '#select-export-artboard': selectArtboard,
+        'input[name="export-scope"][value="document"]': radioScopeDoc,
+        'input[name="export-scope"]:checked': radioScopeDoc,
+      };
+
+      const docMock: Document = {
+        id: 'doc-single-ab',
+        name: 'Mesa Única',
+        type: 'document',
+        width: 800,
+        height: 600,
+        children: [],
+        artboards: [
+          {
+            id: 'ab-single',
+            name: 'Principal',
+            x: 0,
+            y: 0,
+            width: 800,
+            height: 600,
+          },
+        ],
+      };
+
+      const origDoc = (globalThis as any).document;
+      (globalThis as any).document = {
+        querySelector: (selector: string) => elements[selector] ?? null,
+        querySelectorAll: () => [],
+        createElement: (tag: string) => createMockElement(`elem-${tag}`, tag),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        activeElement: null,
+      };
+
+      try {
+        const commandManager = new CommandManager();
+        const stateManager = new StateManager(docMock, commandManager);
+        const inputController = new InputController(
+          { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+          stateManager,
+          commandManager,
+          { enableKeyboardShortcuts: false }
+        );
+
+        const bindings = setupUIBindings(inputController, commandManager, stateManager);
+
+        btnOpen.click();
+        assert.strictEqual(radioScopeArtboard.disabled, false);
+        assert.strictEqual(textScopeArtboard.textContent, 'Mesa de trabajo');
+        assert.strictEqual(selectArtboard.children.length, 1);
+        assert.strictEqual(selectArtboard.children[0].value, 'ab-single');
+
+        bindings.cleanup();
+      } finally {
+        (globalThis as any).document = origDoc;
+      }
+    });
   });
 });

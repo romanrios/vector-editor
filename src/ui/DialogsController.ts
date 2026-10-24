@@ -64,6 +64,10 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   const textExportScopeSelection = document.querySelector<HTMLElement>('#text-export-scope-selection');
   const exportFilenameInput = document.querySelector<HTMLInputElement>('#export-filename-input');
   const exportFilenameExtension = document.querySelector<HTMLElement>('#export-filename-extension');
+  const radioExportArtboard = document.querySelector<HTMLInputElement>('#radio-export-artboard');
+  const textExportScopeArtboard = document.querySelector<HTMLElement>('#text-export-scope-artboard');
+  const groupExportArtboardSelect = document.querySelector<HTMLElement>('#group-export-artboard-select');
+  const selectExportArtboard = document.querySelector<HTMLSelectElement>('#select-export-artboard');
 
   const saveJsonDialog = document.querySelector<HTMLDialogElement>('#save-json-dialog');
   const btnCloseSaveJson = document.querySelector<HTMLButtonElement>('#btn-close-save-json');
@@ -138,6 +142,47 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     return (radio?.value as 'transparent' | 'white') || 'transparent';
   };
 
+  const populateExportArtboardSelect = () => {
+    if (!selectExportArtboard) return;
+    const doc = stateManager.getState();
+    const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+    const activeArtboard = stateManager.getActiveArtboard();
+
+    const prevValue = selectExportArtboard.value;
+
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      selectExportArtboard.innerHTML = '';
+
+      if (artboards.length > 1) {
+        const optAll = document.createElement('option');
+        optAll.value = 'all';
+        optAll.textContent = `Todas las mesas de trabajo (${artboards.length} mesas)`;
+        if (typeof selectExportArtboard.appendChild === 'function') {
+          selectExportArtboard.appendChild(optAll);
+        }
+      }
+
+      for (const ab of artboards) {
+        const opt = document.createElement('option');
+        opt.value = ab.id;
+        opt.textContent = `${ab.name} (${Math.round(ab.width)} × ${Math.round(ab.height)} px)`;
+        if (typeof selectExportArtboard.appendChild === 'function') {
+          selectExportArtboard.appendChild(opt);
+        }
+      }
+    }
+
+    if (activeArtboard && artboards.some((a) => a.id === activeArtboard.id)) {
+      selectExportArtboard.value = activeArtboard.id;
+    } else if (prevValue && (prevValue === 'all' || artboards.some((a) => a.id === prevValue))) {
+      selectExportArtboard.value = prevValue;
+    } else if (artboards.length > 1) {
+      selectExportArtboard.value = 'all';
+    } else if (artboards.length === 1) {
+      selectExportArtboard.value = artboards[0].id;
+    }
+  };
+
   const updateExportDialogUI = () => {
     const format = getSelectedExportFormat();
     const isRaster = format === 'png' || format === 'webp';
@@ -155,30 +200,52 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const selection = stateManager.getSelection();
     const hasSelection = selection.length > 0;
     const onlySelected = scope === 'selection' && hasSelection;
-    const activeArtboard = stateManager.getActiveArtboard();
-    const targetArtboardId = scope === 'artboard' && activeArtboard ? activeArtboard.id : undefined;
+
+    if (groupExportArtboardSelect) {
+      groupExportArtboardSelect.style.display = scope === 'artboard' ? 'flex' : 'none';
+    }
+
+    const doc = stateManager.getState();
+    const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+    const selectedArtboardVal = selectExportArtboard ? selectExportArtboard.value : 'all';
+    const isAllArtboards = scope === 'artboard' && (selectedArtboardVal === 'all' || (artboards.length > 1 && !selectedArtboardVal));
+
+    const targetArtboard = scope === 'artboard' && !isAllArtboards
+      ? (artboards.find((a) => a.id === selectedArtboardVal) ?? stateManager.getActiveArtboard() ?? artboards[0])
+      : null;
+    const targetArtboardId = targetArtboard?.id;
 
     const scale = isRaster ? getSelectedExportScale() : 1;
-    const doc = stateManager.getState();
     const bounds = calculateExportBounds(doc, onlySelected, selection, targetArtboardId);
 
     const w = Math.round(bounds.width * scale);
     const h = Math.round(bounds.height * scale);
 
     if (exportSummaryDim) {
-      exportSummaryDim.textContent = `Dimensiones: ${w} × ${h} px${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+      if (isAllArtboards) {
+        exportSummaryDim.textContent = `Dimensiones: ${artboards.length} mesas de trabajo independientes${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+      } else {
+        exportSummaryDim.textContent = `Dimensiones: ${w} × ${h} px${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+      }
     }
 
     if (exportSummaryFilename) {
       const scaleSuffix = isRaster && scale > 1 ? `@${scale}x` : '';
       const defaultBaseName = onlySelected
         ? 'seleccion'
-        : scope === 'artboard' && activeArtboard
-          ? sanitizeFilename(activeArtboard.name)
-          : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+        : isAllArtboards
+          ? (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena')
+          : targetArtboard
+            ? sanitizeFilename(targetArtboard.name)
+            : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
       const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
       const baseName = userFilename || defaultBaseName;
-      exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
+
+      if (isAllArtboards) {
+        exportSummaryFilename.textContent = `Archivos: ${baseName}_[mesa]${scaleSuffix}.${format} (${artboards.length} archivos)`;
+      } else {
+        exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
+      }
     }
   };
 
@@ -198,20 +265,31 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
         : 'Solo selección (sin selección activa)';
     }
 
-    const textExportScopeArtboard = document.querySelector<HTMLElement>('#text-export-scope-artboard');
-    const activeArtboard = stateManager.getActiveArtboard();
-    if (textExportScopeArtboard && activeArtboard) {
-      textExportScopeArtboard.textContent = `Mesa: ${activeArtboard.name}`;
+    const doc = stateManager.getState();
+    const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+    const hasArtboards = artboards.length > 0;
+
+    if (radioExportArtboard) {
+      radioExportArtboard.disabled = !hasArtboards;
+    }
+    if (textExportScopeArtboard) {
+      textExportScopeArtboard.textContent = hasArtboards
+        ? (artboards.length > 1 ? 'Mesas de trabajo' : 'Mesa de trabajo')
+        : 'Mesa de trabajo (sin mesas)';
     }
 
+    populateExportArtboardSelect();
+
     if (!hasSelection) {
-      const docScopeRadio = document.querySelector<HTMLInputElement>('input[name="export-scope"][value="document"]');
-      if (docScopeRadio) docScopeRadio.checked = true;
+      const currentScope = getSelectedExportScope();
+      if (currentScope === 'selection') {
+        const docScopeRadio = document.querySelector<HTMLInputElement>('input[name="export-scope"][value="document"]');
+        if (docScopeRadio) docScopeRadio.checked = true;
+      }
     }
 
     if (exportFilenameInput) {
       if (!exportFilenameInput.value.trim() || exportFilenameInput.dataset.autoName === 'true') {
-        const doc = stateManager.getState();
         const defaultName = hasSelection && radioExportSelection?.checked
           ? 'seleccion'
           : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
@@ -253,46 +331,83 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const doc = stateManager.getState();
     const selection = stateManager.getSelection();
     const onlySelected = scope === 'selection' && selection.length > 0;
-    const activeArtboard = stateManager.getActiveArtboard();
-    const targetArtboardId = scope === 'artboard' && activeArtboard ? activeArtboard.id : undefined;
+    const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+    const selectedArtboardVal = selectExportArtboard ? selectExportArtboard.value : 'all';
+    const isAllArtboards = scope === 'artboard' && (selectedArtboardVal === 'all' || (artboards.length > 1 && !selectedArtboardVal));
+
+    const targetArtboard = scope === 'artboard' && !isAllArtboards
+      ? (artboards.find((a) => a.id === selectedArtboardVal) ?? stateManager.getActiveArtboard() ?? artboards[0])
+      : null;
+    const targetArtboardId = targetArtboard?.id;
 
     const defaultBaseName = onlySelected
       ? 'seleccion'
-      : scope === 'artboard' && activeArtboard
-        ? sanitizeFilename(activeArtboard.name)
-        : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+      : isAllArtboards
+        ? (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena')
+        : targetArtboard
+          ? sanitizeFilename(targetArtboard.name)
+          : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
     const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
     const baseName = userFilename || defaultBaseName;
 
     closeExportDialog();
 
     try {
-      if (format === 'svg') {
-        const svgContent = exportDocumentToSvg(doc, {
-          onlySelected,
-          selectedIds: selection,
-          artboardId: targetArtboardId,
-          includeBackground: bg === 'white',
-          backgroundColor: '#ffffff',
-        });
-        downloadSvg(`${baseName}.svg`, svgContent);
-        debug('💾 [Export] SVG exportado correctamente');
-      } else if (format === 'png' || format === 'webp') {
-        const blob = await exportDocumentToRasterBlob(doc, {
-          format,
-          scale,
-          onlySelected,
-          selectedIds: selection,
-          artboardId: targetArtboardId,
-          backgroundColor: bg === 'white' ? '#ffffff' : null,
-        });
+      if (isAllArtboards && artboards.length > 0) {
         const scaleSuffix = scale > 1 ? `@${scale}x` : '';
-        downloadRaster(`${baseName}${scaleSuffix}.${format}`, blob);
-        debug(`💾 [Export] ${format.toUpperCase()} exportado correctamente`);
-      } else if (format === 'json') {
-        const jsonContent = Serializer.serializeDocument(doc);
-        Serializer.downloadJson(`${baseName}.json`, jsonContent);
-        debug('💾 [Export] JSON exportado correctamente');
+        for (const ab of artboards) {
+          const abName = sanitizeFilename(ab.name) || `mesa-${ab.id}`;
+          const itemBaseName = `${baseName}_${abName}`;
+
+          if (format === 'svg') {
+            const svgContent = exportDocumentToSvg(doc, {
+              artboardId: ab.id,
+              includeBackground: bg === 'white',
+              backgroundColor: '#ffffff',
+            });
+            downloadSvg(`${itemBaseName}.svg`, svgContent);
+          } else if (format === 'png' || format === 'webp') {
+            const blob = await exportDocumentToRasterBlob(doc, {
+              format,
+              scale,
+              artboardId: ab.id,
+              backgroundColor: bg === 'white' ? '#ffffff' : null,
+            });
+            downloadRaster(`${itemBaseName}${scaleSuffix}.${format}`, blob);
+          } else if (format === 'json') {
+            const jsonContent = Serializer.serializeDocument(doc);
+            Serializer.downloadJson(`${itemBaseName}.json`, jsonContent);
+          }
+        }
+        debug(`💾 [Export] ${artboards.length} mesas de trabajo exportadas correctamente en formato ${format.toUpperCase()}`);
+      } else {
+        if (format === 'svg') {
+          const svgContent = exportDocumentToSvg(doc, {
+            onlySelected,
+            selectedIds: selection,
+            artboardId: targetArtboardId,
+            includeBackground: bg === 'white',
+            backgroundColor: '#ffffff',
+          });
+          downloadSvg(`${baseName}.svg`, svgContent);
+          debug('💾 [Export] SVG exportado correctamente');
+        } else if (format === 'png' || format === 'webp') {
+          const blob = await exportDocumentToRasterBlob(doc, {
+            format,
+            scale,
+            onlySelected,
+            selectedIds: selection,
+            artboardId: targetArtboardId,
+            backgroundColor: bg === 'white' ? '#ffffff' : null,
+          });
+          const scaleSuffix = scale > 1 ? `@${scale}x` : '';
+          downloadRaster(`${baseName}${scaleSuffix}.${format}`, blob);
+          debug(`💾 [Export] ${format.toUpperCase()} exportado correctamente`);
+        } else if (format === 'json') {
+          const jsonContent = Serializer.serializeDocument(doc);
+          Serializer.downloadJson(`${baseName}.json`, jsonContent);
+          debug('💾 [Export] JSON exportado correctamente');
+        }
       }
     } catch (err) {
       console.error('❌ Error al exportar archivo:', err);
@@ -321,6 +436,25 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   };
 
   const onExportRadioChange = () => {
+    if (exportFilenameInput && exportFilenameInput.dataset.autoName === 'true') {
+      const scope = getSelectedExportScope();
+      const doc = stateManager.getState();
+      const selection = stateManager.getSelection();
+      const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+      const selectedArtboardVal = selectExportArtboard ? selectExportArtboard.value : 'all';
+      const isAllArtboards = scope === 'artboard' && (selectedArtboardVal === 'all' || (artboards.length > 1 && !selectedArtboardVal));
+      const targetArtboard = scope === 'artboard' && !isAllArtboards
+        ? (artboards.find((a) => a.id === selectedArtboardVal) ?? stateManager.getActiveArtboard() ?? artboards[0])
+        : null;
+
+      if (scope === 'selection' && selection.length > 0) {
+        exportFilenameInput.value = 'seleccion';
+      } else if (scope === 'artboard' && !isAllArtboards && targetArtboard) {
+        exportFilenameInput.value = sanitizeFilename(targetArtboard.name);
+      } else {
+        exportFilenameInput.value = doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena';
+      }
+    }
     updateExportDialogUI();
   };
 
@@ -332,6 +466,24 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   exportRadioInputs.forEach((input) => {
     input.addEventListener('change', onExportRadioChange);
   });
+
+  const onExportArtboardSelectChange = () => {
+    if (exportFilenameInput && exportFilenameInput.dataset.autoName === 'true') {
+      const doc = stateManager.getState();
+      const artboards = stateManager.getArtboards?.() ?? (doc?.artboards ?? []);
+      const val = selectExportArtboard?.value;
+      if (val === 'all') {
+        exportFilenameInput.value = doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena';
+      } else {
+        const target = artboards.find((a) => a.id === val);
+        if (target) {
+          exportFilenameInput.value = sanitizeFilename(target.name);
+        }
+      }
+    }
+    updateExportDialogUI();
+  };
+  selectExportArtboard?.addEventListener('change', onExportArtboardSelectChange);
 
   const onExportFilenameInputChange = () => {
     if (exportFilenameInput) {
@@ -831,6 +983,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
       exportRadioInputs.forEach((input) => {
         input.removeEventListener('change', onExportRadioChange);
       });
+      selectExportArtboard?.removeEventListener('change', onExportArtboardSelectChange);
       unsubscribeExportRequest?.();
 
       btnCloseShortcuts?.removeEventListener('click', closeShortcutsDialog);

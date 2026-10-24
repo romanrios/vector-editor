@@ -623,6 +623,23 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
     vy = targetArtboard.y;
     vw = Math.max(1, targetArtboard.width);
     vh = Math.max(1, targetArtboard.height);
+  } else if (!onlySelected && doc.artboards && doc.artboards.length > 0) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const ab of doc.artboards) {
+      minX = Math.min(minX, ab.x);
+      minY = Math.min(minY, ab.y);
+      maxX = Math.max(maxX, ab.x + ab.width);
+      maxY = Math.max(maxY, ab.y + ab.height);
+    }
+    if (Number.isFinite(minX) && maxX > minX && maxY > minY) {
+      vx = minX;
+      vy = minY;
+      vw = Math.max(1, maxX - minX);
+      vh = Math.max(1, maxY - minY);
+    }
   }
 
   let selectedSet: Set<string> | null = null;
@@ -807,7 +824,7 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
 
   // Fondo opcional
   if (options.includeBackground) {
-    const bgColor = options.backgroundColor || '#ffffff';
+    const bgColor = options.backgroundColor || targetArtboard?.backgroundColor || '#ffffff';
     lines.push(
       `  <rect x="${formatNum(vx, precision)}" y="${formatNum(vy, precision)}" width="${formatNum(vw, precision)}" height="${formatNum(vh, precision)}" fill="${escapeXml(bgColor)}" />`
     );
