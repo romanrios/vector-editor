@@ -19,6 +19,7 @@ import type {
   StrokeLineCap,
   StrokeLineJoin,
   Guide,
+  Artboard,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -334,7 +335,201 @@ export class StateManager {
       height,
     };
 
+    // Si hay mesas de trabajo definidas, sincronizar también la primera si está en el origen
+    if (this._state.artboards && this._state.artboards.length > 0) {
+      const first = this._state.artboards[0];
+      if (first.x === 0 && first.y === 0) {
+        const updatedArtboards = [
+          {
+            ...first,
+            width,
+            height,
+          },
+          ...this._state.artboards.slice(1),
+        ];
+        this.setState({
+          ...nextState,
+          artboards: updatedArtboards,
+        });
+        return;
+      }
+    }
+
     this.setState(nextState);
+  }
+
+  /**
+   * Obtiene la lista inmutable de todas las Mesas de Trabajo (Artboards).
+   * Si el documento no tiene mesas de trabajo explícitas, devuelve una mesa por defecto
+   * correspondiente al lienzo base (0, 0, width, height).
+   */
+  public getArtboards(): readonly Artboard[] {
+    if (this._state.artboards && this._state.artboards.length > 0) {
+      return this._state.artboards;
+    }
+
+    return Object.freeze([
+      Object.freeze({
+        id: 'artboard-default',
+        name: this._state.name || 'Mesa 1',
+        x: 0,
+        y: 0,
+        width: this._state.width || 1920,
+        height: this._state.height || 1080,
+        backgroundColor: '#ffffff',
+      }),
+    ]);
+  }
+
+  /**
+   * Retorna el identificador de la Mesa de Trabajo activa.
+   */
+  public getActiveArtboardId(): string {
+    const list = this.getArtboards();
+    if (this._state.activeArtboardId && list.some((a) => a.id === this._state.activeArtboardId)) {
+      return this._state.activeArtboardId;
+    }
+    return list[0]?.id ?? 'artboard-default';
+  }
+
+  /**
+   * Retorna la Mesa de Trabajo activa.
+   */
+  public getActiveArtboard(): Artboard {
+    const activeId = this.getActiveArtboardId();
+    const list = this.getArtboards();
+    return list.find((a) => a.id === activeId) ?? list[0];
+  }
+
+  /**
+   * Establece la Mesa de Trabajo activa por su identificador.
+   */
+  public setActiveArtboard(id: string): void {
+    if (this._state.activeArtboardId === id) {
+      return;
+    }
+    this.setState({
+      ...this._state,
+      activeArtboardId: id,
+    });
+  }
+
+  /**
+   * Agrega una nueva Mesa de Trabajo al documento.
+   * Si el documento solo poseía la mesa implícita por defecto, migra la inicial explícitamente.
+   */
+  public addArtboard(artboard: Artboard): void {
+    if (!artboard || typeof artboard !== 'object') {
+      throw new Error('[StateManager] addArtboard requiere un objeto Artboard válido.');
+    }
+    if (!artboard.id || typeof artboard.id !== 'string') {
+      throw new Error('[StateManager] El Artboard debe tener un id de tipo string no vacío.');
+    }
+    if (!Number.isFinite(artboard.width) || artboard.width <= 0) {
+      throw new Error(`[StateManager] Artboard width debe ser positivo: ${artboard.width}`);
+    }
+    if (!Number.isFinite(artboard.height) || artboard.height <= 0) {
+      throw new Error(`[StateManager] Artboard height debe ser positivo: ${artboard.height}`);
+    }
+
+    const currentArtboards = this.getArtboards();
+    const nextArtboards = [...currentArtboards, Object.freeze({ ...artboard })];
+
+    this.setState({
+      ...this._state,
+      artboards: nextArtboards,
+      activeArtboardId: artboard.id,
+    });
+  }
+
+  /**
+   * Actualiza propiedades (nombre, coordenadas, dimensiones, fondo) de una Mesa de Trabajo.
+   */
+  public updateArtboard(id: string, updates: Partial<Omit<Artboard, 'id'>>): void {
+    const currentArtboards = this.getArtboards();
+    const index = currentArtboards.findIndex((a) => a.id === id);
+    if (index === -1) {
+      return;
+    }
+
+    if (updates.width !== undefined && (!Number.isFinite(updates.width) || updates.width <= 0)) {
+      throw new Error(`[StateManager] Artboard width debe ser positivo: ${updates.width}`);
+    }
+    if (updates.height !== undefined && (!Number.isFinite(updates.height) || updates.height <= 0)) {
+      throw new Error(`[StateManager] Artboard height debe ser positivo: ${updates.height}`);
+    }
+
+    const updatedArtboard: Artboard = Object.freeze({
+      ...currentArtboards[index],
+      ...updates,
+    });
+
+    const nextArtboards = [
+      ...currentArtboards.slice(0, index),
+      updatedArtboard,
+      ...currentArtboards.slice(index + 1),
+    ];
+
+    // Si se actualizó la mesa en (0,0) y es la principal, mantener sincronizado el ancho/alto del documento
+    const isPrimary = updatedArtboard.x === 0 && updatedArtboard.y === 0 && index === 0;
+    const docWidth = isPrimary && updates.width ? updates.width : this._state.width;
+    const docHeight = isPrimary && updates.height ? updates.height : this._state.height;
+
+    this.setState({
+      ...this._state,
+      width: docWidth,
+      height: docHeight,
+      artboards: nextArtboards,
+    });
+  }
+
+  /**
+   * Elimina una Mesa de Trabajo. No permite eliminar si solo queda una mesa.
+   */
+  public removeArtboard(id: string): void {
+    const currentArtboards = this.getArtboards();
+    if (currentArtboards.length <= 1) {
+      throw new Error('[StateManager] No se puede eliminar la única Mesa de Trabajo existente.');
+    }
+
+    const index = currentArtboards.findIndex((a) => a.id === id);
+    if (index === -1) {
+      return;
+    }
+
+    const nextArtboards = [
+      ...currentArtboards.slice(0, index),
+      ...currentArtboards.slice(index + 1),
+    ];
+
+    const nextActiveId = this._state.activeArtboardId === id
+      ? nextArtboards[0]?.id
+      : this._state.activeArtboardId;
+
+    this.setState({
+      ...this._state,
+      artboards: nextArtboards,
+      activeArtboardId: nextActiveId,
+    });
+  }
+
+  /**
+   * Localiza qué Mesa de Trabajo contiene las coordenadas del mundo especificadas (worldX, worldY).
+   */
+  public getArtboardAt(worldX: number, worldY: number): Artboard | null {
+    const artboards = this.getArtboards();
+    for (let i = artboards.length - 1; i >= 0; i--) {
+      const ab = artboards[i];
+      if (
+        worldX >= ab.x &&
+        worldX <= ab.x + ab.width &&
+        worldY >= ab.y &&
+        worldY <= ab.y + ab.height
+      ) {
+        return ab;
+      }
+    }
+    return null;
   }
 
   /**

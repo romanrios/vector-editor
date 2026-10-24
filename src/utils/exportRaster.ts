@@ -65,6 +65,11 @@ export interface RasterExportOptions {
    * Calidad de compresión para formatos con pérdida (JPEG o WebP), entre 0.0 y 1.0.
    */
   readonly quality?: number;
+
+  /**
+   * Identificador opcional de la Mesa de Trabajo a exportar.
+   */
+  readonly artboardId?: string;
 }
 
 /**
@@ -116,7 +121,8 @@ function findSelectableNodes(doc: Document, ids: readonly string[]): SelectableN
 export function calculateExportBounds(
   doc: Document,
   onlySelected: boolean,
-  selectedIds?: readonly string[]
+  selectedIds?: readonly string[],
+  artboardId?: string
 ): ExportBounds {
   if (onlySelected && selectedIds && selectedIds.length > 0) {
     const selectedNodes = findSelectableNodes(doc, selectedIds);
@@ -220,6 +226,18 @@ export function calculateExportBounds(
           height: maxY - minY,
         };
       }
+    }
+  }
+
+  if (artboardId && doc.artboards && doc.artboards.length > 0) {
+    const target = doc.artboards.find((a) => a.id === artboardId);
+    if (target) {
+      return {
+        x: target.x,
+        y: target.y,
+        width: Math.max(1, target.width),
+        height: Math.max(1, target.height),
+      };
     }
   }
 
@@ -591,7 +609,7 @@ export function renderDocumentToCanvas(
   const onlySelected = options.onlySelected === true;
   const selectedIds = options.selectedIds ?? [];
 
-  const bounds = calculateExportBounds(doc, onlySelected, selectedIds);
+  const bounds = calculateExportBounds(doc, onlySelected, selectedIds, options.artboardId);
   const widthPx = Math.max(1, Math.ceil(bounds.width * scale));
   const heightPx = Math.max(1, Math.ceil(bounds.height * scale));
 

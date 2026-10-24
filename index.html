@@ -581,6 +581,20 @@
 
       <div class="tool-separator" role="separator" aria-hidden="true"></div>
 
+      <button id="tool-artboard" class="tool-btn" title="Mesa de Trabajo (Shift+O)" aria-label="Mesa de Trabajo (Shift+O)" aria-pressed="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="5" width="14" height="14" rx="1"/>
+          <line x1="1" y1="5" x2="5" y2="5"/>
+          <line x1="19" y1="5" x2="23" y2="5"/>
+          <line x1="1" y1="19" x2="5" y2="19"/>
+          <line x1="19" y1="19" x2="23" y2="19"/>
+          <line x1="5" y1="1" x2="5" y2="5"/>
+          <line x1="5" y1="19" x2="5" y2="23"/>
+          <line x1="19" y1="1" x2="19" y2="5"/>
+          <line x1="19" y1="19" x2="19" y2="23"/>
+        </svg>
+      </button>
+
       <button id="tool-hand" class="tool-btn" title="Mano (H)" aria-label="Mano (H)" aria-pressed="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v4"/>
@@ -1497,6 +1511,10 @@
             <label class="scope-radio-label" id="label-export-scope-selection">
               <input type="radio" name="export-scope" value="selection" id="radio-export-selection" />
               <span id="text-export-scope-selection">Solo selección</span>
+            </label>
+            <label class="scope-radio-label" id="label-export-scope-artboard">
+              <input type="radio" name="export-scope" value="artboard" id="radio-export-artboard" />
+              <span id="text-export-scope-artboard">Mesa de trabajo activa</span>
             </label>
           </div>
         </div>

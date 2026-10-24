@@ -137,6 +137,11 @@ export interface SvgExportOptions {
    * Número de decimales para coordenadas y dimensiones (por defecto 2).
    */
   readonly precision?: number;
+
+  /**
+   * Identificador opcional de la Mesa de Trabajo a exportar.
+   */
+  readonly artboardId?: string;
 }
 
 /**
@@ -608,6 +613,17 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
   let vy = 0;
   let vw = Math.max(1, doc.width);
   let vh = Math.max(1, doc.height);
+
+  const targetArtboard = options.artboardId && doc.artboards
+    ? doc.artboards.find((a) => a.id === options.artboardId)
+    : null;
+
+  if (targetArtboard && !onlySelected) {
+    vx = targetArtboard.x;
+    vy = targetArtboard.y;
+    vw = Math.max(1, targetArtboard.width);
+    vh = Math.max(1, targetArtboard.height);
+  }
 
   let selectedSet: Set<string> | null = null;
 

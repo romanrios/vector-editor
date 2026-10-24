@@ -818,20 +818,20 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputOpacityValue.placeholder = isOpacityMixed ? 'Mixto' : '';
     }
 
-    const currentDoc = stateManager.getState();
+    const activeArtboard = stateManager.getActiveArtboard();
     if (selectArtboardPreset && (typeof document === 'undefined' || document.activeElement !== selectArtboardPreset)) {
-      const matchingPreset = findPresetForSize(currentDoc.width, currentDoc.height);
+      const matchingPreset = findPresetForSize(activeArtboard.width, activeArtboard.height);
       selectArtboardPreset.value = matchingPreset ? matchingPreset.id : 'custom';
     }
     if (inputArtboardWidth && (typeof document === 'undefined' || document.activeElement !== inputArtboardWidth)) {
-      inputArtboardWidth.value = String(currentDoc.width);
+      inputArtboardWidth.value = String(activeArtboard.width);
     }
     if (inputArtboardHeight && (typeof document === 'undefined' || document.activeElement !== inputArtboardHeight)) {
-      inputArtboardHeight.value = String(currentDoc.height);
+      inputArtboardHeight.value = String(activeArtboard.height);
     }
-    if (checkArtboardRatio?.checked && currentDoc.height > 0 &&
+    if (checkArtboardRatio?.checked && activeArtboard.height > 0 &&
         (typeof document === 'undefined' || (document.activeElement !== inputArtboardWidth && document.activeElement !== inputArtboardHeight))) {
-      artboardAspectRatio = currentDoc.width / currentDoc.height;
+      artboardAspectRatio = activeArtboard.width / activeArtboard.height;
     }
 
     if (hasSelection) {

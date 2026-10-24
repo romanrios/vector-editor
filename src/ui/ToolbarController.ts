@@ -29,6 +29,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const btnLine = document.querySelector<HTMLButtonElement>('#tool-line');
   const btnText = document.querySelector<HTMLButtonElement>('#tool-text');
   const btnEyedropper = document.querySelector<HTMLButtonElement>('#tool-eyedropper');
+  const btnArtboard = document.querySelector<HTMLButtonElement>('#tool-artboard');
   const btnUndo = document.querySelector<HTMLButtonElement>('#btn-undo');
   const btnRedo = document.querySelector<HTMLButtonElement>('#btn-redo');
 
@@ -105,6 +106,12 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnEyedropper.setAttribute('aria-pressed', String(isEyedropper));
     }
 
+    if (btnArtboard) {
+      const isArtboard = tool === 'artboard';
+      btnArtboard.classList.toggle('active', isArtboard);
+      btnArtboard.setAttribute('aria-pressed', String(isArtboard));
+    }
+
     onToolChanged?.(tool);
   };
 
@@ -147,6 +154,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const onLineClick = () => inputController.setTool('line');
   const onTextClick = () => inputController.setTool('text');
   const onEyedropperClick = () => inputController.setTool('eyedropper');
+  const onArtboardClick = () => inputController.setTool('artboard');
 
   btnSelect?.addEventListener('click', onSelectClick);
   btnDirectSelect?.addEventListener('click', onDirectSelectClick);
@@ -160,6 +168,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   btnLine?.addEventListener('click', onLineClick);
   btnText?.addEventListener('click', onTextClick);
   btnEyedropper?.addEventListener('click', onEyedropperClick);
+  btnArtboard?.addEventListener('click', onArtboardClick);
 
   const onUndoClick = () => commandManager.undo();
   const onRedoClick = () => commandManager.redo();
@@ -189,6 +198,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnLine?.removeEventListener('click', onLineClick);
       btnText?.removeEventListener('click', onTextClick);
       btnEyedropper?.removeEventListener('click', onEyedropperClick);
+      btnArtboard?.removeEventListener('click', onArtboardClick);
       btnUndo?.removeEventListener('click', onUndoClick);
       btnRedo?.removeEventListener('click', onRedoClick);
     },

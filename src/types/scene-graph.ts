@@ -317,6 +317,19 @@ export interface Guide {
 }
 
 /**
+ * Definición de una Mesa de Trabajo (Artboard) en el espacio de coordenadas del mundo
+ */
+export interface Artboard {
+  readonly id: string;
+  readonly name: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly backgroundColor?: string;
+}
+
+/**
  * Nodo raíz Document, que alberga una colección de capas (Layer), activos multimedia y metadatos del lienzo
  */
 export interface Document extends BaseNode {
@@ -326,6 +339,8 @@ export interface Document extends BaseNode {
   readonly children: readonly Layer[];
   readonly assets?: Readonly<Record<string, AssetData>>;
   readonly guides?: readonly Guide[];
+  readonly artboards?: readonly Artboard[];
+  readonly activeArtboardId?: string;
 }
 
 /**
@@ -432,5 +447,18 @@ export function isLinearGradient(val: unknown): val is LinearGradient {
 
 export function isRadialGradient(val: unknown): val is RadialGradient {
   return isGradient(val) && val.type === 'radial';
+}
+
+export function isArtboard(val: unknown): val is Artboard {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    typeof (val as Artboard).id === 'string' &&
+    typeof (val as Artboard).name === 'string' &&
+    typeof (val as Artboard).x === 'number' &&
+    typeof (val as Artboard).y === 'number' &&
+    typeof (val as Artboard).width === 'number' &&
+    typeof (val as Artboard).height === 'number'
+  );
 }
 

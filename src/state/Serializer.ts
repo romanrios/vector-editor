@@ -16,6 +16,7 @@ import type {
   Gradient,
   GradientStop,
   Guide,
+  Artboard,
 } from '../types/scene-graph.ts';
 
 /**
@@ -697,12 +698,65 @@ export async function parseDocument(jsonString: string): Promise<Document> {
     }
   }
 
-  const { selected: _sel, isDirty: _dirty, children: _ch, assets: _assets, guides: _guides, ...restDoc } = candidate;
+  let cleanArtboards: Artboard[] | undefined;
+  if (candidate.artboards !== undefined) {
+    if (!Array.isArray(candidate.artboards)) {
+      throw new DocumentParseError('artboards debe ser un array');
+    }
+    cleanArtboards = [];
+    for (let a = 0; a < candidate.artboards.length; a++) {
+      const ab = candidate.artboards[a];
+      const abPath = `artboards[${a}]`;
+      if (!isObject(ab)) {
+        throw new DocumentParseError(`${abPath} debe ser un objeto`);
+      }
+      if (typeof ab.id !== 'string' || ab.id.trim() === '') {
+        throw new DocumentParseError(`${abPath}.id debe ser un string no vacío`);
+      }
+      if (typeof ab.name !== 'string' || ab.name.trim() === '') {
+        throw new DocumentParseError(`${abPath}.name debe ser un string no vacío`);
+      }
+      if (!isFiniteNumber(ab.x) || !isFiniteNumber(ab.y)) {
+        throw new DocumentParseError(`${abPath}.x e y deben ser números finitos`);
+      }
+      if (!isFiniteNumber(ab.width) || ab.width <= 0 || !isFiniteNumber(ab.height) || ab.height <= 0) {
+        throw new DocumentParseError(`${abPath}.width y height deben ser números finitos mayores a 0`);
+      }
+      cleanArtboards.push({
+        id: ab.id,
+        name: ab.name,
+        x: ab.x,
+        y: ab.y,
+        width: ab.width,
+        height: ab.height,
+        ...(typeof ab.backgroundColor === 'string' ? { backgroundColor: ab.backgroundColor } : {}),
+      });
+    }
+  }
+
+  let cleanActiveArtboardId: string | undefined;
+  if (typeof candidate.activeArtboardId === 'string' && candidate.activeArtboardId.trim() !== '') {
+    cleanActiveArtboardId = candidate.activeArtboardId;
+  }
+
+  const {
+    selected: _sel,
+    isDirty: _dirty,
+    children: _ch,
+    assets: _assets,
+    guides: _guides,
+    artboards: _ab,
+    activeArtboardId: _aab,
+    ...restDoc
+  } = candidate;
+
   return {
     ...(restDoc as unknown as Document),
     children: cleanLayers,
     ...(cleanAssets !== undefined ? { assets: cleanAssets } : {}),
     ...(cleanGuides !== undefined ? { guides: cleanGuides } : {}),
+    ...(cleanArtboards !== undefined ? { artboards: cleanArtboards } : {}),
+    ...(cleanActiveArtboardId !== undefined ? { activeArtboardId: cleanActiveArtboardId } : {}),
   };
 }
 

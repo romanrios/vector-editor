@@ -68,7 +68,9 @@ export function setupStatusBarBindings(options: StatusBarControllerOptions): Sta
                             ? 'Texto'
                             : tool === 'hand'
                               ? 'Mano'
-                              : 'Selección'
+                              : tool === 'artboard'
+                                ? 'Mesa de Trabajo'
+                                : 'Selección'
       }`;
     }
   };

@@ -391,6 +391,7 @@ if (typeof document !== 'undefined') {
       activeGuidesProvider: () => inputController?.activeGuides ?? [],
       eyedropperPreviewProvider: () => inputController?.eyedropperPreview ?? null,
       activeGuideDragProvider: () => activeRulerGuideDrag ?? inputController?.activeGuideDrag ?? null,
+      artboardOverlayProvider: () => inputController?.artboardOverlayState ?? null,
     });
     renderEngine.start();
 

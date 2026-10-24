@@ -128,9 +128,9 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     return radio ? parseInt(radio.value, 10) || 1 : 1;
   };
 
-  const getSelectedExportScope = (): 'document' | 'selection' => {
+  const getSelectedExportScope = (): 'document' | 'selection' | 'artboard' => {
     const radio = document.querySelector<HTMLInputElement>('input[name="export-scope"]:checked');
-    return (radio?.value as 'document' | 'selection') || 'document';
+    return (radio?.value as 'document' | 'selection' | 'artboard') || 'document';
   };
 
   const getSelectedExportBg = (): 'transparent' | 'white' => {
@@ -155,10 +155,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const selection = stateManager.getSelection();
     const hasSelection = selection.length > 0;
     const onlySelected = scope === 'selection' && hasSelection;
+    const activeArtboard = stateManager.getActiveArtboard();
+    const targetArtboardId = scope === 'artboard' && activeArtboard ? activeArtboard.id : undefined;
 
     const scale = isRaster ? getSelectedExportScale() : 1;
     const doc = stateManager.getState();
-    const bounds = calculateExportBounds(doc, onlySelected, selection);
+    const bounds = calculateExportBounds(doc, onlySelected, selection, targetArtboardId);
 
     const w = Math.round(bounds.width * scale);
     const h = Math.round(bounds.height * scale);
@@ -169,7 +171,11 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
     if (exportSummaryFilename) {
       const scaleSuffix = isRaster && scale > 1 ? `@${scale}x` : '';
-      const defaultBaseName = onlySelected ? 'seleccion' : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+      const defaultBaseName = onlySelected
+        ? 'seleccion'
+        : scope === 'artboard' && activeArtboard
+          ? sanitizeFilename(activeArtboard.name)
+          : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
       const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
       const baseName = userFilename || defaultBaseName;
       exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
@@ -190,6 +196,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
       textExportScopeSelection.textContent = hasSelection
         ? `Solo selección (${selection.length} ${selection.length === 1 ? 'figura' : 'figuras'})`
         : 'Solo selección (sin selección activa)';
+    }
+
+    const textExportScopeArtboard = document.querySelector<HTMLElement>('#text-export-scope-artboard');
+    const activeArtboard = stateManager.getActiveArtboard();
+    if (textExportScopeArtboard && activeArtboard) {
+      textExportScopeArtboard.textContent = `Mesa: ${activeArtboard.name}`;
     }
 
     if (!hasSelection) {
@@ -241,7 +253,14 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const doc = stateManager.getState();
     const selection = stateManager.getSelection();
     const onlySelected = scope === 'selection' && selection.length > 0;
-    const defaultBaseName = onlySelected ? 'seleccion' : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
+    const activeArtboard = stateManager.getActiveArtboard();
+    const targetArtboardId = scope === 'artboard' && activeArtboard ? activeArtboard.id : undefined;
+
+    const defaultBaseName = onlySelected
+      ? 'seleccion'
+      : scope === 'artboard' && activeArtboard
+        ? sanitizeFilename(activeArtboard.name)
+        : (doc?.name?.trim() ? sanitizeFilename(doc.name) : 'escena');
     const userFilename = exportFilenameInput ? sanitizeFilename(exportFilenameInput.value) : '';
     const baseName = userFilename || defaultBaseName;
 
@@ -252,6 +271,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
         const svgContent = exportDocumentToSvg(doc, {
           onlySelected,
           selectedIds: selection,
+          artboardId: targetArtboardId,
           includeBackground: bg === 'white',
           backgroundColor: '#ffffff',
         });
@@ -263,6 +283,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
           scale,
           onlySelected,
           selectedIds: selection,
+          artboardId: targetArtboardId,
           backgroundColor: bg === 'white' ? '#ffffff' : null,
         });
         const scaleSuffix = scale > 1 ? `@${scale}x` : '';

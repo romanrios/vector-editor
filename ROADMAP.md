@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **1043 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1062 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -80,7 +80,7 @@ El objetivo de esta fase es optimizar el flujo de trabajo continuo, la precisió
   - Guardado en segundo plano en `IndexedDB` o `LocalStorage` ante cada mutación o por intervalos temporales (debounce).
   - Detección y diálogo de restauración automática de sesión si la pestaña se cierra o recarga accidentalmente.
 
-- [ ] **3.4. Múltiples Mesas de Trabajo (Multi-Artboards)**:
+- [x] **3.4. Múltiples Mesas de Trabajo (Multi-Artboards)**:
   - Soporte en el Scene Graph para definir múltiples lienzos de trabajo independientes (`Artboard`).
   - Herramienta para crear, redimensionar y nombrar mesas de trabajo.
   - Exportación individual o en lote por mesa de trabajo.

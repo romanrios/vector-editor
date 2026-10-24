@@ -778,7 +778,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
     }
   });
 
-  it('la barra lateral izquierda en index.html contiene las 12 herramientas en el orden especificado', () => {
+  it('la barra lateral izquierda en index.html contiene las 13 herramientas en el orden especificado', () => {
     const htmlPath = path.resolve('index.html');
     const html = fs.readFileSync(htmlPath, 'utf8');
 
@@ -800,6 +800,7 @@ describe('Menús Desplegables y Diálogo de Atajos (setupUIBindings)', () => {
       'tool-star',
       'tool-pencil',
       'tool-eyedropper',
+      'tool-artboard',
       'tool-hand',
     ];
 

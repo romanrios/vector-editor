@@ -60,8 +60,9 @@ import { TextToolHandler } from './tools/TextToolHandler.ts';
 import { PencilToolHandler } from './tools/PencilToolHandler.ts';
 import { EyedropperToolHandler, type EyedropperPreview, type EyedropperSampleResult } from './tools/EyedropperToolHandler.ts';
 import { TouchGestureController } from './TouchGestureController.ts';
+import { ArtboardToolHandler, type ArtboardBounds } from './tools/ArtboardToolHandler.ts';
 
-export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper';
+export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper' | 'artboard';
 export interface CanvasContextMenuData {
   readonly clientX: number;
   readonly clientY: number;
@@ -104,6 +105,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { key: 'B / N', description: 'Herramienta Lápiz (trazo libre)', category: 'Herramientas' },
   { key: 'I', description: 'Herramienta Cuentagotas (muestreo de color)', category: 'Herramientas' },
   { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
+  { key: 'Shift+O', description: 'Herramienta Mesa de Trabajo (Artboard)', category: 'Herramientas' },
   { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
   { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
   { key: 'Arrastrar en el vacío', description: 'Selección por marquesina (rectángulo)', category: 'Selección' },
@@ -246,6 +248,7 @@ export class InputController {
   public readonly textToolHandler: TextToolHandler;
   public readonly pencilToolHandler: PencilToolHandler;
   public readonly eyedropperToolHandler: EyedropperToolHandler;
+  public readonly artboardToolHandler: ArtboardToolHandler;
 
   // Controlador táctil y gestual desacoplado
   public readonly touchGestureController: TouchGestureController;
@@ -376,6 +379,14 @@ export class InputController {
       this.canvas,
       (x, y) => this.hitTest(x, y),
       (event, data) => this.emit(event, data)
+    );
+
+    // 10. Inicializar ArtboardToolHandler
+    this.artboardToolHandler = new ArtboardToolHandler(
+      this.stateManager,
+      this.commandManager,
+      this.canvas,
+      () => this.viewportManager
     );
 
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);
@@ -511,6 +522,9 @@ export class InputController {
     if (this._currentTool === 'eyedropper' && tool !== 'eyedropper') {
       this.eyedropperToolHandler.onDeactivate(tool);
     }
+    if (this._currentTool === 'artboard' && tool !== 'artboard') {
+      this.artboardToolHandler.onDeactivate(tool);
+    }
 
     this._currentTool = tool;
 
@@ -522,6 +536,8 @@ export class InputController {
       this.pencilToolHandler.onActivate();
     } else if (tool === 'eyedropper') {
       this.eyedropperToolHandler.onActivate();
+    } else if (tool === 'artboard') {
+      this.artboardToolHandler.onActivate();
     } else if (
       tool === 'rectangle' ||
       tool === 'ellipse' ||
@@ -777,6 +793,14 @@ export class InputController {
     return this.selectToolHandler.hoveredShapeId;
   }
 
+  public get artboardOverlayState(): { readonly isArtboardToolActive: boolean; readonly creationBox?: ArtboardBounds | null } | null {
+    if (this._currentTool !== 'artboard') return null;
+    return {
+      isArtboardToolActive: true,
+      creationBox: this.artboardToolHandler.creationBox,
+    };
+  }
+
   public get activePenPathId(): string | null {
     return this.penToolHandler.activePathId;
   }
@@ -833,6 +857,7 @@ export class InputController {
     this.creationToolHandler.destroy();
     this.lineToolHandler.destroy();
     this.textToolHandler.destroy();
+    this.artboardToolHandler.destroy();
 
     this.canvas.removeEventListener('mousedown', this.onMouseDownHandler);
     this.canvas.removeEventListener('dblclick', this.onDoubleClickHandler);
@@ -906,7 +931,8 @@ export class InputController {
       this._currentTool === 'ellipse' ||
       this._currentTool === 'polygon' ||
       this._currentTool === 'star' ||
-      this._currentTool === 'line'
+      this._currentTool === 'line' ||
+      this._currentTool === 'artboard'
     ) {
       this.canvas.style.cursor = 'crosshair';
     } else if (this._currentTool === 'text') {
@@ -1266,6 +1292,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'artboard') {
+      this.artboardToolHandler.onMouseDown(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseDown(event, coords);
       return;
@@ -1407,6 +1438,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'artboard') {
+      this.artboardToolHandler.onMouseMove(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseMove(event, coords);
       return;
@@ -1492,6 +1528,11 @@ export class InputController {
       return;
     }
 
+    if (this._currentTool === 'artboard') {
+      this.artboardToolHandler.onMouseUp(event, coords);
+      return;
+    }
+
     if (this._currentTool === 'pen') {
       this.penToolHandler.onMouseUp(event, coords);
       return;
@@ -1513,6 +1554,12 @@ export class InputController {
   public handleKeyDown(event: KeyboardEvent): void {
     if (this.isInputFocused(event)) {
       return;
+    }
+
+    if (this._currentTool === 'artboard') {
+      if (this.artboardToolHandler.onKeyDown(event)) {
+        return;
+      }
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key && event.key.toLowerCase() === 'u') {
@@ -1741,6 +1788,8 @@ export class InputController {
 
     if (keyLower === 'p') {
       this.setTool('pen');
+    } else if (event.shiftKey && keyLower === 'o') {
+      this.setTool('artboard');
     } else if (keyLower === 'b' || keyLower === 'n') {
       this.setTool('pencil');
     } else if (keyLower === 'i') {

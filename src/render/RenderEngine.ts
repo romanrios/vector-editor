@@ -102,6 +102,13 @@ export interface RenderEngineOptions {
    */
   viewportManager?: ViewportManager;
   /**
+   * Proveedor funcional opcional del estado de la herramienta Mesa de Trabajo (tiradores, preview de creación).
+   */
+  artboardOverlayProvider?: () => {
+    readonly isArtboardToolActive: boolean;
+    readonly creationBox?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number } | null;
+  } | null;
+  /**
    * Indica si se dibuja la mesa de trabajo (Artboard).
    * Por defecto es true.
    */
@@ -379,38 +386,109 @@ export class RenderEngine {
   }
 
   /**
-   * Renderiza la Mesa de Trabajo (Artboard) en el espacio de coordenadas del mundo.
-   * Dibuja un rectángulo blanco de (Document.width × Document.height) en el origen (0, 0)
-   * con sombra perimetral visual.
+   * Renderiza las Mesas de Trabajo (Artboards) en el espacio de coordenadas del mundo.
+   * Dibuja cada lienzo con sombra perimetral, fondo personalizable y título identificador.
    */
-  private renderArtboard(document: Document, zoom: number): void {
-    const width = document.width;
-    const height = document.height;
-
-    if (!width || !height || width <= 0 || height <= 0) {
+  private renderArtboard(_document: Document, zoom: number): void {
+    const artboards = this.stateManager.getArtboards();
+    if (!artboards || artboards.length === 0) {
       return;
     }
 
-    this.ctx.save();
+    const activeArtboardId = this.stateManager.getActiveArtboardId();
 
-    // Sombra perimetral visual (drop-shadow) escalada por zoom
-    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    this.ctx.shadowBlur = 24 / zoom;
-    this.ctx.shadowOffsetX = 0;
-    this.ctx.shadowOffsetY = 4 / zoom;
+    for (const ab of artboards) {
+      const { x, y, width, height, backgroundColor, name, id } = ab;
+      if (!width || !height || width <= 0 || height <= 0) {
+        continue;
+      }
 
-    // Fondo blanco de la mesa de trabajo
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, width, height);
+      this.ctx.save();
 
-    this.ctx.restore();
+      // Sombra perimetral visual (drop-shadow) escalada por zoom
+      this.ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+      this.ctx.shadowBlur = 24 / zoom;
+      this.ctx.shadowOffsetX = 0;
+      this.ctx.shadowOffsetY = 4 / zoom;
 
-    // Borde delimitador sutil de 1 px en pantalla para definir contornos nítidos
-    this.ctx.save();
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    this.ctx.strokeRect(0, 0, width, height);
-    this.ctx.restore();
+      // Fondo de la mesa de trabajo (blanco por defecto)
+      this.ctx.fillStyle = backgroundColor || '#ffffff';
+      this.ctx.fillRect(x, y, width, height);
+
+      this.ctx.restore();
+
+      // Borde delimitador sutil de 1 px en pantalla para definir contornos nítidos
+      this.ctx.save();
+      const isActive = id === activeArtboardId;
+      const isToolActive = this.options.artboardOverlayProvider?.()?.isArtboardToolActive === true;
+      const isMulti = artboards.length > 1;
+      const isHighlighted = isActive && (isMulti || isToolActive);
+      this.ctx.lineWidth = (isActive && isToolActive ? 2 : isHighlighted ? 1.5 : 1) / zoom;
+      this.ctx.strokeStyle = isHighlighted
+        ? (isToolActive ? '#38bdf8' : 'rgba(56, 189, 248, 0.4)')
+        : 'rgba(0, 0, 0, 0.1)';
+      this.ctx.strokeRect(x, y, width, height);
+
+      // Etiqueta con el nombre de la mesa de trabajo sobre la esquina superior izquierda (visible si hay varias o la herramienta está activa)
+      if ((artboards.length > 1 || isToolActive) && name && typeof this.ctx.fillText === 'function') {
+        this.ctx.fillStyle = isActive ? '#38bdf8' : '#71717a';
+        const fontSize = Math.max(10, Math.min(14, 12 / zoom));
+        this.ctx.font = `600 ${fontSize}px sans-serif`;
+        this.ctx.fillText(name, x, y - 6 / zoom);
+      }
+
+      // Si la herramienta Mesa de Trabajo está activa y esta es la mesa activa, dibujar 8 tiradores
+      if (isActive && isToolActive) {
+        const handleSize = 8 / zoom;
+        const half = handleSize / 2;
+        const midX = x + width / 2;
+        const midY = y + height / 2;
+        const handles = [
+          [x, y],
+          [midX, y],
+          [x + width, y],
+          [x + width, midY],
+          [x + width, y + height],
+          [midX, y + height],
+          [x, y + height],
+          [x, midY],
+        ];
+
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.strokeStyle = '#38bdf8';
+        this.ctx.lineWidth = 1.5 / zoom;
+        for (const [hx, hy] of handles) {
+          this.ctx.fillRect(hx - half, hy - half, handleSize, handleSize);
+          this.ctx.strokeRect(hx - half, hy - half, handleSize, handleSize);
+        }
+      }
+
+      this.ctx.restore();
+    }
+
+    // Dibujar caja de creación interactiva si la herramienta está arrastrando en el vacío
+    const overlayState = this.options.artboardOverlayProvider?.();
+    if (overlayState?.isArtboardToolActive && overlayState.creationBox) {
+      const box = overlayState.creationBox;
+      if (box.width > 0 && box.height > 0) {
+        this.ctx.save();
+        this.ctx.strokeStyle = '#38bdf8';
+        this.ctx.lineWidth = 1.5 / zoom;
+        this.ctx.setLineDash([4 / zoom, 4 / zoom]);
+        this.ctx.strokeRect(box.x, box.y, box.width, box.height);
+        this.ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+        this.ctx.fillRect(box.x, box.y, box.width, box.height);
+
+        if (typeof this.ctx.fillText === 'function') {
+          this.ctx.fillStyle = '#38bdf8';
+          const tag = `${Math.round(box.width)} × ${Math.round(box.height)} px`;
+          const fontSize = Math.max(10, Math.min(13, 11 / zoom));
+          this.ctx.font = `600 ${fontSize}px sans-serif`;
+          this.ctx.fillText(tag, box.x, box.y + box.height + 16 / zoom);
+        }
+        this.ctx.restore();
+      }
+    }
   }
 
   /**

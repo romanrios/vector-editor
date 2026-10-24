@@ -32,6 +32,7 @@ export * from './input/tools/LineToolHandler.ts';
 export * from './input/tools/TextToolHandler.ts';
 export * from './input/tools/PencilToolHandler.ts';
 export * from './input/tools/EyedropperToolHandler.ts';
+export * from './input/tools/ArtboardToolHandler.ts';
 
 export * from './utils/booleanOperations.ts';
 
@@ -73,6 +74,9 @@ export * from './commands/AddGuideCommand.ts';
 export * from './commands/RemoveGuideCommand.ts';
 export * from './commands/MoveGuideCommand.ts';
 export * from './commands/ClearGuidesCommand.ts';
+export * from './commands/AddArtboardCommand.ts';
+export * from './commands/DeleteArtboardCommand.ts';
+export * from './commands/UpdateArtboardCommand.ts';
 export * from './utils/strokeToPath.ts';
 export * from './utils/cornerSmoothing.ts';
 
