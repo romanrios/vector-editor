@@ -1460,7 +1460,16 @@ export function isPointInShape(
 /**
  * Tipos de manejadores de esquina y rotación
  */
-export type HandleType = 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | 'rotation-handle' | 'right-center';
+export type HandleType =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'right-center'
+  | 'bottom-right'
+  | 'bottom-center'
+  | 'bottom-left'
+  | 'left-center'
+  | 'rotation-handle';
 
 /**
  * Representación de un manejador de selección como AABB pequeño
@@ -1471,17 +1480,19 @@ export interface SelectionHandle extends AABB {
 
 /**
  * Calcula el AABB de un Shape y devuelve un array con objetos geométricos
- * (AABBs pequeños de 8x8px) correspondientes a las esquinas, al manejador de rotación flotante,
- * y exclusivamente para nodos Text, un manejador de tipo 'right-center'.
+ * (AABBs pequeños de 8x8px) correspondientes a las esquinas, laterales y manejador de rotación flotante.
  *
  * @param shape Figura seleccionada
  * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
+ * @param rotationDistance Distancia del tirador de rotación (por defecto 30px)
+ * @param includeSideHandles Si es true, incluye los 4 manejadores laterales (top-center, bottom-center, left-center, right-center)
  * @returns Array con los manejadores de la figura
  */
 export function getSelectionHandles(
   shape: Shape,
   handleSize: number = 8,
-  rotationDistance: number = 30
+  rotationDistance: number = 30,
+  includeSideHandles: boolean = false
 ): SelectionHandle[] {
   const half = handleSize / 2;
   const rotation = shape.rotation ?? 0;
@@ -1489,73 +1500,49 @@ export function getSelectionHandles(
   if (!rotation) {
     const aabb = getShapeAABB(shape);
     const midX = (aabb.minX + aabb.maxX) / 2;
+    const midY = (aabb.minY + aabb.maxY) / 2;
     const rotY = aabb.minY - rotationDistance;
 
-    const handles: SelectionHandle[] = [
-      {
-        type: 'top-left',
-        minX: aabb.minX - half,
-        minY: aabb.minY - half,
-        maxX: aabb.minX + half,
-        maxY: aabb.minY + half,
-        width: handleSize,
-        height: handleSize,
-      },
-      {
-        type: 'top-right',
-        minX: aabb.maxX - half,
-        minY: aabb.minY - half,
-        maxX: aabb.maxX + half,
-        maxY: aabb.minY + half,
-        width: handleSize,
-        height: handleSize,
-      },
-      {
-        type: 'bottom-right',
-        minX: aabb.maxX - half,
-        minY: aabb.maxY - half,
-        maxX: aabb.maxX + half,
-        maxY: aabb.maxY + half,
-        width: handleSize,
-        height: handleSize,
-      },
-      {
-        type: 'bottom-left',
-        minX: aabb.minX - half,
-        minY: aabb.maxY - half,
-        maxX: aabb.minX + half,
-        maxY: aabb.maxY + half,
-        width: handleSize,
-        height: handleSize,
-      },
-      {
-        type: 'rotation-handle',
-        minX: midX - half,
-        minY: rotY - half,
-        maxX: midX + half,
-        maxY: rotY + half,
-        width: handleSize,
-        height: handleSize,
-      },
-    ];
+    const createH = (x: number, y: number, type: HandleType): SelectionHandle => ({
+      type,
+      minX: x - half,
+      minY: y - half,
+      maxX: x + half,
+      maxY: y + half,
+      width: handleSize,
+      height: handleSize,
+    });
 
-    if (shape.type === 'text') {
-      const midY = (aabb.minY + aabb.maxY) / 2;
-      handles.push({
-        type: 'right-center',
-        minX: aabb.maxX - half,
-        minY: midY - half,
-        maxX: aabb.maxX + half,
-        maxY: midY + half,
-        width: handleSize,
-        height: handleSize,
-      });
+    if (!includeSideHandles) {
+      const handles: SelectionHandle[] = [
+        createH(aabb.minX, aabb.minY, 'top-left'),
+        createH(aabb.maxX, aabb.minY, 'top-right'),
+        createH(aabb.maxX, aabb.maxY, 'bottom-right'),
+        createH(aabb.minX, aabb.maxY, 'bottom-left'),
+        createH(midX, rotY, 'rotation-handle'),
+      ];
+
+      if (shape.type === 'text') {
+        handles.push(createH(aabb.maxX, midY, 'right-center'));
+      }
+
+      return handles;
     }
 
-    return handles;
+    return [
+      createH(aabb.minX, aabb.minY, 'top-left'),
+      createH(midX, aabb.minY, 'top-center'),
+      createH(aabb.maxX, aabb.minY, 'top-right'),
+      createH(aabb.maxX, midY, 'right-center'),
+      createH(aabb.maxX, aabb.maxY, 'bottom-right'),
+      createH(midX, aabb.maxY, 'bottom-center'),
+      createH(aabb.minX, aabb.maxY, 'bottom-left'),
+      createH(aabb.minX, midY, 'left-center'),
+      createH(midX, rotY, 'rotation-handle'),
+    ];
   }
 
-  // Figura con rotación: calcular esquinas y manejador de rotación en espacio rotado (OBB)
+  // Figura con rotación: calcular esquinas y manejadores en espacio rotado (OBB)
   let cx = 0;
   let cy = 0;
   let hw = 0;
@@ -1601,11 +1588,17 @@ export function getSelectionHandles(
       y: cy + dx * sin + dy * cos,
     });
 
-    const tl = rotatePoint(baseAABB.minX - cx, baseAABB.minY - cy);
-    const tr = rotatePoint(baseAABB.maxX - cx, baseAABB.minY - cy);
-    const br = rotatePoint(baseAABB.maxX - cx, baseAABB.maxY - cy);
-    const bl = rotatePoint(baseAABB.minX - cx, baseAABB.maxY - cy);
     const midX = (baseAABB.minX + baseAABB.maxX) / 2;
+    const midY = (baseAABB.minY + baseAABB.maxY) / 2;
+
+    const tl = rotatePoint(baseAABB.minX - cx, baseAABB.minY - cy);
+    const tc = rotatePoint(midX - cx, baseAABB.minY - cy);
+    const tr = rotatePoint(baseAABB.maxX - cx, baseAABB.minY - cy);
+    const rc = rotatePoint(baseAABB.maxX - cx, midY - cy);
+    const br = rotatePoint(baseAABB.maxX - cx, baseAABB.maxY - cy);
+    const bc = rotatePoint(midX - cx, baseAABB.maxY - cy);
+    const bl = rotatePoint(baseAABB.minX - cx, baseAABB.maxY - cy);
+    const lc = rotatePoint(baseAABB.minX - cx, midY - cy);
     const rot = rotatePoint(midX - cx, baseAABB.minY - cy - rotationDistance);
 
     const createHandle = (pt: { x: number; y: number }, type: HandleType): SelectionHandle => ({
@@ -1618,16 +1611,27 @@ export function getSelectionHandles(
       height: handleSize,
     });
 
-    const midY = (baseAABB.minY + baseAABB.maxY) / 2;
-    const rc = rotatePoint(baseAABB.maxX - cx, midY - cy);
+    if (!includeSideHandles) {
+      return [
+        createHandle(tl, 'top-left'),
+        createHandle(tr, 'top-right'),
+        createHandle(br, 'bottom-right'),
+        createHandle(bl, 'bottom-left'),
+        createHandle(rot, 'rotation-handle'),
+        createHandle(rc, 'right-center'),
+      ];
+    }
 
     return [
       createHandle(tl, 'top-left'),
+      createHandle(tc, 'top-center'),
       createHandle(tr, 'top-right'),
-      createHandle(br, 'bottom-right'),
-      createHandle(bl, 'bottom-left'),
-      createHandle(rot, 'rotation-handle'),
       createHandle(rc, 'right-center'),
+      createHandle(br, 'bottom-right'),
+      createHandle(bc, 'bottom-center'),
+      createHandle(bl, 'bottom-left'),
+      createHandle(lc, 'left-center'),
+      createHandle(rot, 'rotation-handle'),
     ];
   }
 
@@ -1641,9 +1645,13 @@ export function getSelectionHandles(
   });
 
   const tl = rotatePoint(-hw, -hh);
+  const tc = rotatePoint(0, -hh);
   const tr = rotatePoint(hw, -hh);
+  const rc = rotatePoint(hw, 0);
   const br = rotatePoint(hw, hh);
+  const bc = rotatePoint(0, hh);
   const bl = rotatePoint(-hw, hh);
+  const lc = rotatePoint(-hw, 0);
   const rot = rotatePoint(0, -hh - rotationDistance);
 
   const createHandle = (pt: { x: number; y: number }, type: HandleType): SelectionHandle => ({
@@ -1656,13 +1664,38 @@ export function getSelectionHandles(
     height: handleSize,
   });
 
+  if (!includeSideHandles) {
+    return [
+      createHandle(tl, 'top-left'),
+      createHandle(tr, 'top-right'),
+      createHandle(br, 'bottom-right'),
+      createHandle(bl, 'bottom-left'),
+      createHandle(rot, 'rotation-handle'),
+    ];
+  }
+
   return [
     createHandle(tl, 'top-left'),
+    createHandle(tc, 'top-center'),
     createHandle(tr, 'top-right'),
+    createHandle(rc, 'right-center'),
     createHandle(br, 'bottom-right'),
+    createHandle(bc, 'bottom-center'),
     createHandle(bl, 'bottom-left'),
+    createHandle(lc, 'left-center'),
     createHandle(rot, 'rotation-handle'),
   ];
+}
+
+/**
+ * Devuelve todos los manejadores de selección (4 esquinas, 4 laterales y rotación) para una figura.
+ */
+export function getAllSelectionHandles(
+  shape: Shape,
+  handleSize: number = 8,
+  rotationDistance: number = 30
+): SelectionHandle[] {
+  return getSelectionHandles(shape, handleSize, rotationDistance, true);
 }
 
 /**
@@ -2513,81 +2546,80 @@ export function normalizeAngle(deg: number): number {
 }
 
 /**
- * Genera los 5 manejadores de selección (4 esquinas y rotación) para un AABB envolvente.
+ * Genera los manejadores de selección (esquinas, laterales y rotación) para un AABB envolvente.
  * Utiliza los mismos tipos que getSelectionHandles.
  *
  * @param bounds Caja delimitadora (AABB) de la selección
  * @param handleSize Tamaño en píxeles del manejador (por defecto 8px)
  * @param rotationDistance Distancia del tirador de rotación (por defecto 30px)
- * @returns Array con los 5 manejadores: 'top-left', 'top-right', 'bottom-right', 'bottom-left' y 'rotation-handle'
+ * @param includeSideHandles Si es true, incluye los 4 manejadores laterales (top-center, bottom-center, left-center, right-center)
+ * @returns Array con los manejadores
  */
 export function getSelectionBoxHandles(
   bounds: AABB,
   handleSize: number = 8,
-  rotationDistance: number = 30
+  rotationDistance: number = 30,
+  includeSideHandles: boolean = false
 ): SelectionHandle[] {
   const half = handleSize / 2;
   const midX = (bounds.minX + bounds.maxX) / 2;
+  const midY = (bounds.minY + bounds.maxY) / 2;
   const rotY = bounds.minY - rotationDistance;
 
+  const createH = (x: number, y: number, type: HandleType): SelectionHandle => ({
+    type,
+    minX: x - half,
+    minY: y - half,
+    maxX: x + half,
+    maxY: y + half,
+    width: handleSize,
+    height: handleSize,
+  });
+
+  if (!includeSideHandles) {
+    return [
+      createH(bounds.minX, bounds.minY, 'top-left'),
+      createH(bounds.maxX, bounds.minY, 'top-right'),
+      createH(bounds.maxX, bounds.maxY, 'bottom-right'),
+      createH(bounds.minX, bounds.maxY, 'bottom-left'),
+      createH(midX, rotY, 'rotation-handle'),
+    ];
+  }
+
   return [
-    {
-      type: 'top-left',
-      minX: bounds.minX - half,
-      minY: bounds.minY - half,
-      maxX: bounds.minX + half,
-      maxY: bounds.minY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'top-right',
-      minX: bounds.maxX - half,
-      minY: bounds.minY - half,
-      maxX: bounds.maxX + half,
-      maxY: bounds.minY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'bottom-right',
-      minX: bounds.maxX - half,
-      minY: bounds.maxY - half,
-      maxX: bounds.maxX + half,
-      maxY: bounds.maxY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'bottom-left',
-      minX: bounds.minX - half,
-      minY: bounds.maxY - half,
-      maxX: bounds.minX + half,
-      maxY: bounds.maxY + half,
-      width: handleSize,
-      height: handleSize,
-    },
-    {
-      type: 'rotation-handle',
-      minX: midX - half,
-      minY: rotY - half,
-      maxX: midX + half,
-      maxY: rotY + half,
-      width: handleSize,
-      height: handleSize,
-    },
+    createH(bounds.minX, bounds.minY, 'top-left'),
+    createH(midX, bounds.minY, 'top-center'),
+    createH(bounds.maxX, bounds.minY, 'top-right'),
+    createH(bounds.maxX, midY, 'right-center'),
+    createH(bounds.maxX, bounds.maxY, 'bottom-right'),
+    createH(midX, bounds.maxY, 'bottom-center'),
+    createH(bounds.minX, bounds.maxY, 'bottom-left'),
+    createH(bounds.minX, midY, 'left-center'),
+    createH(midX, rotY, 'rotation-handle'),
   ];
 }
 
 /**
- * Calcula el ancla opuesta y los factores de escala (sx, sy) al arrastrar un tirador de caja,
+ * Devuelve todos los manejadores de selección (4 esquinas, 4 laterales y rotación) para un AABB envolvente.
+ */
+export function getAllSelectionBoxHandles(
+  bounds: AABB,
+  handleSize: number = 8,
+  rotationDistance: number = 30
+): SelectionHandle[] {
+  return getSelectionBoxHandles(bounds, handleSize, rotationDistance, true);
+}
+
+/**
+ * Calcula el ancla opuesta y los factores de escala (sx, sy) al arrastrar un tirador de caja (esquinas o laterales),
  * garantizando un tamaño mínimo de 5 px para el conjunto y respetando aspect ratio si se indica.
  *
  * @param bounds Caja delimitadora (AABB) de la selección
- * @param handle Tirador arrastrado ('top-left' | 'top-right' | 'bottom-right' | 'bottom-left')
+ * @param handle Tirador arrastrado
  * @param dx Desplazamiento horizontal del ratón
  * @param dy Desplazamiento vertical del ratón
  * @param preserveAspect Si es true, restringe la escala para preservar proporciones
+ * @param fromCenter Si es true, escala desde el centro
  * @returns { anchor, sx, sy }
  */
 export function computeBoxScale(
@@ -2612,14 +2644,26 @@ export function computeBoxScale(
       case 'top-left':
         anchor = { x: bounds.maxX, y: bounds.maxY };
         break;
+      case 'top-center':
+        anchor = { x: (bounds.minX + bounds.maxX) / 2, y: bounds.maxY };
+        break;
       case 'top-right':
         anchor = { x: bounds.minX, y: bounds.maxY };
+        break;
+      case 'right-center':
+        anchor = { x: bounds.minX, y: (bounds.minY + bounds.maxY) / 2 };
         break;
       case 'bottom-right':
         anchor = { x: bounds.minX, y: bounds.minY };
         break;
+      case 'bottom-center':
+        anchor = { x: (bounds.minX + bounds.maxX) / 2, y: bounds.minY };
+        break;
       case 'bottom-left':
         anchor = { x: bounds.maxX, y: bounds.minY };
+        break;
+      case 'left-center':
+        anchor = { x: bounds.maxX, y: (bounds.minY + bounds.maxY) / 2 };
         break;
       default:
         anchor = { x: bounds.minX, y: bounds.minY };
@@ -2632,17 +2676,33 @@ export function computeBoxScale(
       dxSign = -1;
       dySign = -1;
       break;
+    case 'top-center':
+      dxSign = 0;
+      dySign = -1;
+      break;
     case 'top-right':
       dxSign = 1;
       dySign = -1;
+      break;
+    case 'right-center':
+      dxSign = 1;
+      dySign = 0;
       break;
     case 'bottom-right':
       dxSign = 1;
       dySign = 1;
       break;
+    case 'bottom-center':
+      dxSign = 0;
+      dySign = 1;
+      break;
     case 'bottom-left':
       dxSign = -1;
       dySign = 1;
+      break;
+    case 'left-center':
+      dxSign = -1;
+      dySign = 0;
       break;
     default:
       dxSign = 1;
@@ -2657,20 +2717,27 @@ export function computeBoxScale(
   const mult = fromCenter ? 2 : 1;
 
   if (!preserveAspect) {
-    const rawW = initW + mult * dxSign * dx;
-    const rawH = initH + mult * dySign * dy;
+    const rawW = dxSign === 0 ? initW : initW + mult * dxSign * dx;
+    const rawH = dySign === 0 ? initH : initH + mult * dySign * dy;
     const newW = Math.max(5, rawW);
     const newH = Math.max(5, rawH);
     return {
       anchor,
-      sx: newW / safeInitW,
-      sy: newH / safeInitH,
+      sx: dxSign === 0 ? 1 : newW / safeInitW,
+      sy: dySign === 0 ? 1 : newH / safeInitH,
     };
   }
 
-  const diagLenSq = safeInitW * safeInitW + safeInitH * safeInitH;
-  const dot = dxSign * dx * safeInitW + dySign * dy * safeInitH;
-  const deltaScale = mult * (dot / diagLenSq);
+  let deltaScale: number;
+  if (dxSign === 0) {
+    deltaScale = mult * ((dySign * dy) / safeInitH);
+  } else if (dySign === 0) {
+    deltaScale = mult * ((dxSign * dx) / safeInitW);
+  } else {
+    const diagLenSq = safeInitW * safeInitW + safeInitH * safeInitH;
+    const dot = dxSign * dx * safeInitW + dySign * dy * safeInitH;
+    deltaScale = mult * (dot / diagLenSq);
+  }
   const rawScale = 1 + deltaScale;
 
   const minScale = Math.max(5 / safeInitW, 5 / safeInitH);

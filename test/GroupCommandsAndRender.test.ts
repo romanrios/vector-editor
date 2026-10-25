@@ -527,12 +527,12 @@ describe('Comandos de Grupos y RenderEngine', () => {
       );
       assert.ok(boxStroke, 'Debe dibujar strokeRect con las dimensiones exactas de getGroupAABB');
 
-      // Con la regla 5 (redimensionado y rotación en multi-selección y grupos),
-      // se muestran los 4 tiradores de esquina (8x8) para escalar el conjunto
+      // Con la adición de tiradores laterales (al igual que en Illustrator),
+      // se muestran los 8 tiradores de redimensionado (4 esquinas + 4 laterales de 8x8)
       const smallHandleStrokes = strokeRectCalls.filter(
         (c) => c.args?.[2] === 8 && c.args?.[3] === 8
       );
-      assert.equal(smallHandleStrokes.length, 4, 'Debe haber 4 tiradores de redimensionado');
+      assert.equal(smallHandleStrokes.length, 8, 'Debe haber 8 tiradores de redimensionado');
     });
   });
 });

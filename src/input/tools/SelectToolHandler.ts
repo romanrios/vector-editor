@@ -328,7 +328,7 @@ export class SelectToolHandler implements ToolHandler {
         const zoom = this.getViewportManager().zoom;
         const handleScreenSize = this.isTouch ? 22 : 8;
         const rotationDistance = this.isTouch ? 36 : 30;
-        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom);
+        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom, true);
         const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
         if (hitHandle) {
@@ -400,7 +400,7 @@ export class SelectToolHandler implements ToolHandler {
 
         const handleScreenSize = this.isTouch ? 22 : 8;
         const rotationDistance = this.isTouch ? 36 : 30;
-        const handles = getSelectionHandles(selectedNode, handleScreenSize / zoom, rotationDistance / zoom);
+        const handles = getSelectionHandles(selectedNode, handleScreenSize / zoom, rotationDistance / zoom, true);
         const hitHandle = handles.find((handle) => isPointInAABB(x, y, handle));
 
         if (hitHandle) {
@@ -840,7 +840,7 @@ export class SelectToolHandler implements ToolHandler {
         const zoom = this.getViewportManager().zoom;
         const handleScreenSize = this.isTouch ? 22 : 8;
         const rotationDistance = this.isTouch ? 36 : 30;
-        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom);
+        const handles = getSelectionBoxHandles(bounds, handleScreenSize / zoom, rotationDistance / zoom, true);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
         if (hoveredHandle) {
           if (hoveredHandle.type === 'rotation-handle') {
@@ -872,7 +872,7 @@ export class SelectToolHandler implements ToolHandler {
 
         const handleScreenSize = this.isTouch ? 22 : 8;
         const rotationDistance = this.isTouch ? 36 : 30;
-        const handles = getSelectionHandles(selectedShape, handleScreenSize / zoom, rotationDistance / zoom);
+        const handles = getSelectionHandles(selectedShape, handleScreenSize / zoom, rotationDistance / zoom, true);
         const hoveredHandle = handles.find((handle) => isPointInAABB(x, y, handle));
         if (hoveredHandle) {
           if (hoveredHandle.type === 'rotation-handle') {
@@ -1792,10 +1792,13 @@ export class SelectToolHandler implements ToolHandler {
   public getResizeCursor(handle: HandleType, rotation: number = 0): string {
     const handleAngles: Record<string, number> = {
       'top-left': 225,
+      'top-center': 270,
       'top-right': 315,
-      'bottom-right': 45,
-      'bottom-left': 135,
       'right-center': 0,
+      'bottom-right': 45,
+      'bottom-center': 90,
+      'bottom-left': 135,
+      'left-center': 180,
     };
     const baseAngle = handleAngles[handle];
     if (baseAngle === undefined) return 'default';
@@ -1831,7 +1834,7 @@ export class SelectToolHandler implements ToolHandler {
     const localDx = dx * cos + dy * sin;
     const localDy = -dx * sin + dy * cos;
 
-    if (handle === 'right-center') {
+    if (handle === 'right-center' && (initial.boxWidth !== undefined || initial.fontSize !== undefined)) {
       const initBoxW = initial.boxWidth !== undefined ? initial.boxWidth : (initial.width ?? 0);
       const newBoxWidth = Math.max(5, initBoxW + localDx);
       return {
@@ -1849,17 +1852,33 @@ export class SelectToolHandler implements ToolHandler {
         dxSign = 1;
         dySign = 1;
         break;
+      case 'bottom-center':
+        dxSign = 0;
+        dySign = 1;
+        break;
       case 'bottom-left':
         dxSign = -1;
         dySign = 1;
+        break;
+      case 'left-center':
+        dxSign = -1;
+        dySign = 0;
+        break;
+      case 'top-left':
+        dxSign = -1;
+        dySign = -1;
+        break;
+      case 'top-center':
+        dxSign = 0;
+        dySign = -1;
         break;
       case 'top-right':
         dxSign = 1;
         dySign = -1;
         break;
-      case 'top-left':
-        dxSign = -1;
-        dySign = -1;
+      case 'right-center':
+        dxSign = 1;
+        dySign = 0;
         break;
     }
 
@@ -1881,18 +1900,25 @@ export class SelectToolHandler implements ToolHandler {
         uA = bX + initW / 2;
         vA = bY + initH / 2;
       } else {
-        uA = dxSign > 0 ? bX : bX + initW;
-        vA = dySign > 0 ? bY : bY + initH;
+        uA = dxSign === 0 ? bX + initW / 2 : (dxSign > 0 ? bX : bX + initW);
+        vA = dySign === 0 ? bY + initH / 2 : (dySign > 0 ? bY : bY + initH);
       }
 
       // Anclaje en coordenadas de mundo (rotado respecto al punto de origen de texto)
       const anchorWorldX = initX + (uA - initX) * cos - (vA - initY) * sin;
       const anchorWorldY = initY + (uA - initX) * sin + (vA - initY) * cos;
 
-      // Progresión diagonal del escalado (producto punto del desplazamiento del cursor sobre la diagonal)
-      const diagLenSq = initW * initW + initH * initH;
-      const dot = dxSign * localDx * initW + dySign * localDy * initH;
-      const deltaScale = (fromCenter ? 2 : 1) * (dot / diagLenSq);
+      // Progresión del escalado
+      let deltaScale: number;
+      if (dxSign === 0) {
+        deltaScale = (fromCenter ? 2 : 1) * ((dySign * localDy) / initH);
+      } else if (dySign === 0) {
+        deltaScale = (fromCenter ? 2 : 1) * ((dxSign * localDx) / initW);
+      } else {
+        const diagLenSq = initW * initW + initH * initH;
+        const dot = dxSign * localDx * initW + dySign * localDy * initH;
+        deltaScale = (fromCenter ? 2 : 1) * (dot / diagLenSq);
+      }
 
       const rawScale = 1 + deltaScale;
       const minScale = Math.max(4 / Math.max(1, initial.fontSize), 5 / initW, 5 / initH);
@@ -1941,21 +1967,25 @@ export class SelectToolHandler implements ToolHandler {
       const mult = fromCenter ? 2 : 1;
 
       if (!preserveAspectRatio) {
-        const newW = Math.max(5, initW + mult * dxSign * localDx);
-        const newH = Math.max(5, initH + mult * dySign * localDy);
+        const newW = dxSign === 0 ? initW : Math.max(5, initW + mult * dxSign * localDx);
+        const newH = dySign === 0 ? initH : Math.max(5, initH + mult * dySign * localDy);
         return {
           newW,
           newH,
-          scaleX: newW / safeInitW,
-          scaleY: newH / safeInitH,
+          scaleX: dxSign === 0 ? 1 : newW / safeInitW,
+          scaleY: dySign === 0 ? 1 : newH / safeInitH,
         };
       }
 
-      const rawNewW = initW + mult * dxSign * localDx;
-      const rawNewH = initH + mult * dySign * localDy;
+      const rawNewW = dxSign === 0 ? initW : initW + mult * dxSign * localDx;
+      const rawNewH = dySign === 0 ? initH : initH + mult * dySign * localDy;
 
       let scale: number;
-      if (initW < 1) {
+      if (dxSign === 0) {
+        scale = rawNewH / safeInitH;
+      } else if (dySign === 0) {
+        scale = rawNewW / safeInitW;
+      } else if (initW < 1) {
         scale = rawNewH / safeInitH;
       } else if (initH < 1) {
         scale = rawNewW / safeInitW;
@@ -1990,8 +2020,8 @@ export class SelectToolHandler implements ToolHandler {
 
       const { newW, newH, scaleX, scaleY } = computeSize(initW, initH);
 
-      const anchorX = fromCenter ? (minX + maxX) / 2 : (dxSign > 0 ? minX : maxX);
-      const anchorY = fromCenter ? (minY + maxY) / 2 : (dySign > 0 ? minY : maxY);
+      const anchorX = fromCenter ? (minX + maxX) / 2 : (dxSign === 0 ? (minX + maxX) / 2 : (dxSign > 0 ? minX : maxX));
+      const anchorY = fromCenter ? (minY + maxY) / 2 : (dySign === 0 ? (minY + maxY) / 2 : (dySign > 0 ? minY : maxY));
 
       const localShiftX = fromCenter ? 0 : (dxSign * (newW - initW)) / 2;
       const localShiftY = fromCenter ? 0 : (dySign * (newH - initH)) / 2;
@@ -2092,11 +2122,11 @@ export class SelectToolHandler implements ToolHandler {
         const { newW } = computeSize(initSize, initSize);
         newR = Math.max(2, newW / 2);
       } else {
-        const rawNewW = initSize + mult * dxSign * localDx;
-        const rawNewH = initSize + mult * dySign * localDy;
+        const rawNewW = dxSign === 0 ? initSize : initSize + mult * dxSign * localDx;
+        const rawNewH = dySign === 0 ? initSize : initSize + mult * dySign * localDy;
         const sx = rawNewW / Math.max(1, initSize);
         const sy = rawNewH / Math.max(1, initSize);
-        const scale = Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
+        const scale = dxSign === 0 ? sy : dySign === 0 ? sx : Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
         newR = Math.max(2, initR * scale);
       }
 
@@ -2128,11 +2158,11 @@ export class SelectToolHandler implements ToolHandler {
         const { newW } = computeSize(initSize, initSize);
         newOuter = Math.max(2, newW / 2);
       } else {
-        const rawNewW = initSize + mult * dxSign * localDx;
-        const rawNewH = initSize + mult * dySign * localDy;
+        const rawNewW = dxSign === 0 ? initSize : initSize + mult * dxSign * localDx;
+        const rawNewH = dySign === 0 ? initSize : initSize + mult * dySign * localDy;
         const sx = rawNewW / Math.max(1, initSize);
         const sy = rawNewH / Math.max(1, initSize);
-        const scale = Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
+        const scale = dxSign === 0 ? sy : dySign === 0 ? sx : Math.max(4 / Math.max(1, initSize), Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy);
         newOuter = Math.max(2, initOuter * scale);
       }
 

@@ -1356,19 +1356,25 @@ export class RenderEngine {
     this.ctx.lineTo(midX, rotY);
     this.ctx.stroke();
 
-    // 3. Manejadores en las 4 esquinas
-    const corners = [
-      { x: bounds.minX, y: bounds.minY },
-      { x: bounds.maxX, y: bounds.minY },
-      { x: bounds.maxX, y: bounds.maxY },
-      { x: bounds.minX, y: bounds.maxY },
+    const midY = (bounds.minY + bounds.maxY) / 2;
+
+    // 3. Manejadores en las 4 esquinas y los 4 laterales
+    const handles = [
+      { x: bounds.minX, y: bounds.minY }, // Superior Izquierda
+      { x: midX, y: bounds.minY },        // Superior Centro
+      { x: bounds.maxX, y: bounds.minY }, // Superior Derecha
+      { x: bounds.maxX, y: midY },        // Centro Derecha
+      { x: bounds.maxX, y: bounds.maxY }, // Inferior Derecha
+      { x: midX, y: bounds.maxY },        // Inferior Centro
+      { x: bounds.minX, y: bounds.maxY }, // Inferior Izquierda
+      { x: bounds.minX, y: midY },        // Centro Izquierda
     ];
 
-    for (const corner of corners) {
+    for (const h of handles) {
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(
-        corner.x - halfHandle,
-        corner.y - halfHandle,
+        h.x - halfHandle,
+        h.y - halfHandle,
         handleSize,
         handleSize
       );
@@ -1376,8 +1382,8 @@ export class RenderEngine {
       this.ctx.strokeStyle = '#2563eb';
       this.ctx.lineWidth = 1.5 / zoom;
       this.ctx.strokeRect(
-        corner.x - halfHandle,
-        corner.y - halfHandle,
+        h.x - halfHandle,
+        h.y - halfHandle,
         handleSize,
         handleSize
       );
@@ -1582,19 +1588,25 @@ export class RenderEngine {
     this.ctx.lineTo(midX, rotY);
     this.ctx.stroke();
 
-    // 3. Manejadores (cuadrados en las 4 esquinas)
-    const corners = [
-      { x: baseX, y: baseY }, // Superior Izquierda
-      { x: baseX + baseWidth, y: baseY }, // Superior Derecha
+    const midY = baseY + baseHeight / 2;
+
+    // 3. Manejadores (cuadrados en las 4 esquinas y en los 4 laterales)
+    const handles = [
+      { x: baseX, y: baseY },                          // Superior Izquierda
+      { x: midX, y: baseY },                           // Superior Centro
+      { x: baseX + baseWidth, y: baseY },              // Superior Derecha
+      { x: baseX + baseWidth, y: midY },               // Centro Derecha
       { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
-      { x: baseX, y: baseY + baseHeight }, // Inferior Izquierda
+      { x: midX, y: baseY + baseHeight },              // Inferior Centro
+      { x: baseX, y: baseY + baseHeight },             // Inferior Izquierda
+      { x: baseX, y: midY },                           // Centro Izquierda
     ];
 
-    for (const corner of corners) {
+    for (const h of handles) {
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(
-        corner.x - halfHandle,
-        corner.y - halfHandle,
+        h.x - halfHandle,
+        h.y - halfHandle,
         handleSize,
         handleSize
       );
@@ -1602,31 +1614,8 @@ export class RenderEngine {
       this.ctx.strokeStyle = '#2563eb';
       this.ctx.lineWidth = 1.5 / zoom;
       this.ctx.strokeRect(
-        corner.x - halfHandle,
-        corner.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-    }
-
-    // 3.1. Manejador de redimensionamiento central derecho para nodos Text
-    if (shape.type === 'text') {
-      const rcX = baseX + baseWidth;
-      const rcY = baseY + baseHeight / 2;
-
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillRect(
-        rcX - halfHandle,
-        rcY - halfHandle,
-        handleSize,
-        handleSize
-      );
-
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.strokeRect(
-        rcX - halfHandle,
-        rcY - halfHandle,
+        h.x - halfHandle,
+        h.y - halfHandle,
         handleSize,
         handleSize
       );
