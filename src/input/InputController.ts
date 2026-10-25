@@ -1112,6 +1112,11 @@ export class InputController {
     const coords = this.getLocalCoordinates(event);
     const { x, y } = coords;
 
+    const hitArtboard = this.stateManager.getArtboardAt(x, y);
+    if (hitArtboard && hitArtboard.id !== this.stateManager.getActiveArtboardId()) {
+      this.stateManager.setActiveArtboard(hitArtboard.id);
+    }
+
     if (this.textEditManager.isEditingText) {
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.id === this.textEditManager.textEditingState?.textId) {

@@ -7,6 +7,7 @@ import type { PropertiesPanelElements } from './types.ts';
 export class ArtboardSectionController {
   private initialArtboardWidth: number;
   private initialArtboardHeight: number;
+  private currentActiveArtboardId: string;
   private artboardAspectRatio: number;
   private readonly stateManager: StateManager;
   private readonly commandManager: CommandManager;
@@ -24,25 +25,41 @@ export class ArtboardSectionController {
     this.elements = elements;
     this.syncPropertiesPanel = syncPropertiesPanel;
 
-    this.initialArtboardWidth = this.stateManager.getState().width;
-    this.initialArtboardHeight = this.stateManager.getState().height;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    this.currentActiveArtboardId = activeArtboard.id;
+    this.initialArtboardWidth = activeArtboard.width;
+    this.initialArtboardHeight = activeArtboard.height;
     this.artboardAspectRatio =
       this.initialArtboardHeight > 0 ? this.initialArtboardWidth / this.initialArtboardHeight : 1;
   }
 
+  private readonly onActiveArtboardChange = (): void => {
+    const select = this.elements.selectActiveArtboard;
+    if (!select || !select.value) return;
+    if (this.stateManager.getActiveArtboardId() !== select.value) {
+      this.stateManager.setActiveArtboard(select.value);
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      this.currentActiveArtboardId = activeArtboard.id;
+      this.initialArtboardWidth = activeArtboard.width;
+      this.initialArtboardHeight = activeArtboard.height;
+      this.syncPropertiesPanel();
+    }
+  };
 
   private readonly onArtboardRatioChange = (): void => {
     if (this.elements.checkArtboardRatio?.checked) {
-      const currentDoc = this.stateManager.getState();
-      if (currentDoc.height > 0) {
-        this.artboardAspectRatio = currentDoc.width / currentDoc.height;
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      if (activeArtboard.height > 0) {
+        this.artboardAspectRatio = activeArtboard.width / activeArtboard.height;
       }
     }
   };
 
   private readonly onArtboardFocus = (): void => {
-    this.initialArtboardWidth = this.stateManager.getState().width;
-    this.initialArtboardHeight = this.stateManager.getState().height;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    this.currentActiveArtboardId = activeArtboard.id;
+    this.initialArtboardWidth = activeArtboard.width;
+    this.initialArtboardHeight = activeArtboard.height;
     if (this.elements.checkArtboardRatio?.checked && this.initialArtboardHeight > 0) {
       this.artboardAspectRatio = this.initialArtboardWidth / this.initialArtboardHeight;
     }
@@ -53,14 +70,18 @@ export class ArtboardSectionController {
     if (!input) return;
     const parsed = parseFloat(input.value);
     if (Number.isFinite(parsed) && parsed > 0) {
+      const activeArtboard = this.stateManager.getActiveArtboard();
       if (this.elements.checkArtboardRatio?.checked && this.artboardAspectRatio > 0) {
         const calculatedHeight = Math.max(1, Math.round(parsed / this.artboardAspectRatio));
         if (this.elements.inputArtboardHeight) {
           this.elements.inputArtboardHeight.value = String(calculatedHeight);
         }
-        this.stateManager.setDocumentSize(parsed, calculatedHeight);
+        this.stateManager.updateArtboard(activeArtboard.id, {
+          width: parsed,
+          height: calculatedHeight,
+        });
       } else {
-        this.stateManager.setDocumentSize(parsed, this.stateManager.getState().height);
+        this.stateManager.updateArtboard(activeArtboard.id, { width: parsed });
       }
     }
   };
@@ -68,17 +89,21 @@ export class ArtboardSectionController {
   private readonly onArtboardWidthChange = (): void => {
     const input = this.elements.inputArtboardWidth;
     if (!input) return;
+    const activeArtboard = this.stateManager.getActiveArtboard();
     const parsed = parseFloat(input.value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      input.value = String(this.stateManager.getState().width);
-      this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+      input.value = String(activeArtboard.width);
+      this.stateManager.updateArtboard(activeArtboard.id, {
+        width: this.initialArtboardWidth,
+        height: this.initialArtboardHeight,
+      });
       this.syncPropertiesPanel();
       return;
     }
     const targetWidth = parsed;
     input.value = String(targetWidth);
 
-    let targetHeight = this.stateManager.getState().height;
+    let targetHeight = activeArtboard.height;
     if (this.elements.checkArtboardRatio?.checked && this.artboardAspectRatio > 0) {
       targetHeight = Math.max(1, Math.round(targetWidth / this.artboardAspectRatio));
       if (this.elements.inputArtboardHeight) {
@@ -91,13 +116,17 @@ export class ArtboardSectionController {
       return;
     }
 
-    this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+    this.stateManager.updateArtboard(activeArtboard.id, {
+      width: this.initialArtboardWidth,
+      height: this.initialArtboardHeight,
+    });
     const resizeCommand = new ResizeArtboardCommand(
       this.stateManager,
       this.initialArtboardWidth,
       this.initialArtboardHeight,
       targetWidth,
-      targetHeight
+      targetHeight,
+      activeArtboard.id
     );
     resizeCommand.execute();
     this.commandManager.recordCommand(resizeCommand);
@@ -110,10 +139,14 @@ export class ArtboardSectionController {
     if (e.key === 'Enter') {
       this.elements.inputArtboardWidth?.blur();
     } else if (e.key === 'Escape') {
+      const activeArtboard = this.stateManager.getActiveArtboard();
       if (this.elements.inputArtboardWidth) {
         this.elements.inputArtboardWidth.value = String(this.initialArtboardWidth);
       }
-      this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+      this.stateManager.updateArtboard(activeArtboard.id, {
+        width: this.initialArtboardWidth,
+        height: this.initialArtboardHeight,
+      });
       this.elements.inputArtboardWidth?.blur();
       this.syncPropertiesPanel();
     }
@@ -124,14 +157,18 @@ export class ArtboardSectionController {
     if (!input) return;
     const parsed = parseFloat(input.value);
     if (Number.isFinite(parsed) && parsed > 0) {
+      const activeArtboard = this.stateManager.getActiveArtboard();
       if (this.elements.checkArtboardRatio?.checked && this.artboardAspectRatio > 0) {
         const calculatedWidth = Math.max(1, Math.round(parsed * this.artboardAspectRatio));
         if (this.elements.inputArtboardWidth) {
           this.elements.inputArtboardWidth.value = String(calculatedWidth);
         }
-        this.stateManager.setDocumentSize(calculatedWidth, parsed);
+        this.stateManager.updateArtboard(activeArtboard.id, {
+          width: calculatedWidth,
+          height: parsed,
+        });
       } else {
-        this.stateManager.setDocumentSize(this.stateManager.getState().width, parsed);
+        this.stateManager.updateArtboard(activeArtboard.id, { height: parsed });
       }
     }
   };
@@ -139,17 +176,21 @@ export class ArtboardSectionController {
   private readonly onArtboardHeightChange = (): void => {
     const input = this.elements.inputArtboardHeight;
     if (!input) return;
+    const activeArtboard = this.stateManager.getActiveArtboard();
     const parsed = parseFloat(input.value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      input.value = String(this.stateManager.getState().height);
-      this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+      input.value = String(activeArtboard.height);
+      this.stateManager.updateArtboard(activeArtboard.id, {
+        width: this.initialArtboardWidth,
+        height: this.initialArtboardHeight,
+      });
       this.syncPropertiesPanel();
       return;
     }
     const targetHeight = parsed;
     input.value = String(targetHeight);
 
-    let targetWidth = this.stateManager.getState().width;
+    let targetWidth = activeArtboard.width;
     if (this.elements.checkArtboardRatio?.checked && this.artboardAspectRatio > 0) {
       targetWidth = Math.max(1, Math.round(targetHeight * this.artboardAspectRatio));
       if (this.elements.inputArtboardWidth) {
@@ -162,13 +203,17 @@ export class ArtboardSectionController {
       return;
     }
 
-    this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+    this.stateManager.updateArtboard(activeArtboard.id, {
+      width: this.initialArtboardWidth,
+      height: this.initialArtboardHeight,
+    });
     const resizeCommand = new ResizeArtboardCommand(
       this.stateManager,
       this.initialArtboardWidth,
       this.initialArtboardHeight,
       targetWidth,
-      targetHeight
+      targetHeight,
+      activeArtboard.id
     );
     resizeCommand.execute();
     this.commandManager.recordCommand(resizeCommand);
@@ -181,10 +226,14 @@ export class ArtboardSectionController {
     if (e.key === 'Enter') {
       this.elements.inputArtboardHeight?.blur();
     } else if (e.key === 'Escape') {
+      const activeArtboard = this.stateManager.getActiveArtboard();
       if (this.elements.inputArtboardHeight) {
         this.elements.inputArtboardHeight.value = String(this.initialArtboardHeight);
       }
-      this.stateManager.setDocumentSize(this.initialArtboardWidth, this.initialArtboardHeight);
+      this.stateManager.updateArtboard(activeArtboard.id, {
+        width: this.initialArtboardWidth,
+        height: this.initialArtboardHeight,
+      });
       this.elements.inputArtboardHeight?.blur();
       this.syncPropertiesPanel();
     }
@@ -199,16 +248,17 @@ export class ArtboardSectionController {
     const preset = getPresetById(presetId);
     if (!preset) return;
 
-    const doc = this.stateManager.getState();
-    const prevWidth = doc.width;
-    const prevHeight = doc.height;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    const prevWidth = activeArtboard.width;
+    const prevHeight = activeArtboard.height;
 
     const resizeCommand = new ResizeArtboardCommand(
       this.stateManager,
       prevWidth,
       prevHeight,
       preset.width,
-      preset.height
+      preset.height,
+      activeArtboard.id
     );
     resizeCommand.execute();
     this.commandManager.recordCommand(resizeCommand);
@@ -226,7 +276,46 @@ export class ArtboardSectionController {
       this.elements.sectionArtboard.style.display = hasSelection ? 'none' : 'block';
     }
 
+    const artboards = this.stateManager.getArtboards();
     const activeArtboard = this.stateManager.getActiveArtboard();
+
+    if (this.currentActiveArtboardId !== activeArtboard.id) {
+      this.currentActiveArtboardId = activeArtboard.id;
+      this.initialArtboardWidth = activeArtboard.width;
+      this.initialArtboardHeight = activeArtboard.height;
+    }
+
+    if (this.elements.groupActiveArtboard) {
+      this.elements.groupActiveArtboard.style.display = artboards.length > 1 ? 'flex' : 'none';
+    }
+
+    if (this.elements.selectActiveArtboard && typeof document !== 'undefined') {
+      const select = this.elements.selectActiveArtboard;
+      const currentOptions = Array.from(select.options || []).map((o: any) => o.value);
+      const artboardIds = artboards.map((a) => a.id);
+      const optionsMatch =
+        currentOptions.length === artboardIds.length &&
+        currentOptions.every((id, idx) => id === artboardIds[idx]);
+
+      if (!optionsMatch && typeof document.createElement === 'function') {
+        select.innerHTML = '';
+        artboards.forEach((ab, idx) => {
+          const opt = document.createElement('option');
+          opt.value = ab.id;
+          opt.textContent = `${idx + 1}: ${ab.name || 'Mesa ' + (idx + 1)} (${ab.width} × ${ab.height})`;
+          select.appendChild(opt);
+        });
+      } else if (select.options) {
+        artboards.forEach((ab, idx) => {
+          const opt = select.options[idx];
+          if (opt) {
+            opt.textContent = `${idx + 1}: ${ab.name || 'Mesa ' + (idx + 1)} (${ab.width} × ${ab.height})`;
+          }
+        });
+      }
+      select.value = activeArtboard.id;
+    }
+
     if (
       this.elements.selectArtboardPreset &&
       (typeof document === 'undefined' || document.activeElement !== this.elements.selectArtboardPreset)
@@ -258,6 +347,7 @@ export class ArtboardSectionController {
   }
 
   public bind(): void {
+    this.elements.selectActiveArtboard?.addEventListener('change', this.onActiveArtboardChange);
     this.elements.selectArtboardPreset?.addEventListener('change', this.onArtboardPresetChange);
     this.elements.checkArtboardRatio?.addEventListener('change', this.onArtboardRatioChange);
     this.elements.inputArtboardWidth?.addEventListener('focus', this.onArtboardFocus);
@@ -271,6 +361,7 @@ export class ArtboardSectionController {
   }
 
   public cleanup(): void {
+    this.elements.selectActiveArtboard?.removeEventListener('change', this.onActiveArtboardChange);
     this.elements.selectArtboardPreset?.removeEventListener('change', this.onArtboardPresetChange);
     this.elements.checkArtboardRatio?.removeEventListener('change', this.onArtboardRatioChange);
     this.elements.inputArtboardWidth?.removeEventListener('focus', this.onArtboardFocus);

@@ -46,6 +46,8 @@ export function queryPropertiesPanelElements(root?: Document | HTMLElement): Pro
       inputShadowOffsetX: null,
       inputShadowOffsetY: null,
       inputShadowBlur: null,
+      groupActiveArtboard: null,
+      selectActiveArtboard: null,
       selectArtboardPreset: null,
       inputArtboardWidth: null,
       inputArtboardHeight: null,
@@ -144,7 +146,8 @@ export function queryPropertiesPanelElements(root?: Document | HTMLElement): Pro
     inputShadowOffsetX: doc.querySelector<HTMLInputElement>('#input-shadow-offset-x'),
     inputShadowOffsetY: doc.querySelector<HTMLInputElement>('#input-shadow-offset-y'),
     inputShadowBlur: doc.querySelector<HTMLInputElement>('#input-shadow-blur'),
-
+    groupActiveArtboard: doc.querySelector<HTMLElement>('#group-active-artboard'),
+    selectActiveArtboard: doc.querySelector<HTMLSelectElement>('#select-active-artboard'),
     selectArtboardPreset: doc.querySelector<HTMLSelectElement>('#select-artboard-preset'),
     inputArtboardWidth: doc.querySelector<HTMLInputElement>('#input-artboard-width'),
     inputArtboardHeight: doc.querySelector<HTMLInputElement>('#input-artboard-height'),

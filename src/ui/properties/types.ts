@@ -108,6 +108,8 @@ export interface PropertiesPanelElements {
   readonly inputShadowOffsetY: HTMLInputElement | null;
   readonly inputShadowBlur: HTMLInputElement | null;
 
+  readonly groupActiveArtboard?: HTMLElement | null;
+  readonly selectActiveArtboard?: HTMLSelectElement | null;
   readonly selectArtboardPreset: HTMLSelectElement | null;
   readonly inputArtboardWidth: HTMLInputElement | null;
   readonly inputArtboardHeight: HTMLInputElement | null;

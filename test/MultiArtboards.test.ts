@@ -5,6 +5,9 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { AddArtboardCommand } from '../src/commands/AddArtboardCommand.ts';
 import { DeleteArtboardCommand } from '../src/commands/DeleteArtboardCommand.ts';
 import { UpdateArtboardCommand } from '../src/commands/UpdateArtboardCommand.ts';
+import { ResizeArtboardCommand } from '../src/commands/ResizeArtboardCommand.ts';
+import { ArtboardSectionController } from '../src/ui/properties/ArtboardSectionController.ts';
+import type { PropertiesPanelElements } from '../src/ui/properties/types.ts';
 import { Serializer } from '../src/state/Serializer.ts';
 import { exportDocumentToSvg } from '../src/utils/exportSvg.ts';
 import { calculateExportBounds } from '../src/utils/exportRaster.ts';
@@ -531,4 +534,283 @@ describe('Hito 3.4: Múltiples Mesas de Trabajo (Multi-Artboards)', () => {
       assert.equal(sm.getArtboards().length, 2);
     });
   });
+
+  describe('6. Controles de Mesa de Trabajo Activa en Panel de Propiedades e Interacción (Estilo Illustrator)', () => {
+    it('ResizeArtboardCommand con artboardId redimensiona únicamente la mesa indicada y soporta undo/redo', () => {
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+
+      sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 1000, y: 0, width: 400, height: 300 });
+
+      // Mesa 1 debe tener 800x600 y Mesa 2 400x300
+      const ab1Initial = sm.getArtboards()[0];
+      const ab2Initial = sm.getArtboards().find((ab) => ab.id === 'ab-2');
+      assert.equal(ab1Initial.width, 800);
+      assert.equal(ab1Initial.height, 600);
+      assert.equal(ab2Initial?.width, 400);
+      assert.equal(ab2Initial?.height, 300);
+
+      // Redimensionar Mesa 2 a 550x450
+      const cmd = new ResizeArtboardCommand(sm, 400, 300, 550, 450, 'ab-2');
+      cm.executeCommand(cmd);
+
+      const ab2Resized = sm.getArtboards().find((ab) => ab.id === 'ab-2');
+      assert.equal(ab2Resized?.width, 550);
+      assert.equal(ab2Resized?.height, 450);
+
+      // Mesa 1 y dimensiones del documento no deben alterarse
+      const ab1After = sm.getArtboards()[0];
+      assert.equal(ab1After.width, 800);
+      assert.equal(ab1After.height, 600);
+      assert.equal(sm.getState().width, 800);
+      assert.equal(sm.getState().height, 600);
+
+      // Deshacer restaura las dimensiones previas de Mesa 2
+      cm.undo();
+      const ab2Restored = sm.getArtboards().find((ab) => ab.id === 'ab-2');
+      assert.equal(ab2Restored?.width, 400);
+      assert.equal(ab2Restored?.height, 300);
+      assert.equal(sm.getArtboards()[0].width, 800);
+
+      // Rehacer vuelve a aplicar 550x450 en Mesa 2
+      cm.redo();
+      assert.equal(sm.getArtboards().find((ab) => ab.id === 'ab-2')?.width, 550);
+      assert.equal(sm.getArtboards().find((ab) => ab.id === 'ab-2')?.height, 450);
+    });
+
+    it('ResizeArtboardCommand sin artboardId redimensiona el documento / mesa 1 por defecto', () => {
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+
+      const cmd = new ResizeArtboardCommand(sm, 800, 600, 1024, 768);
+      cm.executeCommand(cmd);
+
+      assert.equal(sm.getState().width, 1024);
+      assert.equal(sm.getState().height, 768);
+      assert.equal(sm.getArtboards()[0].width, 1024);
+      assert.equal(sm.getArtboards()[0].height, 768);
+
+      cm.undo();
+      assert.equal(sm.getState().width, 800);
+      assert.equal(sm.getState().height, 600);
+    });
+
+    it('hacer clic en el canvas con cualquier herramienta activa la mesa correspondiente (estilo Illustrator)', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+
+      sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 1000, y: 100, width: 500, height: 400 });
+      const ab1 = sm.getArtboards()[0];
+      sm.setActiveArtboard(ab1.id);
+      assert.equal(sm.getActiveArtboardId(), ab1.id);
+
+      // Con herramienta select por defecto, clic en coordenadas mundiales (1100, 200) dentro de Mesa 2
+      ic.handleMouseDown({ clientX: 1100, clientY: 200, button: 0, preventDefault: () => {} } as unknown as MouseEvent);
+      assert.equal(sm.getActiveArtboardId(), 'ab-2', 'Clic en el canvas debe activar Mesa 2');
+
+      // Clic en coordenadas mundiales (400, 300) dentro de Mesa 1
+      ic.handleMouseDown({ clientX: 400, clientY: 300, button: 0, preventDefault: () => {} } as unknown as MouseEvent);
+      assert.equal(sm.getActiveArtboardId(), ab1.id, 'Clic en el canvas debe activar Mesa 1');
+    });
+
+    it('ArtboardSectionController sincroniza con la mesa activa y modifica sólo la mesa activa', () => {
+      const prevDoc = (globalThis as any).document;
+      try {
+        (globalThis as any).document = {
+          createElement: (tag: string) => new MockUIElement(tag, tag),
+        };
+
+        const sectionArtboard = new MockUIElement('section-artboard');
+        const inputWidth = new MockUIElement('input-artboard-width', 'input');
+        const inputHeight = new MockUIElement('input-artboard-height', 'input');
+        const selectPreset = new MockUIElement('select-artboard-preset', 'select');
+        const checkRatio = new MockUIElement('check-artboard-ratio', 'input');
+        const groupActiveArtboard = new MockUIElement('group-active-artboard');
+        const selectActiveArtboard = new MockUIElement('select-active-artboard', 'select');
+
+        const elements = {
+          sectionArtboard: sectionArtboard as any,
+          inputArtboardWidth: inputWidth as any,
+          inputArtboardHeight: inputHeight as any,
+          selectArtboardPreset: selectPreset as any,
+          checkArtboardRatio: checkRatio as any,
+          groupActiveArtboard: groupActiveArtboard as any,
+          selectActiveArtboard: selectActiveArtboard as any,
+        } as unknown as PropertiesPanelElements;
+
+        const sm = new StateManager(createTestDocument(800, 600));
+        const cm = new CommandManager();
+
+        sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 1000, y: 0, width: 500, height: 400 });
+        // Por defecto addArtboard activa 'ab-2'
+        assert.equal(sm.getActiveArtboardId(), 'ab-2');
+
+        const controller = new ArtboardSectionController(sm, cm, elements, () => controller.sync(false));
+        controller.bind();
+        controller.sync(false);
+
+        // Los campos deben reflejar las medidas de Mesa 2 (500x400)
+        assert.equal(inputWidth.value, '500');
+        assert.equal(inputHeight.value, '400');
+
+        // Modificar el ancho a 650 mediante el input
+        inputWidth.focus();
+        inputWidth.value = '650';
+        inputWidth.dispatchEvent({ type: 'input', target: inputWidth });
+        inputWidth.dispatchEvent({ type: 'change', target: inputWidth });
+
+        // Mesa 2 debe tener ancho 650
+        const ab2 = sm.getArtboards().find((ab) => ab.id === 'ab-2');
+        assert.equal(ab2?.width, 650);
+
+        // Mesa 1 debe permanecer intacta en 800x600
+        const ab1 = sm.getArtboards()[0];
+        assert.equal(ab1.width, 800);
+        assert.equal(ab1.height, 600);
+
+        // Deshacer restaura 500 en Mesa 2
+        cm.undo();
+        assert.equal(sm.getArtboards().find((ab) => ab.id === 'ab-2')?.width, 500);
+        controller.sync(false);
+        assert.equal(inputWidth.value, '500');
+
+        // Conmutar mesa activa a Mesa 1 mediante el desplegable
+        selectActiveArtboard.value = ab1.id;
+        selectActiveArtboard.dispatchEvent({ type: 'change', target: selectActiveArtboard });
+        assert.equal(sm.getActiveArtboardId(), ab1.id);
+
+        controller.sync(false);
+        assert.equal(inputWidth.value, '800');
+        assert.equal(inputHeight.value, '600');
+
+        controller.cleanup();
+      } finally {
+        if (prevDoc !== undefined) {
+          (globalThis as any).document = prevDoc;
+        } else {
+          delete (globalThis as any).document;
+        }
+      }
+    });
+
+    it('el grupo del selector de mesa activa se muestra solo cuando hay más de una mesa', () => {
+      const prevDoc = (globalThis as any).document;
+      try {
+        (globalThis as any).document = {
+          createElement: (tag: string) => new MockUIElement(tag, tag),
+        };
+
+        const sectionArtboard = new MockUIElement('section-artboard');
+        const inputWidth = new MockUIElement('input-artboard-width', 'input');
+        const inputHeight = new MockUIElement('input-artboard-height', 'input');
+        const groupActiveArtboard = new MockUIElement('group-active-artboard');
+        const selectActiveArtboard = new MockUIElement('select-active-artboard', 'select');
+
+        const elements = {
+          sectionArtboard: sectionArtboard as any,
+          inputArtboardWidth: inputWidth as any,
+          inputArtboardHeight: inputHeight as any,
+          groupActiveArtboard: groupActiveArtboard as any,
+          selectActiveArtboard: selectActiveArtboard as any,
+        } as unknown as PropertiesPanelElements;
+
+        const sm = new StateManager(createTestDocument(800, 600));
+        const cm = new CommandManager();
+
+        const controller = new ArtboardSectionController(sm, cm, elements, () => controller.sync(false));
+        controller.bind();
+        controller.sync(false);
+
+        // Con 1 sola mesa, el desplegable debe ocultarse
+        assert.equal(groupActiveArtboard.style.display, 'none');
+
+        // Añadir una segunda mesa de trabajo
+        sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 900, y: 0, width: 400, height: 400 });
+        controller.sync(false);
+
+        // Con múltiples mesas, el desplegable debe ser visible
+        assert.equal(groupActiveArtboard.style.display, 'flex');
+        assert.equal(selectActiveArtboard.children.length, 2);
+
+        controller.cleanup();
+      } finally {
+        if (prevDoc !== undefined) {
+          (globalThis as any).document = prevDoc;
+        } else {
+          delete (globalThis as any).document;
+        }
+      }
+    });
+  });
 });
+
+class MockUIElement {
+  public id: string;
+  public tagName: string;
+  public value: string = '';
+  public textContent: string = '';
+  public style: Record<string, string> = {};
+  public children: MockUIElement[] = [];
+  private listeners: Map<string, Set<(e: any) => void>> = new Map();
+
+  constructor(id: string, tagName: string = 'div') {
+    this.id = id;
+    this.tagName = tagName.toUpperCase();
+  }
+
+  public appendChild(child: MockUIElement): void {
+    this.children.push(child);
+  }
+
+  public set innerHTML(val: string) {
+    if (val === '') {
+      this.children = [];
+    }
+  }
+
+  public addEventListener(event: string, listener: (e: any) => void): void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(listener);
+  }
+
+  public removeEventListener(event: string, listener: (e: any) => void): void {
+    const set = this.listeners.get(event);
+    if (set) set.delete(listener);
+  }
+
+  public focus(): void {
+    const set = this.listeners.get('focus');
+    if (set) {
+      for (const listener of set) {
+        listener({ type: 'focus', target: this, stopPropagation: () => {} });
+      }
+    }
+  }
+
+  public blur(): void {
+    const set = this.listeners.get('blur');
+    if (set) {
+      for (const listener of set) {
+        listener({ type: 'blur', target: this, stopPropagation: () => {} });
+      }
+    }
+  }
+
+  public dispatchEvent(e: any): void {
+    if (!e.stopPropagation) e.stopPropagation = () => {};
+    if (!e.target) e.target = this;
+    const set = this.listeners.get(e.type);
+    if (set) {
+      for (const listener of set) {
+        listener(e);
+      }
+    }
+  }
+}
+

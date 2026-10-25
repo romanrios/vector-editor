@@ -85,7 +85,7 @@ export function updateArtboardInDocument(
     ...currentArtboards.slice(index + 1),
   ];
 
-  const isPrimary = updatedArtboard.x === 0 && updatedArtboard.y === 0 && index === 0;
+  const isPrimary = index === 0;
   const docWidth = isPrimary && updates.width ? updates.width : doc.width;
   const docHeight = isPrimary && updates.height ? updates.height : doc.height;
 
