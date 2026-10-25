@@ -1,666 +1,746 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Vectedit - Editor gráfico vectorial 2D</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Montserrat:wght@100..900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/src/styles/index.css" />
-  </head>
-  <body>
-    <!-- Warmup de fuentes web para inicialización y descarga inmediata en Canvas 2D -->
-    <div aria-hidden="true" style="position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; opacity: 0; z-index: -9999;">
-      <span style="font-family: 'Montserrat'; font-weight: 800;">Vectedit</span>
-      <span style="font-family: 'Inter'; font-weight: 400;">Inter</span>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Vectedit - Editor gráfico vectorial 2D</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Montserrat:wght@100..900&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles/index.css" />
+</head>
+
+<body>
+  <!-- Warmup de fuentes web para inicialización y descarga inmediata en Canvas 2D -->
+  <div aria-hidden="true"
+    style="position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; opacity: 0; z-index: -9999;">
+    <span style="font-family: 'Montserrat'; font-weight: 800;">Vectedit</span>
+    <span style="font-family: 'Inter'; font-weight: 400;">Inter</span>
+  </div>
+  <!-- 1. Header con barra de menú y botones de acción rápida -->
+  <header class="editor-header" role="region" aria-label="Barra de menú del editor">
+    <div class="header-left">
+      <button type="button" id="btn-hamburger-menu" class="hamburger-btn" title="Menú principal"
+        aria-label="Menú principal" aria-expanded="false" aria-controls="mobile-menu-drawer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      <button type="button" id="btn-about-brand" class="brand" title="Acerca de Vectedit"
+        aria-label="Acerca de Vectedit">
+        <span class="brand-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z" />
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+            <path d="M2 2l7.586 7.586" />
+          </svg>
+        </span>
+      </button>
+
+      <nav class="menu-bar" role="menubar" aria-label="Menú principal">
+        <!-- Menú Archivo -->
+        <div class="menu-container">
+          <button id="menu-btn-file" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="0">
+            Archivo
+          </button>
+          <div id="menu-dropdown-file" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-file" hidden>
+            <button id="menu-item-new" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Nuevo</span>
+              <span class="menu-shortcut">Ctrl+N</span>
+            </button>
+            <button id="menu-item-open" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Abrir JSON…</span>
+            </button>
+            <button id="menu-item-save-json" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Guardar JSON…</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-place" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Colocar archivo…</span>
+              <span class="menu-shortcut">Ctrl+Shift+P</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-export-modal" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Exportar…</span>
+              <span class="menu-shortcut">Ctrl+E</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menú Edición -->
+        <div class="menu-container">
+          <button id="menu-btn-edit" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="-1">
+            Edición
+          </button>
+          <div id="menu-dropdown-edit" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-edit" hidden>
+            <button id="menu-item-undo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Deshacer</span>
+              <span class="menu-shortcut">Ctrl+Z</span>
+            </button>
+            <button id="menu-item-redo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Rehacer</span>
+              <span class="menu-shortcut">Ctrl+Shift+Z</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-cut" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Cortar</span>
+              <span class="menu-shortcut">Ctrl+X</span>
+            </button>
+            <button id="menu-item-copy" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Copiar</span>
+              <span class="menu-shortcut">Ctrl+C</span>
+            </button>
+            <button id="menu-item-paste" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Pegar</span>
+              <span class="menu-shortcut">Ctrl+V</span>
+            </button>
+            <button id="menu-item-duplicate" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Duplicar</span>
+              <span class="menu-shortcut">Ctrl+D</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-delete" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Eliminar</span>
+              <span class="menu-shortcut">Supr</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menú Objeto -->
+        <div class="menu-container">
+          <button id="menu-btn-object" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="-1" disabled>
+            Objeto
+          </button>
+          <div id="menu-dropdown-object" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-object" hidden>
+            <button id="menu-item-bring-to-front" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Traer al frente</span>
+              <span class="menu-shortcut">Ctrl+Shift+]</span>
+            </button>
+            <button id="menu-item-send-to-back" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Enviar al fondo</span>
+              <span class="menu-shortcut">Ctrl+Shift+[</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-group" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Agrupar</span>
+              <span class="menu-shortcut">Ctrl+G</span>
+            </button>
+            <button id="menu-item-ungroup" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Desagrupar</span>
+              <span class="menu-shortcut">Ctrl+Shift+G</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Crear máscara de recorte</span>
+              <span class="menu-shortcut">Ctrl+7</span>
+            </button>
+            <button id="menu-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Soltar máscara de recorte</span>
+              <span class="menu-shortcut">Ctrl+Alt+7</span>
+            </button>
+            <button id="menu-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+              <span class="menu-item-label">Contornear trazado</span>
+              <span class="menu-shortcut">Ctrl+Shift+O</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+
+            <!-- Submenú Alinear -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-align" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                <span class="menu-item-label">Alinear</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-align" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-align" hidden>
+                <button id="menu-item-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Alinear a la izquierda</span>
+                </button>
+                <button id="menu-item-align-center-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Centrar horizontalmente</span>
+                </button>
+                <button id="menu-item-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Alinear a la derecha</span>
+                </button>
+                <div class="menu-divider" role="separator" aria-hidden="true"></div>
+                <button id="menu-item-align-top" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Alinear arriba</span>
+                </button>
+                <button id="menu-item-align-center-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Centrar verticalmente</span>
+                </button>
+                <button id="menu-item-align-bottom" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Alinear abajo</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Submenú Distribuir -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-distribute" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                <span class="menu-item-label">Distribuir</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-distribute" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-distribute" hidden>
+                <button id="menu-item-distribute-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Distribuir horizontalmente</span>
+                </button>
+                <button id="menu-item-distribute-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
+                  <span class="menu-item-label">Distribuir verticalmente</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Submenú Pathfinder -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-pathfinder" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
+                <span class="menu-item-label">Pathfinder</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-pathfinder" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-pathfinder" hidden>
+                <button id="menu-item-pathfinder-union" class="menu-dropdown-item" role="menuitem" tabindex="-1"
+                  disabled>
+                  <span class="menu-item-label">Unir</span>
+                </button>
+                <button id="menu-item-pathfinder-subtract" class="menu-dropdown-item" role="menuitem" tabindex="-1"
+                  disabled>
+                  <span class="menu-item-label">Sustraer</span>
+                </button>
+                <button id="menu-item-pathfinder-intersect" class="menu-dropdown-item" role="menuitem" tabindex="-1"
+                  disabled>
+                  <span class="menu-item-label">Intersecar</span>
+                </button>
+                <button id="menu-item-pathfinder-exclude" class="menu-dropdown-item" role="menuitem" tabindex="-1"
+                  disabled>
+                  <span class="menu-item-label">Excluir</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Menú Vista -->
+        <div class="menu-container">
+          <button id="menu-btn-view" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="-1">
+            Vista
+          </button>
+          <div id="menu-dropdown-view" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-view" hidden>
+            <button id="menu-item-rulers" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true"
+              tabindex="-1">
+              <span class="menu-check" aria-hidden="true">✓</span>
+              <span class="menu-item-label">Reglas</span>
+              <span class="menu-shortcut">Ctrl+R</span>
+            </button>
+            <button id="menu-item-smart-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true"
+              tabindex="-1">
+              <span class="menu-check" aria-hidden="true">✓</span>
+              <span class="menu-item-label">Guías inteligentes</span>
+              <span class="menu-shortcut">Ctrl+U</span>
+            </button>
+
+            <!-- Submenú Guías -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-guides" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Guías</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-guides" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-guides" hidden>
+                <button id="menu-item-show-guides" class="menu-dropdown-item" role="menuitemcheckbox"
+                  aria-checked="true" tabindex="-1">
+                  <span class="menu-check" aria-hidden="true">✓</span>
+                  <span class="menu-item-label">Mostrar guías</span>
+                  <span class="menu-shortcut">Ctrl+;</span>
+                </button>
+                <button id="menu-item-lock-guides" class="menu-dropdown-item" role="menuitemcheckbox"
+                  aria-checked="false" tabindex="-1">
+                  <span class="menu-check" aria-hidden="true"></span>
+                  <span class="menu-item-label">Bloquear guías</span>
+                  <span class="menu-shortcut">Ctrl+Alt+;</span>
+                </button>
+                <button id="menu-item-snap-guides" class="menu-dropdown-item" role="menuitemcheckbox"
+                  aria-checked="true" tabindex="-1">
+                  <span class="menu-check" aria-hidden="true">✓</span>
+                  <span class="menu-item-label">Ajustar a guías</span>
+                </button>
+                <div class="menu-divider" role="separator" aria-hidden="true"></div>
+                <button id="menu-item-clear-guides" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Borrar guías</span>
+                </button>
+              </div>
+            </div>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-zoom-in" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Acercar</span>
+              <span class="menu-shortcut">Ctrl++</span>
+            </button>
+            <button id="menu-item-zoom-out" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Alejar</span>
+              <span class="menu-shortcut">Ctrl+-</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-zoom-fit" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Ajustar a la ventana</span>
+              <span class="menu-shortcut">Ctrl+0</span>
+            </button>
+            <button id="menu-item-zoom-100" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Tamaño real 100 %</span>
+              <span class="menu-shortcut">Ctrl+1</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Menú Ayuda -->
+        <div class="menu-container">
+          <button id="menu-btn-help" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="-1">
+            Ayuda
+          </button>
+          <div id="menu-dropdown-help" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-help" hidden>
+            <button id="menu-item-shortcuts" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Atajos de teclado</span>
+            </button>
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+            <button id="menu-item-about" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Acerca de</span>
+            </button>
+          </div>
+        </div>
+      </nav>
     </div>
-    <!-- 1. Header con barra de menú y botones de acción rápida -->
-    <header class="editor-header" role="region" aria-label="Barra de menú del editor">
-      <div class="header-left">
-        <button type="button" id="btn-hamburger-menu" class="hamburger-btn" title="Menú principal" aria-label="Menú principal" aria-expanded="false" aria-controls="mobile-menu-drawer">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
+
+    <div class="header-actions" role="toolbar" aria-label="Historial">
+      <button id="btn-undo" class="header-btn action-btn disabled" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"
+        disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v6h6" />
+          <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+        </svg>
+      </button>
+
+      <button id="btn-redo" class="header-btn action-btn disabled" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"
+        disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 7v6h-6" />
+          <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13" />
+        </svg>
+      </button>
+
+      <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;"
+        aria-hidden="true" />
+
+      <button id="btn-toggle-panel" class="toggle-panel-btn" title="Alternar panel de propiedades"
+        aria-label="Alternar panel de propiedades" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+        <span>Panel</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Cajón de Navegación Móvil (Off-canvas Drawer) -->
+  <div id="mobile-menu-backdrop" class="mobile-drawer-backdrop" hidden></div>
+  <aside id="mobile-menu-drawer" class="mobile-menu-drawer" role="dialog" aria-modal="true" aria-label="Menú principal"
+    hidden>
+    <div class="mobile-drawer-header">
+      <div class="mobile-drawer-title">
+        <span class="brand-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z" />
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+            <path d="M2 2l7.586 7.586" />
           </svg>
-        </button>
-
-        <button type="button" id="btn-about-brand" class="brand" title="Acerca de Vectedit" aria-label="Acerca de Vectedit">
-          <span class="brand-icon" aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-              <path d="M2 2l7.586 7.586"/>
-            </svg>
-          </span>
-        </button>
-
-        <nav class="menu-bar" role="menubar" aria-label="Menú principal">
-          <!-- Menú Archivo -->
-          <div class="menu-container">
-            <button id="menu-btn-file" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="0">
-              Archivo
-            </button>
-            <div id="menu-dropdown-file" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-file" hidden>
-              <button id="menu-item-new" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Nuevo</span>
-                <span class="menu-shortcut">Ctrl+N</span>
-              </button>
-              <button id="menu-item-open" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Abrir JSON…</span>
-              </button>
-              <button id="menu-item-save-json" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Guardar JSON…</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-place" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Colocar archivo…</span>
-                <span class="menu-shortcut">Ctrl+Shift+P</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-export-modal" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Exportar…</span>
-                <span class="menu-shortcut">Ctrl+E</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Menú Edición -->
-          <div class="menu-container">
-            <button id="menu-btn-edit" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-              Edición
-            </button>
-            <div id="menu-dropdown-edit" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-edit" hidden>
-              <button id="menu-item-undo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Deshacer</span>
-                <span class="menu-shortcut">Ctrl+Z</span>
-              </button>
-              <button id="menu-item-redo" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Rehacer</span>
-                <span class="menu-shortcut">Ctrl+Shift+Z</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-cut" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Cortar</span>
-                <span class="menu-shortcut">Ctrl+X</span>
-              </button>
-              <button id="menu-item-copy" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Copiar</span>
-                <span class="menu-shortcut">Ctrl+C</span>
-              </button>
-              <button id="menu-item-paste" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Pegar</span>
-                <span class="menu-shortcut">Ctrl+V</span>
-              </button>
-              <button id="menu-item-duplicate" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Duplicar</span>
-                <span class="menu-shortcut">Ctrl+D</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-delete" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Eliminar</span>
-                <span class="menu-shortcut">Supr</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Menú Objeto -->
-          <div class="menu-container">
-            <button id="menu-btn-object" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
-              Objeto
-            </button>
-            <div id="menu-dropdown-object" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-object" hidden>
-              <button id="menu-item-bring-to-front" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Traer al frente</span>
-                <span class="menu-shortcut">Ctrl+Shift+]</span>
-              </button>
-              <button id="menu-item-send-to-back" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Enviar al fondo</span>
-                <span class="menu-shortcut">Ctrl+Shift+[</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-group" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Agrupar</span>
-                <span class="menu-shortcut">Ctrl+G</span>
-              </button>
-              <button id="menu-item-ungroup" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Desagrupar</span>
-                <span class="menu-shortcut">Ctrl+Shift+G</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Crear máscara de recorte</span>
-                <span class="menu-shortcut">Ctrl+7</span>
-              </button>
-              <button id="menu-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Soltar máscara de recorte</span>
-                <span class="menu-shortcut">Ctrl+Alt+7</span>
-              </button>
-              <button id="menu-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                <span class="menu-item-label">Contornear trazado</span>
-                <span class="menu-shortcut">Ctrl+Shift+O</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-
-              <!-- Submenú Alinear -->
-              <div class="menu-submenu-container">
-                <button id="menu-item-align" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
-                  <span class="menu-item-label">Alinear</span>
-                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-                <div id="menu-dropdown-align" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-align" hidden>
-                  <button id="menu-item-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Alinear a la izquierda</span>
-                  </button>
-                  <button id="menu-item-align-center-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Centrar horizontalmente</span>
-                  </button>
-                  <button id="menu-item-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Alinear a la derecha</span>
-                  </button>
-                  <div class="menu-divider" role="separator" aria-hidden="true"></div>
-                  <button id="menu-item-align-top" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Alinear arriba</span>
-                  </button>
-                  <button id="menu-item-align-center-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Centrar verticalmente</span>
-                  </button>
-                  <button id="menu-item-align-bottom" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Alinear abajo</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Submenú Distribuir -->
-              <div class="menu-submenu-container">
-                <button id="menu-item-distribute" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
-                  <span class="menu-item-label">Distribuir</span>
-                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-                <div id="menu-dropdown-distribute" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-distribute" hidden>
-                  <button id="menu-item-distribute-h" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Distribuir horizontalmente</span>
-                  </button>
-                  <button id="menu-item-distribute-v" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Distribuir verticalmente</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Submenú Pathfinder -->
-              <div class="menu-submenu-container">
-                <button id="menu-item-pathfinder" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1" disabled>
-                  <span class="menu-item-label">Pathfinder</span>
-                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-                <div id="menu-dropdown-pathfinder" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-pathfinder" hidden>
-                  <button id="menu-item-pathfinder-union" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Unir</span>
-                  </button>
-                  <button id="menu-item-pathfinder-subtract" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Sustraer</span>
-                  </button>
-                  <button id="menu-item-pathfinder-intersect" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Intersecar</span>
-                  </button>
-                  <button id="menu-item-pathfinder-exclude" class="menu-dropdown-item" role="menuitem" tabindex="-1" disabled>
-                    <span class="menu-item-label">Excluir</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Menú Vista -->
-          <div class="menu-container">
-            <button id="menu-btn-view" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-              Vista
-            </button>
-            <div id="menu-dropdown-view" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-view" hidden>
-              <button id="menu-item-rulers" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
-                <span class="menu-check" aria-hidden="true">✓</span>
-                <span class="menu-item-label">Reglas</span>
-                <span class="menu-shortcut">Ctrl+R</span>
-              </button>
-              <button id="menu-item-smart-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
-                <span class="menu-check" aria-hidden="true">✓</span>
-                <span class="menu-item-label">Guías inteligentes</span>
-                <span class="menu-shortcut">Ctrl+U</span>
-              </button>
-
-              <!-- Submenú Guías -->
-              <div class="menu-submenu-container">
-                <button id="menu-item-guides" class="menu-dropdown-item menu-submenu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-                  <span class="menu-item-label">Guías</span>
-                  <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-                <div id="menu-dropdown-guides" class="menu-dropdown menu-submenu" role="menu" aria-labelledby="menu-item-guides" hidden>
-                  <button id="menu-item-show-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
-                    <span class="menu-check" aria-hidden="true">✓</span>
-                    <span class="menu-item-label">Mostrar guías</span>
-                    <span class="menu-shortcut">Ctrl+;</span>
-                  </button>
-                  <button id="menu-item-lock-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="false" tabindex="-1">
-                    <span class="menu-check" aria-hidden="true"></span>
-                    <span class="menu-item-label">Bloquear guías</span>
-                    <span class="menu-shortcut">Ctrl+Alt+;</span>
-                  </button>
-                  <button id="menu-item-snap-guides" class="menu-dropdown-item" role="menuitemcheckbox" aria-checked="true" tabindex="-1">
-                    <span class="menu-check" aria-hidden="true">✓</span>
-                    <span class="menu-item-label">Ajustar a guías</span>
-                  </button>
-                  <div class="menu-divider" role="separator" aria-hidden="true"></div>
-                  <button id="menu-item-clear-guides" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                    <span class="menu-item-label">Borrar guías</span>
-                  </button>
-                </div>
-              </div>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-zoom-in" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Acercar</span>
-                <span class="menu-shortcut">Ctrl++</span>
-              </button>
-              <button id="menu-item-zoom-out" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Alejar</span>
-                <span class="menu-shortcut">Ctrl+-</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-zoom-fit" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Ajustar a la ventana</span>
-                <span class="menu-shortcut">Ctrl+0</span>
-              </button>
-              <button id="menu-item-zoom-100" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Tamaño real 100 %</span>
-                <span class="menu-shortcut">Ctrl+1</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Menú Ayuda -->
-          <div class="menu-container">
-            <button id="menu-btn-help" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-              Ayuda
-            </button>
-            <div id="menu-dropdown-help" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-help" hidden>
-              <button id="menu-item-shortcuts" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Atajos de teclado</span>
-              </button>
-              <div class="menu-divider" role="separator" aria-hidden="true"></div>
-              <button id="menu-item-about" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-                <span class="menu-item-label">Acerca de</span>
-              </button>
-            </div>
-          </div>
-        </nav>
+        </span>
+        <span>Vectedit</span>
       </div>
+      <button type="button" id="btn-close-drawer" class="mobile-drawer-close" aria-label="Cerrar menú">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
 
-      <div class="header-actions" role="toolbar" aria-label="Historial">
-        <button id="btn-undo" class="header-btn action-btn disabled" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7v6h6"/>
-            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+    <div class="mobile-drawer-content">
+      <!-- Archivo -->
+      <details class="mobile-drawer-section" open>
+        <summary class="mobile-section-header">
+          <span>Archivo</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
-        </button>
-
-        <button id="btn-redo" class="header-btn action-btn disabled" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 7v6h-6"/>
-            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
-          </svg>
-        </button>
-
-        <input type="file" id="file-import-input" accept=".json,application/json" style="display: none;" aria-hidden="true" />
-
-        <button id="btn-toggle-panel" class="toggle-panel-btn" title="Alternar panel de propiedades" aria-label="Alternar panel de propiedades" aria-expanded="false">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="15" y1="3" x2="15" y2="21"/>
-          </svg>
-          <span>Panel</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Cajón de Navegación Móvil (Off-canvas Drawer) -->
-    <div id="mobile-menu-backdrop" class="mobile-drawer-backdrop" hidden></div>
-    <aside id="mobile-menu-drawer" class="mobile-menu-drawer" role="dialog" aria-modal="true" aria-label="Menú principal" hidden>
-      <div class="mobile-drawer-header">
-        <div class="mobile-drawer-title">
-          <span class="brand-icon" aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-              <path d="M2 2l7.586 7.586"/>
-            </svg>
-          </span>
-          <span>Vectedit</span>
-        </div>
-        <button type="button" id="btn-close-drawer" class="mobile-drawer-close" aria-label="Cerrar menú">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="mobile-drawer-content">
-        <!-- Archivo -->
-        <details class="mobile-drawer-section" open>
-          <summary class="mobile-section-header">
-            <span>Archivo</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-new">
-              <span class="item-label">Nuevo</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-open">
-              <span class="item-label">Abrir JSON…</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-save-json">
-              <span class="item-label">Guardar JSON…</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-place">
-              <span class="item-label">Colocar archivo…</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-modal">
-              <span class="item-label">Exportar…</span>
-            </button>
-          </div>
-        </details>
-
-        <!-- Edición -->
-        <details class="mobile-drawer-section">
-          <summary class="mobile-section-header">
-            <span>Edición</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-undo">
-              <span class="item-label">Deshacer</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-redo">
-              <span class="item-label">Rehacer</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-cut">
-              <span class="item-label">Cortar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-copy">
-              <span class="item-label">Copiar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-paste">
-              <span class="item-label">Pegar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-duplicate">
-              <span class="item-label">Duplicar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-delete">
-              <span class="item-label">Eliminar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#ctx-item-select-all">
-              <span class="item-label">Seleccionar todo</span>
-            </button>
-          </div>
-        </details>
-
-        <!-- Objeto -->
-        <details class="mobile-drawer-section">
-          <summary class="mobile-section-header">
-            <span>Objeto</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-group">
-              <span class="item-label">Agrupar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-ungroup">
-              <span class="item-label">Desagrupar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-bring-to-front">
-              <span class="item-label">Traer al frente</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-send-to-back">
-              <span class="item-label">Enviar al fondo</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-make-clip-mask">
-              <span class="item-label">Crear máscara de recorte</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-release-clip-mask">
-              <span class="item-label">Liberar máscara de recorte</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-outline-stroke">
-              <span class="item-label">Contornear trazado</span>
-            </button>
-          </div>
-        </details>
-
-        <!-- Vista -->
-        <details class="mobile-drawer-section">
-          <summary class="mobile-section-header">
-            <span>Vista</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-in">
-              <span class="item-label">Acercar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-out">
-              <span class="item-label">Alejar</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-100">
-              <span class="item-label">Tamaño real 100%</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-fit">
-              <span class="item-label">Ajustar al lienzo</span>
-            </button>
-          </div>
-        </details>
-
-        <!-- Ayuda -->
-        <details class="mobile-drawer-section">
-          <summary class="mobile-section-header">
-            <span>Ayuda</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </summary>
-          <div class="mobile-section-items">
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-shortcuts">
-              <span class="item-label">Atajos de teclado</span>
-            </button>
-            <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-about">
-              <span class="item-label">Acerca de Vectedit</span>
-            </button>
-          </div>
-        </details>
-      </div>
-    </aside>
-
-    <!-- 2. Barra de Herramientas Izquierda (Vertical, solo iconos SVG con title y aria-label) -->
-    <aside class="tools-sidebar" role="toolbar" aria-label="Herramientas de dibujo">
-      <button id="tool-select" class="tool-btn active" title="Selección (V)" aria-label="Selección (V)" aria-pressed="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 3l7 18 3-7 7-3L3 3z"/>
-        </svg>
-      </button>
-
-      <button id="tool-direct-select" class="tool-btn" title="Selección directa (A)" aria-label="Selección directa (A)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z"/>
-        </svg>
-      </button>
-
-      <div class="tool-separator" role="separator" aria-hidden="true"></div>
-
-      <button id="tool-pen" class="tool-btn" title="Pluma (P)" aria-label="Pluma (P)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-          <path d="M2 2l7.586 7.586"/>
-          <circle cx="11" cy="11" r="2"/>
-        </svg>
-      </button>
-
-      <button id="tool-text" class="tool-btn" title="Texto (T)" aria-label="Texto (T)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="4 7 4 4 20 4 20 7"/>
-          <line x1="9" y1="20" x2="15" y2="20"/>
-          <line x1="12" y1="4" x2="12" y2="20"/>
-        </svg>
-      </button>
-
-      <div class="tool-separator" role="separator" aria-hidden="true"></div>
-
-      <button id="tool-line" class="tool-btn" title="Línea (L)" aria-label="Línea (L)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="5" y1="19" x2="19" y2="5"/>
-        </svg>
-      </button>
-
-      <button id="tool-rectangle" class="tool-btn" title="Rectángulo (R)" aria-label="Rectángulo (R)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        </svg>
-      </button>
-
-      <button id="tool-ellipse" class="tool-btn" title="Elipse (E)" aria-label="Elipse (E)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-        </svg>
-      </button>
-
-      <button id="tool-polygon" class="tool-btn" title="Polígono regular (Y)" aria-label="Polígono regular (Y)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
-        </svg>
-      </button>
-
-      <button id="tool-star" class="tool-btn" title="Estrella (S)" aria-label="Estrella (S)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-        </svg>
-      </button>
-
-      <div class="tool-separator" role="separator" aria-hidden="true"></div>
-
-      <button id="tool-pencil" class="tool-btn" title="Lápiz (B / N)" aria-label="Lápiz (B / N)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-          <path d="m15 5 4 4"/>
-        </svg>
-      </button>
-
-      <button id="tool-eyedropper" class="tool-btn" title="Cuentagotas (I)" aria-label="Cuentagotas (I)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m2 22 1-1h3l9-9"/>
-          <path d="M3 21v-3l9-9"/>
-          <path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>
-        </svg>
-      </button>
-
-      <div class="tool-separator" role="separator" aria-hidden="true"></div>
-
-      <button id="tool-artboard" class="tool-btn" title="Mesa de Trabajo (Shift+O)" aria-label="Mesa de Trabajo (Shift+O)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="5" width="14" height="14" rx="1"/>
-          <line x1="1" y1="5" x2="5" y2="5"/>
-          <line x1="19" y1="5" x2="23" y2="5"/>
-          <line x1="1" y1="19" x2="5" y2="19"/>
-          <line x1="19" y1="19" x2="23" y2="19"/>
-          <line x1="5" y1="1" x2="5" y2="5"/>
-          <line x1="5" y1="19" x2="5" y2="23"/>
-          <line x1="19" y1="1" x2="19" y2="5"/>
-          <line x1="19" y1="19" x2="19" y2="23"/>
-        </svg>
-      </button>
-
-      <button id="tool-hand" class="tool-btn" title="Mano (H)" aria-label="Mano (H)" aria-pressed="false">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v4"/>
-          <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7"/>
-          <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/>
-          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
-        </svg>
-      </button>
-    </aside>
-
-    <!-- 3. Área Principal con Canvas Adaptable -->
-    <main class="canvas-viewport" id="canvas-container">
-      <div id="ruler-corner" class="ruler-corner" title="Origen (0, 0) - Clic para centrar" aria-hidden="true">px</div>
-      <canvas id="ruler-horizontal" class="ruler ruler-horizontal" aria-hidden="true"></canvas>
-      <canvas id="ruler-vertical" class="ruler ruler-vertical" aria-hidden="true"></canvas>
-      <canvas id="viewport-canvas"></canvas>
-    </main>
-
-    <!-- 4. Panel Lateral Derecho (Propiedades y Capas) -->
-    <div id="panel-backdrop" class="panel-backdrop" hidden></div>
-    <aside id="properties-panel" class="properties-sidebar" aria-label="Panel lateral">
-      <div class="mobile-sheet-handle-bar">
-        <div class="mobile-sheet-pill" aria-hidden="true"></div>
-        <button type="button" id="btn-close-sheet" class="mobile-sheet-close" aria-label="Cerrar panel">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-      <div class="panel-tabs-header">
-        <div class="panel-tabs" role="tablist" aria-label="Pestañas de la barra lateral">
-          <button type="button" id="tab-btn-properties" class="panel-tab-btn active" role="tab" aria-selected="true" aria-controls="panel-tab-properties" tabindex="0">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="4" y1="21" x2="4" y2="14"></line>
-              <line x1="4" y1="10" x2="4" y2="3"></line>
-              <line x1="12" y1="21" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12" y2="3"></line>
-              <line x1="20" y1="21" x2="20" y2="16"></line>
-              <line x1="20" y1="12" x2="20" y2="3"></line>
-              <line x1="1" y1="14" x2="7" y2="14"></line>
-              <line x1="9" y1="8" x2="15" y2="8"></line>
-              <line x1="17" y1="16" x2="23" y2="16"></line>
-            </svg>
-            <span>Propiedades</span>
+        </summary>
+        <div class="mobile-section-items">
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-new">
+            <span class="item-label">Nuevo</span>
           </button>
-          <button type="button" id="tab-btn-layers" class="panel-tab-btn" role="tab" aria-selected="false" aria-controls="panel-tab-layers" tabindex="-1">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
-            </svg>
-            <span>Capas</span>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-open">
+            <span class="item-label">Abrir JSON…</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-save-json">
+            <span class="item-label">Guardar JSON…</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-place">
+            <span class="item-label">Colocar archivo…</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-export-modal">
+            <span class="item-label">Exportar…</span>
           </button>
         </div>
-      </div>
+      </details>
 
-      <div id="panel-tab-properties" class="panel-tab-content active" role="tabpanel" aria-labelledby="tab-btn-properties">
-        <div class="panel-header" style="display: none;">
-          <span id="panel-title" class="panel-title">PROPIEDADES</span>
+      <!-- Edición -->
+      <details class="mobile-drawer-section">
+        <summary class="mobile-section-header">
+          <span>Edición</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="mobile-section-items">
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-undo">
+            <span class="item-label">Deshacer</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-redo">
+            <span class="item-label">Rehacer</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-cut">
+            <span class="item-label">Cortar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-copy">
+            <span class="item-label">Copiar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-paste">
+            <span class="item-label">Pegar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-duplicate">
+            <span class="item-label">Duplicar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-delete">
+            <span class="item-label">Eliminar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#ctx-item-select-all">
+            <span class="item-label">Seleccionar todo</span>
+          </button>
         </div>
+      </details>
+
+      <!-- Objeto -->
+      <details class="mobile-drawer-section">
+        <summary class="mobile-section-header">
+          <span>Objeto</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="mobile-section-items">
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-group">
+            <span class="item-label">Agrupar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-ungroup">
+            <span class="item-label">Desagrupar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-bring-to-front">
+            <span class="item-label">Traer al frente</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-send-to-back">
+            <span class="item-label">Enviar al fondo</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-make-clip-mask">
+            <span class="item-label">Crear máscara de recorte</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-release-clip-mask">
+            <span class="item-label">Liberar máscara de recorte</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-outline-stroke">
+            <span class="item-label">Contornear trazado</span>
+          </button>
+        </div>
+      </details>
+
+      <!-- Vista -->
+      <details class="mobile-drawer-section">
+        <summary class="mobile-section-header">
+          <span>Vista</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="mobile-section-items">
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-in">
+            <span class="item-label">Acercar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-out">
+            <span class="item-label">Alejar</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-100">
+            <span class="item-label">Tamaño real 100%</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-zoom-fit">
+            <span class="item-label">Ajustar al lienzo</span>
+          </button>
+        </div>
+      </details>
+
+      <!-- Ayuda -->
+      <details class="mobile-drawer-section">
+        <summary class="mobile-section-header">
+          <span>Ayuda</span>
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </summary>
+        <div class="mobile-section-items">
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-shortcuts">
+            <span class="item-label">Atajos de teclado</span>
+          </button>
+          <button type="button" class="mobile-drawer-item" data-trigger="#menu-item-about">
+            <span class="item-label">Acerca de Vectedit</span>
+          </button>
+        </div>
+      </details>
+    </div>
+  </aside>
+
+  <!-- 2. Barra de Herramientas Izquierda (Vertical, solo iconos SVG con title y aria-label) -->
+  <aside class="tools-sidebar" role="toolbar" aria-label="Herramientas de dibujo">
+    <button id="tool-select" class="tool-btn active" title="Selección (V)" aria-label="Selección (V)"
+      aria-pressed="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3l7 18 3-7 7-3L3 3z" />
+      </svg>
+    </button>
+
+    <button id="tool-direct-select" class="tool-btn" title="Selección directa (A)" aria-label="Selección directa (A)"
+      aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z" />
+      </svg>
+    </button>
+
+    <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+    <button id="tool-pen" class="tool-btn" title="Pluma (P)" aria-label="Pluma (P)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19l7-7 3 3-7 7-3-3z" />
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+        <path d="M2 2l7.586 7.586" />
+        <circle cx="11" cy="11" r="2" />
+      </svg>
+    </button>
+
+    <button id="tool-text" class="tool-btn" title="Texto (T)" aria-label="Texto (T)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 7 4 4 20 4 20 7" />
+        <line x1="9" y1="20" x2="15" y2="20" />
+        <line x1="12" y1="4" x2="12" y2="20" />
+      </svg>
+    </button>
+
+    <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+    <button id="tool-line" class="tool-btn" title="Línea (L)" aria-label="Línea (L)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="19" x2="19" y2="5" />
+      </svg>
+    </button>
+
+    <button id="tool-rectangle" class="tool-btn" title="Rectángulo (R)" aria-label="Rectángulo (R)"
+      aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      </svg>
+    </button>
+
+    <button id="tool-ellipse" class="tool-btn" title="Elipse (E)" aria-label="Elipse (E)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9" />
+      </svg>
+    </button>
+
+    <button id="tool-polygon" class="tool-btn" title="Polígono regular (Y)" aria-label="Polígono regular (Y)"
+      aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" />
+      </svg>
+    </button>
+
+    <button id="tool-star" class="tool-btn" title="Estrella (S)" aria-label="Estrella (S)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polygon
+          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    </button>
+
+    <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+    <button id="tool-pencil" class="tool-btn" title="Lápiz (B / N)" aria-label="Lápiz (B / N)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        <path d="m15 5 4 4" />
+      </svg>
+    </button>
+
+    <button id="tool-eyedropper" class="tool-btn" title="Cuentagotas (I)" aria-label="Cuentagotas (I)"
+      aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="m2 22 1-1h3l9-9" />
+        <path d="M3 21v-3l9-9" />
+        <path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+      </svg>
+    </button>
+
+    <div class="tool-separator" role="separator" aria-hidden="true"></div>
+
+    <button id="tool-artboard" class="tool-btn" title="Mesa de Trabajo (Shift+O)" aria-label="Mesa de Trabajo (Shift+O)"
+      aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="5" width="14" height="14" rx="1" />
+        <line x1="1" y1="5" x2="5" y2="5" />
+        <line x1="19" y1="5" x2="23" y2="5" />
+        <line x1="1" y1="19" x2="5" y2="19" />
+        <line x1="19" y1="19" x2="23" y2="19" />
+        <line x1="5" y1="1" x2="5" y2="5" />
+        <line x1="5" y1="19" x2="5" y2="23" />
+        <line x1="19" y1="1" x2="19" y2="5" />
+        <line x1="19" y1="19" x2="19" y2="23" />
+      </svg>
+    </button>
+
+    <button id="tool-hand" class="tool-btn" title="Mano (H)" aria-label="Mano (H)" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v4" />
+        <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7" />
+        <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+        <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+      </svg>
+    </button>
+  </aside>
+
+  <!-- 3. Área Principal con Canvas Adaptable -->
+  <main class="canvas-viewport" id="canvas-container">
+    <div id="ruler-corner" class="ruler-corner" title="Origen (0, 0) - Clic para centrar" aria-hidden="true">px</div>
+    <canvas id="ruler-horizontal" class="ruler ruler-horizontal" aria-hidden="true"></canvas>
+    <canvas id="ruler-vertical" class="ruler ruler-vertical" aria-hidden="true"></canvas>
+    <canvas id="viewport-canvas"></canvas>
+  </main>
+
+  <!-- 4. Panel Lateral Derecho (Propiedades y Capas) -->
+  <div id="panel-backdrop" class="panel-backdrop" hidden></div>
+  <aside id="properties-panel" class="properties-sidebar" aria-label="Panel lateral">
+    <div class="mobile-sheet-handle-bar">
+      <div class="mobile-sheet-pill" aria-hidden="true"></div>
+      <button type="button" id="btn-close-sheet" class="mobile-sheet-close" aria-label="Cerrar panel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+    <div class="panel-tabs-header">
+      <div class="panel-tabs" role="tablist" aria-label="Pestañas de la barra lateral">
+        <button type="button" id="tab-btn-properties" class="panel-tab-btn active" role="tab" aria-selected="true"
+          aria-controls="panel-tab-properties" tabindex="0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="4" y1="21" x2="4" y2="14"></line>
+            <line x1="4" y1="10" x2="4" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12" y2="3"></line>
+            <line x1="20" y1="21" x2="20" y2="16"></line>
+            <line x1="20" y1="12" x2="20" y2="3"></line>
+            <line x1="1" y1="14" x2="7" y2="14"></line>
+            <line x1="9" y1="8" x2="15" y2="8"></line>
+            <line x1="17" y1="16" x2="23" y2="16"></line>
+          </svg>
+          <span>Propiedades</span>
+        </button>
+        <button type="button" id="tab-btn-layers" class="panel-tab-btn" role="tab" aria-selected="false"
+          aria-controls="panel-tab-layers" tabindex="-1">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span>Capas</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="panel-tab-properties" class="panel-tab-content active" role="tabpanel"
+      aria-labelledby="tab-btn-properties">
+      <div class="panel-header" style="display: none;">
+        <span id="panel-title" class="panel-title">PROPIEDADES</span>
+      </div>
 
       <details class="collapsible-section" id="section-transform" open style="display: none;">
         <summary class="section-header" tabindex="0">
           <span class="section-title">Transformación</span>
-          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </summary>
@@ -682,14 +762,16 @@
           <div class="control-group">
             <label for="input-object-width">Ancho</label>
             <div class="input-number-wrapper">
-              <input type="number" id="input-object-width" min="0.1" step="0.0001" aria-label="Ancho del objeto en píxeles">
+              <input type="number" id="input-object-width" min="0.1" step="0.0001"
+                aria-label="Ancho del objeto en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
           <div class="control-group">
             <label for="input-object-height">Alto</label>
             <div class="input-number-wrapper">
-              <input type="number" id="input-object-height" min="0.1" step="0.0001" aria-label="Alto del objeto en píxeles">
+              <input type="number" id="input-object-height" min="0.1" step="0.0001"
+                aria-label="Alto del objeto en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
@@ -703,7 +785,8 @@
           <div class="control-group" id="group-corner-radius" style="display: none;">
             <label for="input-corner-radius">Radio</label>
             <div class="input-number-wrapper">
-              <input type="number" id="input-corner-radius" min="0" step="1" aria-label="Radio de esquina del rectángulo en píxeles">
+              <input type="number" id="input-corner-radius" min="0" step="1"
+                aria-label="Radio de esquina del rectángulo en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
@@ -714,7 +797,8 @@
       <details class="collapsible-section" id="section-appearance" open>
         <summary class="section-header" tabindex="0">
           <span class="section-title">Apariencia</span>
-          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </summary>
@@ -722,7 +806,8 @@
           <div id="group-fill" style="display: flex; flex-direction: column; gap: 6px;">
             <div class="control-group">
               <label for="select-fill-mode">Relleno</label>
-              <select id="select-fill-mode" class="control-select" style="width: auto; min-width: 95px; padding: 2px 6px; font-size: 11px;" aria-label="Modo de relleno">
+              <select id="select-fill-mode" class="control-select"
+                style="width: auto; min-width: 95px; padding: 2px 6px; font-size: 11px;" aria-label="Modo de relleno">
                 <option value="solid">Sólido</option>
                 <option value="linear">Lineal</option>
                 <option value="radial">Radial</option>
@@ -731,14 +816,19 @@
             </div>
 
             <!-- Controles Relleno Sólido -->
-            <div class="color-composite-group" id="fill-solid-controls" style="display: flex; justify-content: flex-end;">
+            <div class="color-composite-group" id="fill-solid-controls"
+              style="display: flex; justify-content: flex-end;">
               <div class="color-swatch-wrapper" id="swatch-fill-wrapper" title="Elegir color de relleno">
                 <div class="color-swatch-preview" id="swatch-fill-preview"></div>
-                <input type="color" id="input-fill" title="Elegir color de relleno" aria-label="Elegir color de relleno">
+                <input type="color" id="input-fill" title="Elegir color de relleno"
+                  aria-label="Elegir color de relleno">
               </div>
-              <input type="text" id="input-fill-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de relleno">
-              <button type="button" id="btn-fill-none" class="btn-color-none" aria-pressed="false" title="Sin relleno" aria-label="Sin relleno">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <input type="text" id="input-fill-hex" class="input-hex" maxlength="7" spellcheck="false"
+                placeholder="#000000" aria-label="Color hexadecimal de relleno">
+              <button type="button" id="btn-fill-none" class="btn-color-none" aria-pressed="false" title="Sin relleno"
+                aria-label="Sin relleno">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                  aria-hidden="true">
                   <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
                   <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
                 </svg>
@@ -762,24 +852,32 @@
                     <div class="color-swatch-preview" id="swatch-stop-preview"></div>
                     <input type="color" id="input-stop-color" title="Color de parada activa">
                   </div>
-                  <input type="text" id="input-stop-hex" class="input-hex" maxlength="7" style="font-size: 11px; padding: 2px 4px; height: 22px;" placeholder="#000000" aria-label="Color hex parada activa">
+                  <input type="text" id="input-stop-hex" class="input-hex" maxlength="7"
+                    style="font-size: 11px; padding: 2px 4px; height: 22px;" placeholder="#000000"
+                    aria-label="Color hex parada activa">
                 </div>
 
                 <div class="input-number-wrapper" style="width: 58px;" title="Posición de parada">
-                  <input type="number" id="input-stop-offset" min="0" max="100" step="1" value="0" aria-label="Posición de parada">
+                  <input type="number" id="input-stop-offset" min="0" max="100" step="1" value="0"
+                    aria-label="Posición de parada">
                   <span class="input-unit" aria-hidden="true">%</span>
                 </div>
 
                 <div class="input-number-wrapper" style="width: 52px;" title="Opacidad de parada">
-                  <input type="number" id="input-stop-opacity" min="0" max="100" step="1" value="100" aria-label="Opacidad de parada">
+                  <input type="number" id="input-stop-opacity" min="0" max="100" step="1" value="100"
+                    aria-label="Opacidad de parada">
                   <span class="input-unit" aria-hidden="true">%</span>
                 </div>
 
-                <button type="button" id="btn-gradient-flip" class="btn-color-none" style="width: 24px; height: 22px; font-size: 12px;" title="Invertir degradado" aria-label="Invertir degradado">
+                <button type="button" id="btn-gradient-flip" class="btn-color-none"
+                  style="width: 24px; height: 22px; font-size: 12px;" title="Invertir degradado"
+                  aria-label="Invertir degradado">
                   ⇄
                 </button>
 
-                <button type="button" id="btn-delete-stop" class="btn-color-none" style="width: 24px; height: 22px; font-size: 12px;" title="Eliminar parada" aria-label="Eliminar parada">
+                <button type="button" id="btn-delete-stop" class="btn-color-none"
+                  style="width: 24px; height: 22px; font-size: 12px;" title="Eliminar parada"
+                  aria-label="Eliminar parada">
                   ✕
                 </button>
               </div>
@@ -792,9 +890,12 @@
                 <div class="color-swatch-preview" id="swatch-stroke-preview"></div>
                 <input type="color" id="input-stroke" title="Elegir color de borde" aria-label="Elegir color de borde">
               </div>
-              <input type="text" id="input-stroke-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de borde">
-              <button type="button" id="btn-stroke-none" class="btn-color-none" aria-pressed="false" title="Sin borde" aria-label="Sin borde">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <input type="text" id="input-stroke-hex" class="input-hex" maxlength="7" spellcheck="false"
+                placeholder="#000000" aria-label="Color hexadecimal de borde">
+              <button type="button" id="btn-stroke-none" class="btn-color-none" aria-pressed="false" title="Sin borde"
+                aria-label="Sin borde">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                  aria-hidden="true">
                   <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
                   <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
                 </svg>
@@ -812,7 +913,8 @@
             <label for="input-opacity">Opacidad</label>
             <div class="range-control">
               <input type="range" id="input-opacity" min="0" max="100" step="1" value="100" aria-label="Opacidad">
-              <input type="number" id="input-opacity-value" min="0" max="100" step="1" value="100" aria-label="Porcentaje de opacidad">
+              <input type="number" id="input-opacity-value" min="0" max="100" step="1" value="100"
+                aria-label="Porcentaje de opacidad">
               <span class="range-unit" aria-hidden="true">%</span>
             </div>
           </div>
@@ -836,9 +938,11 @@
           <!-- Efecto de Sombra Paralela (Drop Shadow) -->
           <div id="group-drop-shadow" class="shadow-group-container">
             <div class="control-group">
-              <label for="check-drop-shadow" class="checkbox-label" style="width: 100%; justify-content: space-between;">
+              <label for="check-drop-shadow" class="checkbox-label"
+                style="width: 100%; justify-content: space-between;">
                 <span>Sombra paralela</span>
-                <input type="checkbox" id="check-drop-shadow" class="control-checkbox" aria-label="Activar sombra paralela">
+                <input type="checkbox" id="check-drop-shadow" class="control-checkbox"
+                  aria-label="Activar sombra paralela">
               </label>
             </div>
             <div id="group-drop-shadow-controls" class="shadow-controls-container" style="display: none;">
@@ -847,10 +951,13 @@
                 <label for="input-shadow-hex">Color</label>
                 <div class="color-composite-group">
                   <div class="color-swatch-wrapper" id="swatch-shadow-wrapper" title="Elegir color de sombra">
-                    <div class="color-swatch-preview" id="swatch-shadow-preview" style="background-color: #000000;"></div>
-                    <input type="color" id="input-shadow-color" value="#000000" title="Color de sombra" aria-label="Color de sombra">
+                    <div class="color-swatch-preview" id="swatch-shadow-preview" style="background-color: #000000;">
+                    </div>
+                    <input type="color" id="input-shadow-color" value="#000000" title="Color de sombra"
+                      aria-label="Color de sombra">
                   </div>
-                  <input type="text" id="input-shadow-hex" class="input-hex" value="#000000" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Hexadecimal de color de sombra">
+                  <input type="text" id="input-shadow-hex" class="input-hex" value="#000000" maxlength="7"
+                    spellcheck="false" placeholder="#000000" aria-label="Hexadecimal de color de sombra">
                 </div>
               </div>
 
@@ -858,26 +965,30 @@
               <div class="control-group">
                 <label for="input-shadow-opacity">Opacidad</label>
                 <div class="range-control">
-                  <input type="range" id="input-shadow-opacity" min="0" max="100" step="1" value="50" aria-label="Opacidad de sombra">
-                  <input type="number" id="input-shadow-opacity-value" min="0" max="100" step="1" value="50" aria-label="Porcentaje de opacidad de sombra">
+                  <input type="range" id="input-shadow-opacity" min="0" max="100" step="1" value="50"
+                    aria-label="Opacidad de sombra">
+                  <input type="number" id="input-shadow-opacity-value" min="0" max="100" step="1" value="50"
+                    aria-label="Porcentaje de opacidad de sombra">
                   <span class="range-unit" aria-hidden="true">%</span>
                 </div>
               </div>
 
               <!-- Fila: Desplazamiento X -->
               <div class="control-group">
-                <label for="input-shadow-offset-x">Desplazamiento X</label>
+                <label for="input-shadow-offset-x">X</label>
                 <div class="input-number-wrapper">
-                  <input type="number" id="input-shadow-offset-x" value="0" step="1" aria-label="Desplazamiento horizontal de sombra">
+                  <input type="number" id="input-shadow-offset-x" value="0" step="1"
+                    aria-label="Desplazamiento horizontal de sombra">
                   <span class="input-unit" aria-hidden="true">px</span>
                 </div>
               </div>
 
               <!-- Fila: Desplazamiento Y -->
               <div class="control-group">
-                <label for="input-shadow-offset-y">Desplazamiento Y</label>
+                <label for="input-shadow-offset-y">Y</label>
                 <div class="input-number-wrapper">
-                  <input type="number" id="input-shadow-offset-y" value="4" step="1" aria-label="Desplazamiento vertical de sombra">
+                  <input type="number" id="input-shadow-offset-y" value="4" step="1"
+                    aria-label="Desplazamiento vertical de sombra">
                   <span class="input-unit" aria-hidden="true">px</span>
                 </div>
               </div>
@@ -886,7 +997,8 @@
               <div class="control-group">
                 <label for="input-shadow-blur">Desenfoque</label>
                 <div class="input-number-wrapper">
-                  <input type="number" id="input-shadow-blur" min="0" max="200" step="1" value="8" aria-label="Radio de desenfoque de sombra">
+                  <input type="number" id="input-shadow-blur" min="0" max="200" step="1" value="8"
+                    aria-label="Radio de desenfoque de sombra">
                   <span class="input-unit" aria-hidden="true">px</span>
                 </div>
               </div>
@@ -899,7 +1011,8 @@
       <details class="collapsible-section" id="section-artboard" open>
         <summary class="section-header" tabindex="0">
           <span class="section-title">Mesa de trabajo</span>
-          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </summary>
@@ -920,20 +1033,23 @@
           <div class="control-group">
             <label for="input-artboard-width">Ancho</label>
             <div class="input-number-wrapper">
-              <input type="number" id="input-artboard-width" min="1" step="1" value="1920" aria-label="Ancho de la mesa de trabajo en píxeles">
+              <input type="number" id="input-artboard-width" min="1" step="1" value="1920"
+                aria-label="Ancho de la mesa de trabajo en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
           <div class="control-group">
             <label for="input-artboard-height">Alto</label>
             <div class="input-number-wrapper">
-              <input type="number" id="input-artboard-height" min="1" step="1" value="1080" aria-label="Alto de la mesa de trabajo en píxeles">
+              <input type="number" id="input-artboard-height" min="1" step="1" value="1080"
+                aria-label="Alto de la mesa de trabajo en píxeles">
               <span class="input-unit" aria-hidden="true">px</span>
             </div>
           </div>
           <div class="control-group">
             <label for="check-artboard-ratio" class="checkbox-label">
-              <input type="checkbox" id="check-artboard-ratio" class="control-checkbox" aria-label="Bloquear proporción del tamaño de la mesa de trabajo">
+              <input type="checkbox" id="check-artboard-ratio" class="control-checkbox"
+                aria-label="Bloquear proporción del tamaño de la mesa de trabajo">
               <span>Bloquear proporción</span>
             </label>
           </div>
@@ -947,7 +1063,8 @@
         <details class="collapsible-section" id="section-polygon" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Polígono Regular</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
@@ -955,13 +1072,15 @@
             <div class="control-group">
               <label for="input-polygon-sides">Lados</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-polygon-sides" min="3" max="100" step="1" value="5" aria-label="Cantidad de lados del polígono">
+                <input type="number" id="input-polygon-sides" min="3" max="100" step="1" value="5"
+                  aria-label="Cantidad de lados del polígono">
               </div>
             </div>
             <div class="control-group">
               <label for="input-polygon-radius">Radio</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-polygon-radius" min="1" step="1" aria-label="Radio del polígono en píxeles">
+                <input type="number" id="input-polygon-radius" min="1" step="1"
+                  aria-label="Radio del polígono en píxeles">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
             </div>
@@ -972,7 +1091,8 @@
         <details class="collapsible-section" id="section-star" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Estrella</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
@@ -980,20 +1100,23 @@
             <div class="control-group">
               <label for="input-star-points">Puntas</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-star-points" min="3" max="100" step="1" value="5" aria-label="Cantidad de puntas de la estrella">
+                <input type="number" id="input-star-points" min="3" max="100" step="1" value="5"
+                  aria-label="Cantidad de puntas de la estrella">
               </div>
             </div>
             <div class="control-group">
               <label for="input-star-outer-radius">Radio exterior</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-star-outer-radius" min="1" step="1" aria-label="Radio exterior de la estrella en píxeles">
+                <input type="number" id="input-star-outer-radius" min="1" step="1"
+                  aria-label="Radio exterior de la estrella en píxeles">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
             </div>
             <div class="control-group">
               <label for="input-star-inner-radius">Radio interior</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-star-inner-radius" min="1" step="1" aria-label="Radio interior de la estrella en píxeles">
+                <input type="number" id="input-star-inner-radius" min="1" step="1"
+                  aria-label="Radio interior de la estrella en píxeles">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
             </div>
@@ -1004,14 +1127,16 @@
         <details class="collapsible-section" id="section-typography" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Tipografía</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
           <div class="section-content">
             <div class="control-group">
               <label for="input-text-content">Contenido</label>
-              <input type="text" id="input-text-content" class="control-input" placeholder="Texto" aria-label="Contenido del texto">
+              <input type="text" id="input-text-content" class="control-input" placeholder="Texto"
+                aria-label="Contenido del texto">
             </div>
             <div class="control-group">
               <label for="select-font-family">Fuente</label>
@@ -1039,14 +1164,16 @@
             <div class="control-group">
               <label for="input-line-height">Interlineado</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-line-height" min="1" max="1000" step="1" placeholder="Auto" aria-label="Interlineado o espacio entre líneas">
+                <input type="number" id="input-line-height" min="1" max="1000" step="1" placeholder="Auto"
+                  aria-label="Interlineado o espacio entre líneas">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
             </div>
             <div class="control-group">
               <label for="input-letter-spacing">Interletrado</label>
               <div class="input-number-wrapper">
-                <input type="number" id="input-letter-spacing" min="-100" max="500" step="0.5" value="0" aria-label="Interletrado o espacio entre caracteres">
+                <input type="number" id="input-letter-spacing" min="-100" max="500" step="0.5" value="0"
+                  aria-label="Interletrado o espacio entre caracteres">
                 <span class="input-unit" aria-hidden="true">px</span>
               </div>
             </div>
@@ -1080,22 +1207,28 @@
               </select>
             </div>
             <div class="panel-icon-grid text-align-grid" role="group" aria-label="Alineación rápida de texto">
-              <button id="btn-text-align-left" class="panel-icon-btn active" title="Alinear a la izquierda" aria-label="Alinear a la izquierda">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-text-align-left" class="panel-icon-btn active" title="Alinear a la izquierda"
+                aria-label="Alinear a la izquierda">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="6" x2="21" y2="6"></line>
                   <line x1="3" y1="12" x2="15" y2="12"></line>
                   <line x1="3" y1="18" x2="18" y2="18"></line>
                 </svg>
               </button>
-              <button id="btn-text-align-center" class="panel-icon-btn" title="Centrar texto" aria-label="Centrar texto">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-text-align-center" class="panel-icon-btn" title="Centrar texto"
+                aria-label="Centrar texto">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="6" x2="21" y2="6"></line>
                   <line x1="6" y1="12" x2="18" y2="12"></line>
                   <line x1="4" y1="18" x2="20" y2="18"></line>
                 </svg>
               </button>
-              <button id="btn-text-align-right" class="panel-icon-btn" title="Alinear a la derecha" aria-label="Alinear a la derecha">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-text-align-right" class="panel-icon-btn" title="Alinear a la derecha"
+                aria-label="Alinear a la derecha">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="6" x2="21" y2="6"></line>
                   <line x1="9" y1="12" x2="21" y2="12"></line>
                   <line x1="6" y1="18" x2="21" y2="18"></line>
@@ -1107,11 +1240,15 @@
               <div class="color-composite-group">
                 <div class="color-swatch-wrapper" id="swatch-text-color-wrapper" title="Elegir color de texto">
                   <div class="color-swatch-preview" id="swatch-text-color-preview"></div>
-                  <input type="color" id="input-text-color" title="Elegir color de texto" aria-label="Elegir color de texto">
+                  <input type="color" id="input-text-color" title="Elegir color de texto"
+                    aria-label="Elegir color de texto">
                 </div>
-                <input type="text" id="input-text-color-hex" class="input-hex" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Color hexadecimal de texto">
-                <button type="button" id="btn-text-color-none" class="btn-color-none" aria-pressed="false" title="Sin color" aria-label="Sin color">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <input type="text" id="input-text-color-hex" class="input-hex" maxlength="7" spellcheck="false"
+                  placeholder="#000000" aria-label="Color hexadecimal de texto">
+                <button type="button" id="btn-text-color-none" class="btn-color-none" aria-pressed="false"
+                  title="Sin color" aria-label="Sin color">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                    aria-hidden="true">
                     <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" />
                     <line x1="2" y1="14" x2="14" y2="2" stroke="#ef4444" stroke-width="1.5" />
                   </svg>
@@ -1125,7 +1262,8 @@
         <details class="collapsible-section" id="section-path-point" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Punto de Trazado</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
@@ -1133,33 +1271,41 @@
             <div class="control-group">
               <label>Tipo de vértice</label>
               <div class="panel-icon-grid" role="group" aria-label="Tipo de vértice">
-                <button id="btn-point-corner" class="panel-icon-btn" title="Esquina (Manejadores independientes)" aria-label="Esquina">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
-                    <polyline points="4 20 9 15"/>
-                    <polyline points="15 9 20 4"/>
+                <button id="btn-point-corner" class="panel-icon-btn" title="Esquina (Manejadores independientes)"
+                  aria-label="Esquina">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="6" height="6" fill="currentColor" />
+                    <polyline points="4 20 9 15" />
+                    <polyline points="15 9 20 4" />
                   </svg>
                 </button>
-                <button id="btn-point-smooth" class="panel-icon-btn" title="Suavizado (Colineal, longitudes independientes)" aria-label="Suavizado">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="3" fill="currentColor"/>
-                    <line x1="4" y1="12" x2="20" y2="12"/>
-                    <circle cx="4" cy="12" r="1.5"/>
-                    <circle cx="20" cy="12" r="1.5"/>
+                <button id="btn-point-smooth" class="panel-icon-btn"
+                  title="Suavizado (Colineal, longitudes independientes)" aria-label="Suavizado">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3" fill="currentColor" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <circle cx="4" cy="12" r="1.5" />
+                    <circle cx="20" cy="12" r="1.5" />
                   </svg>
                 </button>
-                <button id="btn-point-symmetric" class="panel-icon-btn" title="Simétrico (Colineal, longitudes iguales)" aria-label="Simétrico">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polygon points="12 8 16 12 12 16 8 12" fill="currentColor"/>
-                    <line x1="3" y1="12" x2="21" y2="12"/>
-                    <circle cx="3" cy="12" r="1.5"/>
-                    <circle cx="21" cy="12" r="1.5"/>
+                <button id="btn-point-symmetric" class="panel-icon-btn" title="Simétrico (Colineal, longitudes iguales)"
+                  aria-label="Simétrico">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="12 8 16 12 12 16 8 12" fill="currentColor" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <circle cx="3" cy="12" r="1.5" />
+                    <circle cx="21" cy="12" r="1.5" />
                   </svg>
                 </button>
               </div>
             </div>
             <div class="control-group">
-              <button id="btn-delete-anchor" class="panel-btn-danger" title="Eliminar ancla seleccionada" aria-label="Eliminar ancla" style="width: 100%; padding: 6px; font-size: 12px; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); background: var(--bg-control); color: var(--text-primary); cursor: pointer;">
+              <button id="btn-delete-anchor" class="panel-btn-danger" title="Eliminar ancla seleccionada"
+                aria-label="Eliminar ancla"
+                style="width: 100%; padding: 6px; font-size: 12px; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); background: var(--bg-control); color: var(--text-primary); cursor: pointer;">
                 Eliminar ancla
               </button>
             </div>
@@ -1170,63 +1316,78 @@
         <details class="collapsible-section" id="section-align" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Alinear</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
           <div class="section-content">
             <div class="panel-icon-grid" role="group" aria-label="Alineación y distribución de figuras">
-              <button id="btn-align-left" class="panel-icon-btn" title="Alinear a la izquierda" aria-label="Alinear a la izquierda">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-align-left" class="panel-icon-btn" title="Alinear a la izquierda"
+                aria-label="Alinear a la izquierda">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="4" y1="2" x2="4" y2="22"></line>
                   <rect x="4" y="5" width="12" height="5" rx="1"></rect>
                   <rect x="4" y="14" width="8" height="5" rx="1"></rect>
                 </svg>
               </button>
-              <button id="btn-align-center-h" class="panel-icon-btn" title="Centrar horizontalmente" aria-label="Centrar horizontalmente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-align-center-h" class="panel-icon-btn" title="Centrar horizontalmente"
+                aria-label="Centrar horizontalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 2"></line>
                   <rect x="5" y="5" width="14" height="5" rx="1"></rect>
                   <rect x="8" y="14" width="8" height="5" rx="1"></rect>
                 </svg>
               </button>
-              <button id="btn-align-right" class="panel-icon-btn" title="Alinear a la derecha" aria-label="Alinear a la derecha">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-align-right" class="panel-icon-btn" title="Alinear a la derecha"
+                aria-label="Alinear a la derecha">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="20" y1="2" x2="20" y2="22"></line>
                   <rect x="8" y="5" width="12" height="5" rx="1"></rect>
                   <rect x="12" y="14" width="8" height="5" rx="1"></rect>
                 </svg>
               </button>
-              <button id="btn-distribute-h" class="panel-icon-btn" title="Distribuir horizontalmente" aria-label="Distribuir horizontalmente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-distribute-h" class="panel-icon-btn" title="Distribuir horizontalmente"
+                aria-label="Distribuir horizontalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="3" x2="3" y2="21"></line>
                   <line x1="21" y1="3" x2="21" y2="21"></line>
                   <rect x="8.5" y="6" width="7" height="12" rx="1"></rect>
                 </svg>
               </button>
               <button id="btn-align-top" class="panel-icon-btn" title="Alinear arriba" aria-label="Alinear arriba">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="2" y1="4" x2="22" y2="4"></line>
                   <rect x="5" y="4" width="5" height="12" rx="1"></rect>
                   <rect x="14" y="4" width="5" height="8" rx="1"></rect>
                 </svg>
               </button>
-              <button id="btn-align-center-v" class="panel-icon-btn" title="Centrar verticalmente" aria-label="Centrar verticalmente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-align-center-v" class="panel-icon-btn" title="Centrar verticalmente"
+                aria-label="Centrar verticalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="2" y1="12" x2="22" y2="12" stroke-dasharray="2 2"></line>
                   <rect x="5" y="5" width="5" height="14" rx="1"></rect>
                   <rect x="14" y="8" width="5" height="8" rx="1"></rect>
                 </svg>
               </button>
               <button id="btn-align-bottom" class="panel-icon-btn" title="Alinear abajo" aria-label="Alinear abajo">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="2" y1="20" x2="22" y2="20"></line>
                   <rect x="5" y="8" width="5" height="12" rx="1"></rect>
                   <rect x="14" y="12" width="5" height="8" rx="1"></rect>
                 </svg>
               </button>
-              <button id="btn-distribute-v" class="panel-icon-btn" title="Distribuir verticalmente" aria-label="Distribuir verticalmente">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="btn-distribute-v" class="panel-icon-btn" title="Distribuir verticalmente"
+                aria-label="Distribuir verticalmente">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="3" x2="21" y2="3"></line>
                   <line x1="3" y1="21" x2="21" y2="21"></line>
                   <rect x="6" y="8.5" width="12" height="7" rx="1"></rect>
@@ -1240,40 +1401,53 @@
         <details class="collapsible-section" id="section-pathfinder" open style="display: none;">
           <summary class="section-header" tabindex="0">
             <span class="section-title">Pathfinder</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
           <div class="section-content">
             <div class="panel-icon-grid" role="group" aria-label="Operaciones booleanas de trazado">
-              <button id="btn-pathfinder-union" class="panel-icon-btn" title="Unir (Fusionar figuras)" aria-label="Unir">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z" fill="currentColor" fill-opacity="0.25"/>
-                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z"/>
+              <button id="btn-pathfinder-union" class="panel-icon-btn" title="Unir (Fusionar figuras)"
+                aria-label="Unir">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path
+                    d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z"
+                    fill="currentColor" fill-opacity="0.25" />
+                  <path
+                    d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2z" />
                 </svg>
               </button>
-              <button id="btn-pathfinder-subtract" class="panel-icon-btn" title="Sustraer (Resta figuras superiores de la inferior)" aria-label="Sustraer">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z" fill="currentColor" fill-opacity="0.25"/>
-                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z"/>
-                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
+              <button id="btn-pathfinder-subtract" class="panel-icon-btn"
+                title="Sustraer (Resta figuras superiores de la inferior)" aria-label="Sustraer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z"
+                    fill="currentColor" fill-opacity="0.25" />
+                  <path d="M15 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h5v-6a2 2 0 0 1 2-2h6V4a2 2 0 0 0-2-2z" />
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2" />
                 </svg>
               </button>
-              <button id="btn-pathfinder-intersect" class="panel-icon-btn" title="Intersecar (Conservar solape común)" aria-label="Intersecar">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="2" y="2" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
-                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2"/>
-                  <rect x="9" y="9" width="6" height="6" fill="currentColor" fill-opacity="0.35"/>
-                  <rect x="9" y="9" width="6" height="6"/>
+              <button id="btn-pathfinder-intersect" class="panel-icon-btn" title="Intersecar (Conservar solape común)"
+                aria-label="Intersecar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="2" width="13" height="13" rx="2" stroke-dasharray="2 2" />
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke-dasharray="2 2" />
+                  <rect x="9" y="9" width="6" height="6" fill="currentColor" fill-opacity="0.35" />
+                  <rect x="9" y="9" width="6" height="6" />
                 </svg>
               </button>
-              <button id="btn-pathfinder-exclude" class="panel-icon-btn" title="Excluir (Diferencia simétrica / XOR)" aria-label="Excluir">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="2" y="2" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25"/>
-                  <rect x="9" y="9" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25"/>
-                  <rect x="9" y="9" width="6" height="6" fill="#1b1b1f"/>
-                  <rect x="2" y="2" width="13" height="13" rx="2"/>
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <button id="btn-pathfinder-exclude" class="panel-icon-btn" title="Excluir (Diferencia simétrica / XOR)"
+                aria-label="Excluir">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="2" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25" />
+                  <rect x="9" y="9" width="13" height="13" rx="2" fill="currentColor" fill-opacity="0.25" />
+                  <rect x="9" y="9" width="6" height="6" fill="#1b1b1f" />
+                  <rect x="2" y="2" width="13" height="13" rx="2" />
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
                 </svg>
               </button>
             </div>
@@ -1284,25 +1458,30 @@
         <details class="collapsible-section" id="section-order" open>
           <summary class="section-header" tabindex="0">
             <span class="section-title">Orden</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
           <div class="section-content">
             <div class="panel-btn-group">
-              <button id="btn-bring-to-front" class="panel-btn" title="Traer al frente (Ctrl+Shift+])" aria-label="Traer al frente">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                  <polyline points="2 17 12 22 22 17"/>
-                  <polyline points="2 12 12 17 22 12"/>
+              <button id="btn-bring-to-front" class="panel-btn" title="Traer al frente (Ctrl+Shift+])"
+                aria-label="Traer al frente">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                  <polyline points="2 17 12 22 22 17" />
+                  <polyline points="2 12 12 17 22 12" />
                 </svg>
                 <span>Al frente</span>
               </button>
-              <button id="btn-send-to-back" class="panel-btn" title="Enviar al fondo (Ctrl+Shift+[)" aria-label="Enviar al fondo">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="2 12 12 17 22 12"/>
-                  <polyline points="2 7 12 12 22 7"/>
-                  <polygon points="12 22 2 17 12 12 22 17 12 22"/>
+              <button id="btn-send-to-back" class="panel-btn" title="Enviar al fondo (Ctrl+Shift+[)"
+                aria-label="Enviar al fondo">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="2 12 12 17 22 12" />
+                  <polyline points="2 7 12 12 22 7" />
+                  <polygon points="12 22 2 17 12 12 22 17 12 22" />
                 </svg>
                 <span>Al fondo</span>
               </button>
@@ -1314,33 +1493,39 @@
         <details class="collapsible-section" id="section-actions" open>
           <summary class="section-header" tabindex="0">
             <span class="section-title">Acciones</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
           <div class="section-content">
             <div class="panel-btn-group">
               <button id="btn-duplicate" class="panel-btn" title="Duplicar (Ctrl+D)" aria-label="Duplicar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
                 <span>Duplicar</span>
               </button>
-              <button id="btn-delete-selection" class="panel-btn panel-btn-danger" title="Eliminar selección (Supr)" aria-label="Eliminar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                  <path d="M10 11v6"/>
-                  <path d="M14 11v6"/>
+              <button id="btn-delete-selection" class="panel-btn panel-btn-danger" title="Eliminar selección (Supr)"
+                aria-label="Eliminar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
                 </svg>
                 <span>Eliminar</span>
               </button>
             </div>
             <div class="panel-btn-group" style="margin-top: 6px;">
-              <button type="button" id="btn-outline-stroke" class="panel-btn" title="Contornear trazado (Ctrl+Shift+O)" aria-label="Contornear trazado">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M7 17l9.2-9.2M17 17V7H7"/>
+              <button type="button" id="btn-outline-stroke" class="panel-btn" title="Contornear trazado (Ctrl+Shift+O)"
+                aria-label="Contornear trazado">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 17l9.2-9.2M17 17V7H7" />
                 </svg>
                 <span>Contornear trazado</span>
               </button>
@@ -1352,7 +1537,8 @@
         <details class="collapsible-section" id="section-stroke" open>
           <summary class="section-header" tabindex="0">
             <span class="section-title">Trazo</span>
-            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </summary>
@@ -1385,514 +1571,528 @@
           </div>
         </details>
       </div>
-      </div>
+    </div>
 
-      <!-- Contenido de pestaña Capas -->
-      <div id="panel-tab-layers" class="panel-tab-content" role="tabpanel" aria-labelledby="tab-btn-layers" style="display: none;">
-        <div class="layers-toolbar" role="toolbar" aria-label="Acciones de apilado y capas">
-          <div class="layers-toolbar-actions">
-            <button type="button" id="btn-add-layer" class="layers-tool-btn" title="Nueva capa" aria-label="Nueva capa">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
-            <div class="layers-tool-separator" role="separator" aria-hidden="true"></div>
-            <button type="button" id="btn-layer-move-up" class="layers-tool-btn" title="Subir nivel / Traer adelante" aria-label="Subir nivel" disabled>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="18 15 12 9 6 15"></polyline>
-              </svg>
-            </button>
-            <button type="button" id="btn-layer-move-down" class="layers-tool-btn" title="Bajar nivel / Enviar atrás" aria-label="Bajar nivel" disabled>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-            <div class="layers-tool-separator" role="separator" aria-hidden="true"></div>
-            <button type="button" id="btn-layer-delete" class="layers-tool-btn layers-btn-danger" title="Eliminar selección (Supr)" aria-label="Eliminar elemento" disabled>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6"/>
-                <path d="M14 11v6"/>
-              </svg>
-            </button>
-          </div>
-          <span id="layers-count-badge" class="layers-count-badge">0 elementos</span>
-        </div>
-
-        <div id="layers-tree-container" class="layers-tree-container">
-          <div id="layers-tree" class="layers-tree" role="tree" aria-label="Árbol de capas y objetos"></div>
-          <div id="layers-empty-state" class="layers-empty-state" style="display: none;">
-            <span>No hay figuras en el documento</span>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- 5. Barra de Estado Inferior -->
-    <footer class="editor-footer" role="status" aria-live="polite">
-      <div class="status-left">
-        <div class="status-indicator">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="status-tool-label">Modo: Selección</span>
-        </div>
-        <span class="separator" aria-hidden="true">|</span>
-        <span id="status-shapes-count" class="status-shapes-count">0 figuras</span>
-        <span id="status-selection-separator" class="separator" aria-hidden="true" style="display: none;">|</span>
-        <span id="status-selection-info" class="status-selection-info" style="display: none;"></span>
-      </div>
-      <div class="status-right">
-        <div id="status-autosave-container" class="status-autosave-container is-saved" title="Autoguardado local activo" aria-live="polite">
-          <span class="status-autosave-dot" aria-hidden="true">●</span>
-          <span id="status-autosave-label" class="status-autosave-label">Guardado</span>
-        </div>
-        <span class="separator" aria-hidden="true">|</span>
-        <div class="zoom-control-container">
-          <button id="status-zoom-btn" class="status-zoom-btn" title="Nivel de zoom actual. Haz clic para cambiar" aria-label="Nivel de zoom" aria-haspopup="true" aria-expanded="false">
-            <span id="status-zoom-label">100 %</span>
-            <svg class="zoom-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <!-- Contenido de pestaña Capas -->
+    <div id="panel-tab-layers" class="panel-tab-content" role="tabpanel" aria-labelledby="tab-btn-layers"
+      style="display: none;">
+      <div class="layers-toolbar" role="toolbar" aria-label="Acciones de apilado y capas">
+        <div class="layers-toolbar-actions">
+          <button type="button" id="btn-add-layer" class="layers-tool-btn" title="Nueva capa" aria-label="Nueva capa">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <div class="layers-tool-separator" role="separator" aria-hidden="true"></div>
+          <button type="button" id="btn-layer-move-up" class="layers-tool-btn" title="Subir nivel / Traer adelante"
+            aria-label="Subir nivel" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+          </button>
+          <button type="button" id="btn-layer-move-down" class="layers-tool-btn" title="Bajar nivel / Enviar atrás"
+            aria-label="Bajar nivel" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </button>
-          <div id="zoom-dropdown" class="zoom-dropdown" role="menu" aria-labelledby="status-zoom-btn" hidden>
-            <button class="zoom-dropdown-item" data-preset="0.25" role="menuitem" tabindex="-1">25 %</button>
-            <button class="zoom-dropdown-item" data-preset="0.5" role="menuitem" tabindex="-1">50 %</button>
-            <button class="zoom-dropdown-item" data-preset="1" role="menuitem" tabindex="-1">100 %</button>
-            <button class="zoom-dropdown-item" data-preset="2" role="menuitem" tabindex="-1">200 %</button>
-            <button class="zoom-dropdown-item" data-preset="4" role="menuitem" tabindex="-1">400 %</button>
-            <div class="menu-divider" role="separator" aria-hidden="true"></div>
-            <button class="zoom-dropdown-item" data-preset="fit" role="menuitem" tabindex="-1">Ajustar</button>
+          <div class="layers-tool-separator" role="separator" aria-hidden="true"></div>
+          <button type="button" id="btn-layer-delete" class="layers-tool-btn layers-btn-danger"
+            title="Eliminar selección (Supr)" aria-label="Eliminar elemento" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+          </button>
+        </div>
+        <span id="layers-count-badge" class="layers-count-badge">0 elementos</span>
+      </div>
+
+      <div id="layers-tree-container" class="layers-tree-container">
+        <div id="layers-tree" class="layers-tree" role="tree" aria-label="Árbol de capas y objetos"></div>
+        <div id="layers-empty-state" class="layers-empty-state" style="display: none;">
+          <span>No hay figuras en el documento</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 5. Barra de Estado Inferior -->
+  <footer class="editor-footer" role="status" aria-live="polite">
+    <div class="status-left">
+      <div class="status-indicator">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-tool-label">Modo: Selección</span>
+      </div>
+      <span class="separator" aria-hidden="true">|</span>
+      <span id="status-shapes-count" class="status-shapes-count">0 figuras</span>
+      <span id="status-selection-separator" class="separator" aria-hidden="true" style="display: none;">|</span>
+      <span id="status-selection-info" class="status-selection-info" style="display: none;"></span>
+    </div>
+    <div class="status-right">
+      <div id="status-autosave-container" class="status-autosave-container is-saved" title="Autoguardado local activo"
+        aria-live="polite">
+        <span class="status-autosave-dot" aria-hidden="true">●</span>
+        <span id="status-autosave-label" class="status-autosave-label">Guardado</span>
+      </div>
+      <span class="separator" aria-hidden="true">|</span>
+      <div class="zoom-control-container">
+        <button id="status-zoom-btn" class="status-zoom-btn" title="Nivel de zoom actual. Haz clic para cambiar"
+          aria-label="Nivel de zoom" aria-haspopup="true" aria-expanded="false">
+          <span id="status-zoom-label">100 %</span>
+          <svg class="zoom-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div id="zoom-dropdown" class="zoom-dropdown" role="menu" aria-labelledby="status-zoom-btn" hidden>
+          <button class="zoom-dropdown-item" data-preset="0.25" role="menuitem" tabindex="-1">25 %</button>
+          <button class="zoom-dropdown-item" data-preset="0.5" role="menuitem" tabindex="-1">50 %</button>
+          <button class="zoom-dropdown-item" data-preset="1" role="menuitem" tabindex="-1">100 %</button>
+          <button class="zoom-dropdown-item" data-preset="2" role="menuitem" tabindex="-1">200 %</button>
+          <button class="zoom-dropdown-item" data-preset="4" role="menuitem" tabindex="-1">400 %</button>
+          <div class="menu-divider" role="separator" aria-hidden="true"></div>
+          <button class="zoom-dropdown-item" data-preset="fit" role="menuitem" tabindex="-1">Ajustar</button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Diálogo modal de Atajos de Teclado -->
+  <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-dialog-title">
+    <div class="shortcuts-dialog-header">
+      <h3 id="shortcuts-dialog-title" class="shortcuts-dialog-title">Atajos de teclado</h3>
+      <button id="btn-close-shortcuts" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+    </div>
+    <div class="shortcuts-dialog-body" id="shortcuts-dialog-list">
+      <!-- Generado dinámicamente desde InputController.getShortcuts() -->
+    </div>
+  </dialog>
+
+  <!-- Diálogo modal Acerca de -->
+  <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-dialog-title">
+    <button id="btn-close-about" class="dialog-close-btn about-dialog-close" aria-label="Cerrar diálogo">✕</button>
+    <div class="about-dialog-brand">
+      <div class="brand-icon about-dialog-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19l7-7 3 3-7 7-3-3z" />
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+          <path d="M2 2l7.586 7.586" />
+        </svg>
+      </div>
+      <h2 id="about-dialog-title" class="about-dialog-title">Vectedit</h2>
+      <p class="about-dialog-tagline">Editor gráfico vectorial 2D sobre Canvas nativo</p>
+    </div>
+    <dl class="about-dialog-meta">
+      <div>
+        <dt>Autor</dt>
+        <dd>Román Ríos</dd>
+      </div>
+      <div>
+        <dt>Sitio web</dt>
+        <dd><a href="https://romanrios.com.ar" target="_blank" rel="noopener noreferrer">romanrios.com.ar</a></dd>
+      </div>
+      <div>
+        <dt>Código fuente</dt>
+        <dd><a href="https://github.com/romanrios/vector-editor" target="_blank"
+            rel="noopener noreferrer">github.com/romanrios/vector-editor</a></dd>
+      </div>
+      <div>
+        <dt>Licencia</dt>
+        <dd>MIT</dd>
+      </div>
+      <div>
+        <dt>Tecnología</dt>
+        <dd>TypeScript · Canvas 2D</dd>
+      </div>
+    </dl>
+    <p class="about-dialog-copy">© 2026 Román Ríos</p>
+  </dialog>
+
+  <!-- Diálogo modal de Exportación -->
+  <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
+    <div class="export-dialog-header">
+      <h3 id="export-dialog-title" class="export-dialog-title">Exportar gráfico</h3>
+      <button id="btn-close-export" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+    </div>
+    <div class="export-dialog-body">
+      <div class="export-field-group">
+        <label class="export-field-label">Formato</label>
+        <div class="export-format-options">
+          <label class="export-radio-card">
+            <input type="radio" name="export-format" value="svg" checked />
+            <div class="radio-card-content">
+              <span class="radio-card-title">SVG</span>
+              <span class="radio-card-desc">Vectorial escalable</span>
+            </div>
+          </label>
+          <label class="export-radio-card">
+            <input type="radio" name="export-format" value="png" />
+            <div class="radio-card-content">
+              <span class="radio-card-title">PNG</span>
+              <span class="radio-card-desc">Ráster con transparencia</span>
+            </div>
+          </label>
+          <label class="export-radio-card">
+            <input type="radio" name="export-format" value="webp" />
+            <div class="radio-card-content">
+              <span class="radio-card-title">WebP</span>
+              <span class="radio-card-desc">Ráster optimizado para web</span>
+            </div>
+          </label>
+          <label class="export-radio-card">
+            <input type="radio" name="export-format" value="json" />
+            <div class="radio-card-content">
+              <span class="radio-card-title">JSON</span>
+              <span class="radio-card-desc">Proyecto Vectedit nativo</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="export-field-group" id="group-export-scale" style="display: none;">
+        <label class="export-field-label">Resolución / Escala</label>
+        <div class="export-scale-options">
+          <label class="scale-btn-label">
+            <input type="radio" name="export-scale" value="1" checked />
+            <span>1x</span>
+          </label>
+          <label class="scale-btn-label">
+            <input type="radio" name="export-scale" value="2" />
+            <span>2x (@2x)</span>
+          </label>
+          <label class="scale-btn-label">
+            <input type="radio" name="export-scale" value="3" />
+            <span>3x (@3x)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="export-field-group">
+        <label class="export-field-label">Alcance</label>
+        <div class="export-scope-options">
+          <label class="scope-radio-label">
+            <input type="radio" name="export-scope" value="document" checked />
+            <span>Todo el documento</span>
+          </label>
+          <label class="scope-radio-label" id="label-export-scope-selection">
+            <input type="radio" name="export-scope" value="selection" id="radio-export-selection" />
+            <span id="text-export-scope-selection">Solo selección</span>
+          </label>
+          <label class="scope-radio-label" id="label-export-scope-artboard">
+            <input type="radio" name="export-scope" value="artboard" id="radio-export-artboard" />
+            <span id="text-export-scope-artboard">Mesas de trabajo</span>
+          </label>
+        </div>
+        <div class="export-artboard-select-container" id="group-export-artboard-select"
+          style="display: none; margin-top: 8px;">
+          <label class="export-field-sublabel" for="select-export-artboard">Mesa a exportar</label>
+          <div class="select-wrapper">
+            <select id="select-export-artboard" class="export-select-input">
+              <option value="all">Todas las mesas de trabajo</option>
+            </select>
           </div>
         </div>
       </div>
-    </footer>
 
-    <!-- Diálogo modal de Atajos de Teclado -->
-    <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-dialog-title">
-      <div class="shortcuts-dialog-header">
-        <h3 id="shortcuts-dialog-title" class="shortcuts-dialog-title">Atajos de teclado</h3>
-        <button id="btn-close-shortcuts" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      <div class="export-field-group" id="group-export-background">
+        <label class="export-field-label">Fondo</label>
+        <div class="export-bg-options">
+          <label class="bg-radio-label">
+            <input type="radio" name="export-bg" value="transparent" checked />
+            <span>Transparente</span>
+          </label>
+          <label class="bg-radio-label">
+            <input type="radio" name="export-bg" value="white" />
+            <span>Blanco (#ffffff)</span>
+          </label>
+        </div>
       </div>
-      <div class="shortcuts-dialog-body" id="shortcuts-dialog-list">
-        <!-- Generado dinámicamente desde InputController.getShortcuts() -->
-      </div>
-    </dialog>
 
-    <!-- Diálogo modal Acerca de -->
-    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-dialog-title">
-      <button id="btn-close-about" class="dialog-close-btn about-dialog-close" aria-label="Cerrar diálogo">✕</button>
-      <div class="about-dialog-brand">
-        <div class="brand-icon about-dialog-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
-            <path d="M2 2l7.586 7.586"/>
-          </svg>
+      <div class="export-field-group">
+        <label class="export-field-label" for="export-filename-input">Nombre del archivo</label>
+        <div class="export-filename-container">
+          <input type="text" id="export-filename-input" class="export-filename-input" placeholder="escena"
+            spellcheck="false" autocomplete="off" />
+          <span id="export-filename-extension" class="export-filename-extension">.svg</span>
         </div>
-        <h2 id="about-dialog-title" class="about-dialog-title">Vectedit</h2>
-        <p class="about-dialog-tagline">Editor gráfico vectorial 2D sobre Canvas nativo</p>
       </div>
-      <dl class="about-dialog-meta">
-        <div>
-          <dt>Autor</dt>
-          <dd>Román Ríos</dd>
-        </div>
-        <div>
-          <dt>Sitio web</dt>
-          <dd><a href="https://romanrios.com.ar" target="_blank" rel="noopener noreferrer">romanrios.com.ar</a></dd>
-        </div>
-        <div>
-          <dt>Código fuente</dt>
-          <dd><a href="https://github.com/romanrios/vector-editor" target="_blank" rel="noopener noreferrer">github.com/romanrios/vector-editor</a></dd>
-        </div>
-        <div>
-          <dt>Licencia</dt>
-          <dd>MIT</dd>
-        </div>
-        <div>
-          <dt>Tecnología</dt>
-          <dd>TypeScript · Canvas 2D</dd>
-        </div>
-      </dl>
-      <p class="about-dialog-copy">© 2026 Román Ríos</p>
-    </dialog>
 
-    <!-- Diálogo modal de Exportación -->
-    <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
-      <div class="export-dialog-header">
-        <h3 id="export-dialog-title" class="export-dialog-title">Exportar gráfico</h3>
-        <button id="btn-close-export" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+      <div class="export-summary-box">
+        <span id="export-summary-dim">Dimensiones: 800 × 600 px</span>
+        <span id="export-summary-filename">Archivo: escena.svg</span>
       </div>
+    </div>
+    <div class="export-dialog-footer">
+      <button id="btn-cancel-export" class="dialog-btn secondary">Cancelar</button>
+      <button id="btn-confirm-export" class="dialog-btn primary">Exportar</button>
+    </div>
+  </dialog>
+
+  <!-- Diálogo modal de Guardar JSON -->
+  <dialog id="save-json-dialog" class="export-dialog save-json-dialog" aria-labelledby="save-json-dialog-title">
+    <div class="export-dialog-header">
+      <h3 id="save-json-dialog-title" class="export-dialog-title">Guardar JSON</h3>
+      <button id="btn-close-save-json" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+    </div>
+    <form id="form-save-json" method="dialog">
       <div class="export-dialog-body">
         <div class="export-field-group">
-          <label class="export-field-label">Formato</label>
-          <div class="export-format-options">
-            <label class="export-radio-card">
-              <input type="radio" name="export-format" value="svg" checked />
-              <div class="radio-card-content">
-                <span class="radio-card-title">SVG</span>
-                <span class="radio-card-desc">Vectorial escalable</span>
-              </div>
-            </label>
-            <label class="export-radio-card">
-              <input type="radio" name="export-format" value="png" />
-              <div class="radio-card-content">
-                <span class="radio-card-title">PNG</span>
-                <span class="radio-card-desc">Ráster con transparencia</span>
-              </div>
-            </label>
-            <label class="export-radio-card">
-              <input type="radio" name="export-format" value="webp" />
-              <div class="radio-card-content">
-                <span class="radio-card-title">WebP</span>
-                <span class="radio-card-desc">Ráster optimizado para web</span>
-              </div>
-            </label>
-            <label class="export-radio-card">
-              <input type="radio" name="export-format" value="json" />
-              <div class="radio-card-content">
-                <span class="radio-card-title">JSON</span>
-                <span class="radio-card-desc">Proyecto Vectedit nativo</span>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div class="export-field-group" id="group-export-scale" style="display: none;">
-          <label class="export-field-label">Resolución / Escala</label>
-          <div class="export-scale-options">
-            <label class="scale-btn-label">
-              <input type="radio" name="export-scale" value="1" checked />
-              <span>1x</span>
-            </label>
-            <label class="scale-btn-label">
-              <input type="radio" name="export-scale" value="2" />
-              <span>2x (@2x)</span>
-            </label>
-            <label class="scale-btn-label">
-              <input type="radio" name="export-scale" value="3" />
-              <span>3x (@3x)</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="export-field-group">
-          <label class="export-field-label">Alcance</label>
-          <div class="export-scope-options">
-            <label class="scope-radio-label">
-              <input type="radio" name="export-scope" value="document" checked />
-              <span>Todo el documento</span>
-            </label>
-            <label class="scope-radio-label" id="label-export-scope-selection">
-              <input type="radio" name="export-scope" value="selection" id="radio-export-selection" />
-              <span id="text-export-scope-selection">Solo selección</span>
-            </label>
-            <label class="scope-radio-label" id="label-export-scope-artboard">
-              <input type="radio" name="export-scope" value="artboard" id="radio-export-artboard" />
-              <span id="text-export-scope-artboard">Mesas de trabajo</span>
-            </label>
-          </div>
-          <div class="export-artboard-select-container" id="group-export-artboard-select" style="display: none; margin-top: 8px;">
-            <label class="export-field-sublabel" for="select-export-artboard">Mesa a exportar</label>
-            <div class="select-wrapper">
-              <select id="select-export-artboard" class="export-select-input">
-                <option value="all">Todas las mesas de trabajo</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="export-field-group" id="group-export-background">
-          <label class="export-field-label">Fondo</label>
-          <div class="export-bg-options">
-            <label class="bg-radio-label">
-              <input type="radio" name="export-bg" value="transparent" checked />
-              <span>Transparente</span>
-            </label>
-            <label class="bg-radio-label">
-              <input type="radio" name="export-bg" value="white" />
-              <span>Blanco (#ffffff)</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="export-field-group">
-          <label class="export-field-label" for="export-filename-input">Nombre del archivo</label>
+          <label class="export-field-label" for="save-json-filename-input">Nombre del archivo</label>
           <div class="export-filename-container">
-            <input
-              type="text"
-              id="export-filename-input"
-              class="export-filename-input"
-              placeholder="escena"
-              spellcheck="false"
-              autocomplete="off"
-            />
-            <span id="export-filename-extension" class="export-filename-extension">.svg</span>
+            <input type="text" id="save-json-filename-input" class="export-filename-input" placeholder="vector-scene"
+              spellcheck="false" autocomplete="off" required />
+            <span class="export-filename-extension">.json</span>
           </div>
-        </div>
-
-        <div class="export-summary-box">
-          <span id="export-summary-dim">Dimensiones: 800 × 600 px</span>
-          <span id="export-summary-filename">Archivo: escena.svg</span>
+          <p class="export-field-hint">El archivo se guardará en formato JSON nativo editable de Vectedit.</p>
         </div>
       </div>
       <div class="export-dialog-footer">
-        <button id="btn-cancel-export" class="dialog-btn secondary">Cancelar</button>
-        <button id="btn-confirm-export" class="dialog-btn primary">Exportar</button>
+        <button type="button" id="btn-cancel-save-json" class="dialog-btn secondary">Cancelar</button>
+        <button type="submit" id="btn-confirm-save-json" class="dialog-btn primary">Guardar</button>
       </div>
-    </dialog>
+    </form>
+  </dialog>
 
-    <!-- Diálogo modal de Guardar JSON -->
-    <dialog id="save-json-dialog" class="export-dialog save-json-dialog" aria-labelledby="save-json-dialog-title">
-      <div class="export-dialog-header">
-        <h3 id="save-json-dialog-title" class="export-dialog-title">Guardar JSON</h3>
-        <button id="btn-close-save-json" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
-      </div>
-      <form id="form-save-json" method="dialog">
-        <div class="export-dialog-body">
-          <div class="export-field-group">
-            <label class="export-field-label" for="save-json-filename-input">Nombre del archivo</label>
-            <div class="export-filename-container">
-              <input
-                type="text"
-                id="save-json-filename-input"
-                class="export-filename-input"
-                placeholder="vector-scene"
-                spellcheck="false"
-                autocomplete="off"
-                required
-              />
-              <span class="export-filename-extension">.json</span>
-            </div>
-            <p class="export-field-hint">El archivo se guardará en formato JSON nativo editable de Vectedit.</p>
-          </div>
-        </div>
-        <div class="export-dialog-footer">
-          <button type="button" id="btn-cancel-save-json" class="dialog-btn secondary">Cancelar</button>
-          <button type="submit" id="btn-confirm-save-json" class="dialog-btn primary">Guardar</button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- Diálogo modal de Confirmar Guardado para Nuevo Documento -->
-    <dialog id="confirm-new-dialog" class="export-dialog confirm-new-dialog" aria-labelledby="confirm-new-dialog-title">
-      <div class="export-dialog-header">
-        <h3 id="confirm-new-dialog-title" class="export-dialog-title">¿Guardar trabajo actual?</h3>
-        <button id="btn-close-confirm-new" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
-      </div>
-      <div class="export-dialog-body">
-        <p class="confirm-dialog-message">¿Deseas guardar los cambios del proyecto actual antes de crear un nuevo documento?</p>
-      </div>
-      <div class="export-dialog-footer confirm-dialog-footer">
-        <button type="button" id="btn-confirm-new-cancel" class="dialog-btn secondary">Cancelar</button>
-        <button type="button" id="btn-confirm-new-discard" class="dialog-btn secondary">No guardar</button>
-        <button type="button" id="btn-confirm-new-save" class="dialog-btn primary">Guardar</button>
-      </div>
-    </dialog>
-
-    <!-- Diálogo modal de Nuevo Documento (Tamaño de la Mesa de Trabajo) -->
-    <dialog id="new-document-dialog" class="export-dialog new-document-dialog" aria-labelledby="new-document-dialog-title">
-      <div class="export-dialog-header">
-        <h3 id="new-document-dialog-title" class="export-dialog-title">Nuevo documento</h3>
-        <button id="btn-close-new-doc" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
-      </div>
-      <form id="form-new-document" method="dialog">
-        <div class="export-dialog-body">
-          <div class="export-field-group">
-            <label class="export-field-label" for="new-doc-preset">Preset de mesa de trabajo</label>
-            <select id="new-doc-preset" class="control-select new-doc-select" aria-label="Preset de tamaño de mesa de trabajo">
-              <option value="full-hd" selected>Full HD (1920 × 1080)</option>
-              <option value="square">Cuadrado (1080 × 1080)</option>
-              <option value="portrait-4-5">Retrato (1080 × 1350)</option>
-              <option value="story-9-16">Historia / Reel (1080 × 1920)</option>
-              <option value="hd">HD (1280 × 720)</option>
-              <option value="a4-portrait">A4 vertical (794 × 1123)</option>
-              <option value="a4-landscape">A4 horizontal (1123 × 794)</option>
-              <option value="custom">Personalizado</option>
-            </select>
-          </div>
-          <div class="new-doc-dimensions-row">
-            <div class="export-field-group">
-              <label class="export-field-label" for="new-doc-width">Ancho</label>
-              <div class="input-number-wrapper">
-                <input type="number" id="new-doc-width" min="1" step="1" value="1920" required aria-label="Ancho de la mesa de trabajo en píxeles" />
-                <span class="input-unit" aria-hidden="true">px</span>
-              </div>
-            </div>
-            <div class="export-field-group">
-              <label class="export-field-label" for="new-doc-height">Alto</label>
-              <div class="input-number-wrapper">
-                <input type="number" id="new-doc-height" min="1" step="1" value="1080" required aria-label="Alto de la mesa de trabajo en píxeles" />
-                <span class="input-unit" aria-hidden="true">px</span>
-              </div>
-            </div>
-          </div>
-          <p class="export-field-hint">Al crear el documento, el lienzo se limpiará y la nueva mesa de trabajo aparecerá centrada.</p>
-        </div>
-        <div class="export-dialog-footer">
-          <button type="button" id="btn-cancel-new-doc" class="dialog-btn secondary">Cancelar</button>
-          <button type="submit" id="btn-confirm-new-doc" class="dialog-btn primary">Crear documento</button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- Diálogo modal de Restaurar Sesión Previa (Auto-Save Recovery) -->
-    <dialog id="recovery-dialog" class="export-dialog recovery-dialog" aria-labelledby="recovery-dialog-title">
-      <div class="export-dialog-header">
-        <h3 id="recovery-dialog-title" class="export-dialog-title">Restaurar sesión anterior</h3>
-        <button id="btn-close-recovery" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
-      </div>
-      <div class="export-dialog-body recovery-dialog-body">
-        <div class="recovery-icon-badge" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <polyline points="12 7 12 12 15 15"/>
-          </svg>
-        </div>
-        <p class="confirm-dialog-message">Se ha detectado un trabajo previo guardado automáticamente en este navegador:</p>
-        <div class="recovery-details-box">
-          <div class="recovery-detail-row">
-            <span class="recovery-detail-label">Guardado el:</span>
-            <span id="recovery-dialog-time" class="recovery-detail-value">-</span>
-          </div>
-          <div class="recovery-detail-row">
-            <span class="recovery-detail-label">Documento:</span>
-            <span id="recovery-dialog-summary" class="recovery-detail-value">-</span>
-          </div>
-          <div class="recovery-detail-row">
-            <span class="recovery-detail-label">Contenido:</span>
-            <span id="recovery-dialog-meta" class="recovery-detail-value">-</span>
-          </div>
-        </div>
-        <p class="export-field-hint">¿Deseas restaurar los elementos de esa sesión o descartarla para comenzar con un lienzo en blanco?</p>
-      </div>
-      <div class="export-dialog-footer confirm-dialog-footer">
-        <button type="button" id="btn-recovery-discard" class="dialog-btn secondary">Descartar</button>
-        <button type="button" id="btn-recovery-restore" class="dialog-btn primary">Restaurar sesión</button>
-      </div>
-    </dialog>
-
-    <!-- Menú Contextual del Lienzo (Click Derecho) -->
-    <div id="context-menu" class="menu-dropdown context-menu" role="menu" hidden>
-      <button id="ctx-item-cut" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Cortar</span>
-        <span class="menu-shortcut">Ctrl+X</span>
-      </button>
-      <button id="ctx-item-copy" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Copiar</span>
-        <span class="menu-shortcut">Ctrl+C</span>
-      </button>
-      <button id="ctx-item-paste" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Pegar</span>
-        <span class="menu-shortcut">Ctrl+V</span>
-      </button>
-      <button id="ctx-item-paste-here" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Pegar aquí</span>
-      </button>
-      <button id="ctx-item-duplicate" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Duplicar</span>
-        <span class="menu-shortcut">Ctrl+D</span>
-      </button>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <button id="ctx-item-bring-to-front" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Traer al frente</span>
-        <span class="menu-shortcut">Ctrl+Shift+]</span>
-      </button>
-      <button id="ctx-item-send-to-back" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Enviar al fondo</span>
-        <span class="menu-shortcut">Ctrl+Shift+[</span>
-      </button>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <button id="ctx-item-group" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Agrupar</span>
-        <span class="menu-shortcut">Ctrl+G</span>
-      </button>
-      <button id="ctx-item-ungroup" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Desagrupar</span>
-        <span class="menu-shortcut">Ctrl+Shift+G</span>
-      </button>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <button id="ctx-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Crear máscara de recorte</span>
-        <span class="menu-shortcut">Ctrl+7</span>
-      </button>
-      <button id="ctx-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Soltar máscara de recorte</span>
-        <span class="menu-shortcut">Ctrl+Alt+7</span>
-      </button>
-      <button id="ctx-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Contornear trazado</span>
-        <span class="menu-shortcut">Ctrl+Shift+O</span>
-      </button>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <div class="menu-submenu-container" id="ctx-submenu-align-container">
-        <button id="ctx-item-align" class="menu-dropdown-item" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-          <span class="menu-item-label">Alinear</span>
-          <span class="menu-submenu-chevron">›</span>
-        </button>
-        <div id="ctx-dropdown-align" class="menu-dropdown menu-submenu" role="menu" hidden>
-          <button id="ctx-item-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Alinear a la izquierda</span>
-          </button>
-          <button id="ctx-item-align-center-h" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Centrar horizontalmente</span>
-          </button>
-          <button id="ctx-item-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Alinear a la derecha</span>
-          </button>
-          <div class="menu-divider" role="separator" aria-hidden="true"></div>
-          <button id="ctx-item-align-top" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Alinear arriba</span>
-          </button>
-          <button id="ctx-item-align-center-v" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Centrar verticalmente</span>
-          </button>
-          <button id="ctx-item-align-bottom" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Alinear abajo</span>
-          </button>
-        </div>
-      </div>
-      <div class="menu-submenu-container" id="ctx-submenu-pathfinder-container">
-        <button id="ctx-item-pathfinder" class="menu-dropdown-item" role="menuitem" aria-haspopup="true" aria-expanded="false" tabindex="-1">
-          <span class="menu-item-label">Pathfinder</span>
-          <span class="menu-submenu-chevron">›</span>
-        </button>
-        <div id="ctx-dropdown-pathfinder" class="menu-dropdown menu-submenu" role="menu" hidden>
-          <button id="ctx-item-pathfinder-union" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Unión</span>
-          </button>
-          <button id="ctx-item-pathfinder-subtract" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Resta</span>
-          </button>
-          <button id="ctx-item-pathfinder-intersect" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Intersección</span>
-          </button>
-          <button id="ctx-item-pathfinder-exclude" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-            <span class="menu-item-label">Exclusión</span>
-          </button>
-        </div>
-      </div>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <button id="ctx-item-lock" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Bloquear</span>
-      </button>
-      <button id="ctx-item-select-all" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Seleccionar todo</span>
-        <span class="menu-shortcut">Ctrl+A</span>
-      </button>
-      <div class="menu-divider" role="separator" aria-hidden="true"></div>
-      <button id="ctx-item-delete" class="menu-dropdown-item" role="menuitem" tabindex="-1">
-        <span class="menu-item-label">Eliminar</span>
-        <span class="menu-shortcut">Supr</span>
-      </button>
+  <!-- Diálogo modal de Confirmar Guardado para Nuevo Documento -->
+  <dialog id="confirm-new-dialog" class="export-dialog confirm-new-dialog" aria-labelledby="confirm-new-dialog-title">
+    <div class="export-dialog-header">
+      <h3 id="confirm-new-dialog-title" class="export-dialog-title">¿Guardar trabajo actual?</h3>
+      <button id="btn-close-confirm-new" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
     </div>
+    <div class="export-dialog-body">
+      <p class="confirm-dialog-message">¿Deseas guardar los cambios del proyecto actual antes de crear un nuevo
+        documento?</p>
+    </div>
+    <div class="export-dialog-footer confirm-dialog-footer">
+      <button type="button" id="btn-confirm-new-cancel" class="dialog-btn secondary">Cancelar</button>
+      <button type="button" id="btn-confirm-new-discard" class="dialog-btn secondary">No guardar</button>
+      <button type="button" id="btn-confirm-new-save" class="dialog-btn primary">Guardar</button>
+    </div>
+  </dialog>
 
-    <!-- Inputs de archivo ocultos para importación de proyectos y colocación de recursos -->
-    <input type="file" id="file-import-input" accept=".json,application/json" style="display:none" aria-hidden="true" />
-    <input type="file" id="file-input-place" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" multiple style="display:none" aria-hidden="true" />
+  <!-- Diálogo modal de Nuevo Documento (Tamaño de la Mesa de Trabajo) -->
+  <dialog id="new-document-dialog" class="export-dialog new-document-dialog"
+    aria-labelledby="new-document-dialog-title">
+    <div class="export-dialog-header">
+      <h3 id="new-document-dialog-title" class="export-dialog-title">Nuevo documento</h3>
+      <button id="btn-close-new-doc" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+    </div>
+    <form id="form-new-document" method="dialog">
+      <div class="export-dialog-body">
+        <div class="export-field-group">
+          <label class="export-field-label" for="new-doc-preset">Preset de mesa de trabajo</label>
+          <select id="new-doc-preset" class="control-select new-doc-select"
+            aria-label="Preset de tamaño de mesa de trabajo">
+            <option value="full-hd" selected>Full HD (1920 × 1080)</option>
+            <option value="square">Cuadrado (1080 × 1080)</option>
+            <option value="portrait-4-5">Retrato (1080 × 1350)</option>
+            <option value="story-9-16">Historia / Reel (1080 × 1920)</option>
+            <option value="hd">HD (1280 × 720)</option>
+            <option value="a4-portrait">A4 vertical (794 × 1123)</option>
+            <option value="a4-landscape">A4 horizontal (1123 × 794)</option>
+            <option value="custom">Personalizado</option>
+          </select>
+        </div>
+        <div class="new-doc-dimensions-row">
+          <div class="export-field-group">
+            <label class="export-field-label" for="new-doc-width">Ancho</label>
+            <div class="input-number-wrapper">
+              <input type="number" id="new-doc-width" min="1" step="1" value="1920" required
+                aria-label="Ancho de la mesa de trabajo en píxeles" />
+              <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+          <div class="export-field-group">
+            <label class="export-field-label" for="new-doc-height">Alto</label>
+            <div class="input-number-wrapper">
+              <input type="number" id="new-doc-height" min="1" step="1" value="1080" required
+                aria-label="Alto de la mesa de trabajo en píxeles" />
+              <span class="input-unit" aria-hidden="true">px</span>
+            </div>
+          </div>
+        </div>
+        <p class="export-field-hint">Al crear el documento, el lienzo se limpiará y la nueva mesa de trabajo aparecerá
+          centrada.</p>
+      </div>
+      <div class="export-dialog-footer">
+        <button type="button" id="btn-cancel-new-doc" class="dialog-btn secondary">Cancelar</button>
+        <button type="submit" id="btn-confirm-new-doc" class="dialog-btn primary">Crear documento</button>
+      </div>
+    </form>
+  </dialog>
 
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+  <!-- Diálogo modal de Restaurar Sesión Previa (Auto-Save Recovery) -->
+  <dialog id="recovery-dialog" class="export-dialog recovery-dialog" aria-labelledby="recovery-dialog-title">
+    <div class="export-dialog-header">
+      <h3 id="recovery-dialog-title" class="export-dialog-title">Restaurar sesión anterior</h3>
+      <button id="btn-close-recovery" class="dialog-close-btn" aria-label="Cerrar diálogo">✕</button>
+    </div>
+    <div class="export-dialog-body recovery-dialog-body">
+      <div class="recovery-icon-badge" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <polyline points="12 7 12 12 15 15" />
+        </svg>
+      </div>
+      <p class="confirm-dialog-message">Se ha detectado un trabajo previo guardado automáticamente en este navegador:
+      </p>
+      <div class="recovery-details-box">
+        <div class="recovery-detail-row">
+          <span class="recovery-detail-label">Guardado el:</span>
+          <span id="recovery-dialog-time" class="recovery-detail-value">-</span>
+        </div>
+        <div class="recovery-detail-row">
+          <span class="recovery-detail-label">Documento:</span>
+          <span id="recovery-dialog-summary" class="recovery-detail-value">-</span>
+        </div>
+        <div class="recovery-detail-row">
+          <span class="recovery-detail-label">Contenido:</span>
+          <span id="recovery-dialog-meta" class="recovery-detail-value">-</span>
+        </div>
+      </div>
+      <p class="export-field-hint">¿Deseas restaurar los elementos de esa sesión o descartarla para comenzar con un
+        lienzo en blanco?</p>
+    </div>
+    <div class="export-dialog-footer confirm-dialog-footer">
+      <button type="button" id="btn-recovery-discard" class="dialog-btn secondary">Descartar</button>
+      <button type="button" id="btn-recovery-restore" class="dialog-btn primary">Restaurar sesión</button>
+    </div>
+  </dialog>
+
+  <!-- Menú Contextual del Lienzo (Click Derecho) -->
+  <div id="context-menu" class="menu-dropdown context-menu" role="menu" hidden>
+    <button id="ctx-item-cut" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Cortar</span>
+      <span class="menu-shortcut">Ctrl+X</span>
+    </button>
+    <button id="ctx-item-copy" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Copiar</span>
+      <span class="menu-shortcut">Ctrl+C</span>
+    </button>
+    <button id="ctx-item-paste" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Pegar</span>
+      <span class="menu-shortcut">Ctrl+V</span>
+    </button>
+    <button id="ctx-item-paste-here" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Pegar aquí</span>
+    </button>
+    <button id="ctx-item-duplicate" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Duplicar</span>
+      <span class="menu-shortcut">Ctrl+D</span>
+    </button>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <button id="ctx-item-bring-to-front" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Traer al frente</span>
+      <span class="menu-shortcut">Ctrl+Shift+]</span>
+    </button>
+    <button id="ctx-item-send-to-back" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Enviar al fondo</span>
+      <span class="menu-shortcut">Ctrl+Shift+[</span>
+    </button>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <button id="ctx-item-group" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Agrupar</span>
+      <span class="menu-shortcut">Ctrl+G</span>
+    </button>
+    <button id="ctx-item-ungroup" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Desagrupar</span>
+      <span class="menu-shortcut">Ctrl+Shift+G</span>
+    </button>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <button id="ctx-item-make-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Crear máscara de recorte</span>
+      <span class="menu-shortcut">Ctrl+7</span>
+    </button>
+    <button id="ctx-item-release-clip-mask" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Soltar máscara de recorte</span>
+      <span class="menu-shortcut">Ctrl+Alt+7</span>
+    </button>
+    <button id="ctx-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Contornear trazado</span>
+      <span class="menu-shortcut">Ctrl+Shift+O</span>
+    </button>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <div class="menu-submenu-container" id="ctx-submenu-align-container">
+      <button id="ctx-item-align" class="menu-dropdown-item" role="menuitem" aria-haspopup="true" aria-expanded="false"
+        tabindex="-1">
+        <span class="menu-item-label">Alinear</span>
+        <span class="menu-submenu-chevron">›</span>
+      </button>
+      <div id="ctx-dropdown-align" class="menu-dropdown menu-submenu" role="menu" hidden>
+        <button id="ctx-item-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Alinear a la izquierda</span>
+        </button>
+        <button id="ctx-item-align-center-h" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Centrar horizontalmente</span>
+        </button>
+        <button id="ctx-item-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Alinear a la derecha</span>
+        </button>
+        <div class="menu-divider" role="separator" aria-hidden="true"></div>
+        <button id="ctx-item-align-top" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Alinear arriba</span>
+        </button>
+        <button id="ctx-item-align-center-v" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Centrar verticalmente</span>
+        </button>
+        <button id="ctx-item-align-bottom" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Alinear abajo</span>
+        </button>
+      </div>
+    </div>
+    <div class="menu-submenu-container" id="ctx-submenu-pathfinder-container">
+      <button id="ctx-item-pathfinder" class="menu-dropdown-item" role="menuitem" aria-haspopup="true"
+        aria-expanded="false" tabindex="-1">
+        <span class="menu-item-label">Pathfinder</span>
+        <span class="menu-submenu-chevron">›</span>
+      </button>
+      <div id="ctx-dropdown-pathfinder" class="menu-dropdown menu-submenu" role="menu" hidden>
+        <button id="ctx-item-pathfinder-union" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Unión</span>
+        </button>
+        <button id="ctx-item-pathfinder-subtract" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Resta</span>
+        </button>
+        <button id="ctx-item-pathfinder-intersect" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Intersección</span>
+        </button>
+        <button id="ctx-item-pathfinder-exclude" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+          <span class="menu-item-label">Exclusión</span>
+        </button>
+      </div>
+    </div>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <button id="ctx-item-lock" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Bloquear</span>
+    </button>
+    <button id="ctx-item-select-all" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Seleccionar todo</span>
+      <span class="menu-shortcut">Ctrl+A</span>
+    </button>
+    <div class="menu-divider" role="separator" aria-hidden="true"></div>
+    <button id="ctx-item-delete" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+      <span class="menu-item-label">Eliminar</span>
+      <span class="menu-shortcut">Supr</span>
+    </button>
+  </div>
+
+  <!-- Inputs de archivo ocultos para importación de proyectos y colocación de recursos -->
+  <input type="file" id="file-import-input" accept=".json,application/json" style="display:none" aria-hidden="true" />
+  <input type="file" id="file-input-place" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"
+    multiple style="display:none" aria-hidden="true" />
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>
