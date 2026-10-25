@@ -1,4 +1,4 @@
-import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D, ImageNode, Polygon, Star } from '../types/scene-graph.ts';
+import type { AABB, Ellipse, Group, Path, PathPoint, PathPointType, Rectangle, SelectableNode, Shape, Text, Vector2D, ImageNode, Polygon, Star, DropShadow } from '../types/scene-graph.ts';
 import { isShape } from '../types/scene-graph.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import type { ShapePositionEntry } from '../state/StateManager.ts';
@@ -1057,6 +1057,48 @@ export function getShapeAABB(shape: Shape): AABB {
     return getTextAABB(shape);
   }
   return getPathAABB(shape);
+}
+
+/**
+ * Expande un AABB considerando el desplazamiento y desenfoque de una sombra paralela (DropShadow).
+ */
+export function expandAABBWithShadow(aabb: AABB, shadow?: DropShadow | null): AABB {
+  if (!shadow || (shadow.offsetX === 0 && shadow.offsetY === 0 && (!shadow.blur || shadow.blur === 0))) {
+    return aabb;
+  }
+  const blur = Math.max(0, shadow.blur || 0);
+  const ox = shadow.offsetX || 0;
+  const oy = shadow.offsetY || 0;
+
+  const shadowMinX = aabb.minX + ox - blur;
+  const shadowMinY = aabb.minY + oy - blur;
+  const shadowMaxX = aabb.maxX + ox + blur;
+  const shadowMaxY = aabb.maxY + oy + blur;
+
+  const minX = Math.min(aabb.minX, shadowMinX);
+  const minY = Math.min(aabb.minY, shadowMinY);
+  const maxX = Math.max(aabb.maxX, shadowMaxX);
+  const maxY = Math.max(aabb.maxY, shadowMaxY);
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+/**
+ * Obtiene el AABB visual de cualquier figura, incluyendo la expansión de sombra si existe.
+ */
+export function getShapeVisualAABB(shape: Shape): AABB {
+  const baseAABB = getShapeAABB(shape);
+  if (shape.dropShadow) {
+    return expandAABBWithShadow(baseAABB, shape.dropShadow);
+  }
+  return baseAABB;
 }
 
 /**

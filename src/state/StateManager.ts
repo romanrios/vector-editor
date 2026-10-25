@@ -21,10 +21,11 @@ import type {
   Guide,
   Artboard,
   BlendMode,
+  DropShadow,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
-import { isDocument, isGroup, isLayer, isSelectable, isShape } from '../types/scene-graph.ts';
+import { isDocument, isGroup, isLayer, isSelectable, isShape, isDropShadowEqual } from '../types/scene-graph.ts';
 import {
   deepFreeze,
   insertAt,
@@ -57,6 +58,7 @@ export interface ShapeStyleUpdate {
   readonly strokeWidth?: number;
   readonly opacity?: number;
   readonly blendMode?: BlendMode;
+  readonly dropShadow?: DropShadow | null;
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
@@ -179,6 +181,7 @@ export interface DrawingStyle {
   strokeWidth: number;
   opacity: number;
   blendMode?: BlendMode;
+  dropShadow?: DropShadow | null;
   strokeDashArray?: readonly number[];
   strokeLineCap?: StrokeLineCap;
   strokeLineJoin?: StrokeLineJoin;
@@ -203,6 +206,7 @@ export class StateManager {
     strokeWidth: 2,
     opacity: 1,
     blendMode: 'normal',
+    dropShadow: null,
     strokeDashArray: undefined,
     strokeLineCap: 'butt',
     strokeLineJoin: 'miter',
@@ -259,6 +263,7 @@ export class StateManager {
         partial.strokeWidth !== undefined ? partial.strokeWidth : this._drawingStyle.strokeWidth,
       opacity: partial.opacity !== undefined ? partial.opacity : this._drawingStyle.opacity,
       blendMode: partial.blendMode !== undefined ? partial.blendMode : this._drawingStyle.blendMode,
+      dropShadow: 'dropShadow' in partial ? partial.dropShadow : this._drawingStyle.dropShadow,
       strokeDashArray:
         partial.strokeDashArray !== undefined ? partial.strokeDashArray : this._drawingStyle.strokeDashArray,
       strokeLineCap:
@@ -279,6 +284,7 @@ export class StateManager {
       nextStyle.strokeWidth === this._drawingStyle.strokeWidth &&
       nextStyle.opacity === this._drawingStyle.opacity &&
       nextStyle.blendMode === this._drawingStyle.blendMode &&
+      isDropShadowEqual(nextStyle.dropShadow, this._drawingStyle.dropShadow) &&
       nextStyle.strokeLineCap === this._drawingStyle.strokeLineCap &&
       nextStyle.strokeLineJoin === this._drawingStyle.strokeLineJoin &&
       isSameDash
@@ -2081,6 +2087,7 @@ export class StateManager {
           const hasCapChange = 'strokeLineCap' in targetStyle && targetStyle.strokeLineCap !== child.strokeLineCap;
           const hasJoinChange = 'strokeLineJoin' in targetStyle && targetStyle.strokeLineJoin !== child.strokeLineJoin;
           const hasBlendModeChange = 'blendMode' in targetStyle && targetStyle.blendMode !== child.blendMode;
+          const hasShadowChange = 'dropShadow' in targetStyle && !isDropShadowEqual(targetStyle.dropShadow, child.dropShadow);
 
           if (
             !hasFillChange &&
@@ -2090,7 +2097,8 @@ export class StateManager {
             !hasDashChange &&
             !hasCapChange &&
             !hasJoinChange &&
-            !hasBlendModeChange
+            !hasBlendModeChange &&
+            !hasShadowChange
           ) {
             nextChildren[i] = child;
             continue;
@@ -2098,7 +2106,7 @@ export class StateManager {
 
           changed = true;
           anyChanged = true;
-          nextChildren[i] = {
+          let styledChild: Shape = {
             ...child,
             ...(targetStyle.fill !== undefined ? { fill: targetStyle.fill } : {}),
             ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
@@ -2109,6 +2117,17 @@ export class StateManager {
             ...('strokeLineCap' in targetStyle ? { strokeLineCap: targetStyle.strokeLineCap } : {}),
             ...('strokeLineJoin' in targetStyle ? { strokeLineJoin: targetStyle.strokeLineJoin } : {}),
           };
+
+          if ('dropShadow' in targetStyle) {
+            if (targetStyle.dropShadow === null) {
+              const { dropShadow: _, ...withoutShadow } = styledChild;
+              styledChild = withoutShadow as Shape;
+            } else if (targetStyle.dropShadow !== undefined) {
+              styledChild = { ...styledChild, dropShadow: targetStyle.dropShadow };
+            }
+          }
+
+          nextChildren[i] = styledChild;
         } else {
           nextChildren[i] = child;
         }

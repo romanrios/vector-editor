@@ -23,6 +23,7 @@ import {
   type Gradient,
   type Guide,
   blendModeToCompositeOperation,
+  type DropShadow,
 } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import type { StateManager } from '../state/StateManager.ts';
@@ -45,7 +46,7 @@ import type { ShapePreview } from '../input/InputController.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
 import { isNonePaint } from '../utils/color.ts';
-import { createCanvasGradient, gradientToWorldPoint } from '../utils/gradient.ts';
+import { createCanvasGradient, gradientToWorldPoint, colorWithOpacity } from '../utils/gradient.ts';
 import {
   getPolygonPathPoints,
   getStarPathPoints,
@@ -583,6 +584,9 @@ export class RenderEngine {
         if (layer.blendMode && layer.blendMode !== 'normal') {
           this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
         }
+        if (layer.dropShadow) {
+          this.applyDropShadow(layer.dropShadow);
+        }
         this.ctx.drawImage(
           cached.canvas as any,
           cached.bounds.minX,
@@ -604,6 +608,9 @@ export class RenderEngine {
           if (layer.blendMode && layer.blendMode !== 'normal') {
             this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
           }
+          if (layer.dropShadow) {
+            this.applyDropShadow(layer.dropShadow);
+          }
           this.ctx.drawImage(
             entry.canvas as any,
             entry.bounds.minX,
@@ -624,6 +631,9 @@ export class RenderEngine {
     }
     if (layer.blendMode && layer.blendMode !== 'normal') {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
+    }
+    if (layer.dropShadow) {
+      this.applyDropShadow(layer.dropShadow);
     }
 
     for (const child of layer.children) {
@@ -736,6 +746,9 @@ export class RenderEngine {
         if (group.blendMode && group.blendMode !== 'normal') {
           this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
         }
+        if (group.dropShadow) {
+          this.applyDropShadow(group.dropShadow);
+        }
         this.ctx.drawImage(
           cached.canvas as any,
           cached.bounds.minX,
@@ -757,6 +770,9 @@ export class RenderEngine {
           if (group.blendMode && group.blendMode !== 'normal') {
             this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
           }
+          if (group.dropShadow) {
+            this.applyDropShadow(group.dropShadow);
+          }
           this.ctx.drawImage(
             entry.canvas as any,
             entry.bounds.minX,
@@ -777,6 +793,9 @@ export class RenderEngine {
     }
     if (group.blendMode && group.blendMode !== 'normal') {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
+    }
+    if (group.dropShadow) {
+      this.applyDropShadow(group.dropShadow);
     }
 
     if (group.isClipMask === true && group.children.length > 0) {
@@ -805,6 +824,29 @@ export class RenderEngine {
   }
 
   /**
+   * Aplica la configuración de sombra paralela al contexto 2D.
+   */
+  private applyDropShadow(shadow?: DropShadow): void {
+    if (!shadow) return;
+    const color = shadow.color || '#000000';
+    const opacity = shadow.opacity !== undefined ? Math.max(0, Math.min(1, shadow.opacity)) : 1;
+    this.ctx.shadowColor = colorWithOpacity(color, opacity);
+    this.ctx.shadowOffsetX = shadow.offsetX || 0;
+    this.ctx.shadowOffsetY = shadow.offsetY || 0;
+    this.ctx.shadowBlur = Math.max(0, shadow.blur || 0);
+  }
+
+  /**
+   * Restablece las propiedades de sombra para evitar sombras duplicadas (ej: tras dibujar el relleno).
+   */
+  private clearDropShadow(): void {
+    this.ctx.shadowColor = 'transparent';
+    this.ctx.shadowOffsetX = 0;
+    this.ctx.shadowOffsetY = 0;
+    this.ctx.shadowBlur = 0;
+  }
+
+  /**
    * Renderiza una figura según su tipo discriminado (Rectangle, Ellipse, Path o Text)
    */
   private renderShape(shape: Shape, zoom: number): void {
@@ -815,6 +857,9 @@ export class RenderEngine {
     }
     if (shape.blendMode && shape.blendMode !== 'normal') {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(shape.blendMode);
+    }
+    if (shape.dropShadow) {
+      this.applyDropShadow(shape.dropShadow);
     }
 
     if (shape.type === 'rectangle') {
@@ -952,6 +997,9 @@ export class RenderEngine {
         this.ctx.fillStyle = rect.fill!;
       }
       this.ctx.fill();
+      if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
+        this.clearDropShadow();
+      }
     }
 
     if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
@@ -1023,6 +1071,9 @@ export class RenderEngine {
         this.ctx.fillStyle = ellipse.fill!;
       }
       this.ctx.fill();
+      if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
+        this.clearDropShadow();
+      }
     }
 
     if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
@@ -1099,6 +1150,9 @@ export class RenderEngine {
         this.ctx.fillStyle = polygon.fill!;
       }
       this.ctx.fill();
+      if (!isNonePaint(polygon.stroke) && polygon.strokeWidth && polygon.strokeWidth > 0) {
+        this.clearDropShadow();
+      }
     }
 
     if (!isNonePaint(polygon.stroke) && polygon.strokeWidth && polygon.strokeWidth > 0) {
@@ -1170,6 +1224,9 @@ export class RenderEngine {
         this.ctx.fillStyle = star.fill!;
       }
       this.ctx.fill();
+      if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0) {
+        this.clearDropShadow();
+      }
     }
 
     if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0) {
@@ -1810,6 +1867,9 @@ export class RenderEngine {
         this.ctx.fillStyle = path.fill!;
       }
       this.ctx.fill(path.fillRule ?? 'nonzero');
+      if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
+        this.clearDropShadow();
+      }
     }
 
     if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
@@ -1937,6 +1997,9 @@ export class RenderEngine {
       const lineY = text.y + i * lineHeight;
       if (hasFill) {
         this.ctx.fillText(lines[i].text, text.x, lineY);
+        if (hasStroke) {
+          this.clearDropShadow();
+        }
       }
       if (hasStroke) {
         this.ctx.strokeText(lines[i].text, text.x, lineY);

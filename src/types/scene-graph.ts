@@ -124,6 +124,17 @@ export type BlendMode =
   | 'exclusion';
 
 /**
+ * Efecto de sombra paralela (drop shadow)
+ */
+export interface DropShadow {
+  readonly color: string;
+  readonly opacity?: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly blur: number;
+}
+
+/**
  * Propiedades base compartidas por todos los nodos del árbol
  */
 export interface BaseNode {
@@ -134,6 +145,7 @@ export interface BaseNode {
   readonly locked?: boolean;
   readonly zIndex?: number;
   readonly blendMode?: BlendMode;
+  readonly dropShadow?: DropShadow;
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
@@ -488,6 +500,22 @@ export function blendModeToCompositeOperation(blendMode?: BlendMode): GlobalComp
     return 'source-over';
   }
   return blendMode as GlobalCompositeOperation;
+}
+
+/**
+ * Compara dos sombras para verificar si son idénticas en todas sus propiedades.
+ */
+export function isDropShadowEqual(a?: DropShadow | null, b?: DropShadow | null): boolean {
+  if (a === b) return true;
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.color === b.color &&
+    (a.opacity ?? 1) === (b.opacity ?? 1) &&
+    a.offsetX === b.offsetX &&
+    a.offsetY === b.offsetY &&
+    a.blur === b.blur
+  );
 }
 
 

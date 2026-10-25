@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **1114 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1134 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -113,11 +113,11 @@ El objetivo de esta fase es dotar al editor de capacidades estéticas profesiona
   - Historial reversible mediante `StyleShapesCommand` con soporte para multi-selección y Undo/Redo.
   - Exportación e importación SVG completa (`mix-blend-mode` en CSS / atributo `style`).
 
-- [ ] **5.2. Efectos de Sombra Paralela (Drop Shadow)**:
+- [x] **5.2. Efectos de Sombra Paralela (Drop Shadow)**:
   - Parámetros de sombra: color, opacidad, desplazamiento X/Y y radio de desenfoque (`blur`).
   - Renderizado nativo en Canvas 2D (`ctx.shadowColor`, `ctx.shadowOffsetX`, `ctx.shadowOffsetY`, `ctx.shadowBlur`).
   - Cálculo de AABB extendido considerando la dispersión y desplazamiento de la sombra para hit-testing y spatial index precisos.
-  - Exportación a SVG mediante filtros `<filter><feDropShadow .../></filter>`.
+  - Exportación a SVG mediante filtros `<filter><feDropShadow .../></filter>` e importación completa.
 
 ---
 

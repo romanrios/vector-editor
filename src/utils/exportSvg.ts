@@ -14,6 +14,7 @@ import type {
   SelectableNode,
   Gradient,
   Shape,
+  DropShadow,
 } from '../types/scene-graph.ts';
 import { isGroup, isShape, isGradient, isLinearGradient } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
@@ -103,6 +104,44 @@ function collectClipMasksFromChild(
     }
     for (const nested of child.children) {
       entries.push(...collectClipMasksFromChild(nested, selectedSet));
+    }
+  }
+  return entries;
+}
+
+interface ExportDropShadowEntry {
+  readonly id: string;
+  readonly shadow: DropShadow;
+}
+
+function collectDropShadowsFromChild(
+  child: LayerChildNode,
+  selectedSet: Set<string> | null
+): ExportDropShadowEntry[] {
+  if (child.visible === false) {
+    return [];
+  }
+
+  if (selectedSet) {
+    if (isGroup(child)) {
+      const leaves = collectLeafShapes(child);
+      const anySelected = leaves.some((l) => selectedSet.has(l.id)) || selectedSet.has(child.id);
+      if (!anySelected) {
+        return [];
+      }
+    } else if (!selectedSet.has(child.id)) {
+      return [];
+    }
+  }
+
+  const entries: ExportDropShadowEntry[] = [];
+  if (child.dropShadow) {
+    entries.push({ id: `shadow-${child.id}`, shadow: child.dropShadow });
+  }
+
+  if (isGroup(child)) {
+    for (const nested of child.children) {
+      entries.push(...collectDropShadowsFromChild(nested, selectedSet));
     }
   }
   return entries;
@@ -292,6 +331,9 @@ function renderChildToSvg(
     if (child.blendMode && child.blendMode !== 'normal') {
       groupAttrs.push(`style="mix-blend-mode: ${escapeXml(child.blendMode)};"`);
     }
+    if (child.dropShadow) {
+      groupAttrs.push(`filter="url(#shadow-${escapeXml(child.id)})"`);
+    }
 
     let maskChildId: string | null = null;
     if (child.isClipMask && child.children.length > 0) {
@@ -325,6 +367,9 @@ function renderChildToSvg(
   }
   if (child.blendMode && child.blendMode !== 'normal') {
     commonAttrs.push(`style="mix-blend-mode: ${escapeXml(child.blendMode)};"`);
+  }
+  if (child.dropShadow) {
+    commonAttrs.push(`filter="url(#shadow-${escapeXml(child.id)})"`);
   }
 
   // Relleno
@@ -765,17 +810,22 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
   // Recopilar y emitir definiciones de degradados (<defs>) y máscaras de recorte (<clipPath>)
   const allGradients: ExportGradientEntry[] = [];
   const allClipMasks: ExportClipMaskEntry[] = [];
+  const allDropShadows: Array<{ id: string; shadow: DropShadow }> = [];
   for (const layer of doc.children) {
     if (layer.visible === false) {
       continue;
     }
+    if (layer.dropShadow && !onlySelected) {
+      allDropShadows.push({ id: `shadow-${layer.id}`, shadow: layer.dropShadow });
+    }
     for (const child of layer.children) {
       allGradients.push(...collectGradientsFromChild(child, selectedSet));
       allClipMasks.push(...collectClipMasksFromChild(child, selectedSet));
+      allDropShadows.push(...collectDropShadowsFromChild(child, selectedSet));
     }
   }
 
-  if (allGradients.length > 0 || allClipMasks.length > 0) {
+  if (allGradients.length > 0 || allClipMasks.length > 0 || allDropShadows.length > 0) {
     lines.push('  <defs>');
     for (const entry of allGradients) {
       const grad = entry.gradient;
@@ -825,6 +875,19 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
       lines.push('    </clipPath>');
     }
 
+    for (const entry of allDropShadows) {
+      const sh = entry.shadow;
+      const opacityAttr =
+        sh.opacity !== undefined && sh.opacity < 1
+          ? ` flood-opacity="${formatNum(sh.opacity, 3)}"`
+          : '';
+      lines.push(`    <filter id="${escapeXml(entry.id)}" x="-50%" y="-50%" width="200%" height="200%">`);
+      lines.push(
+        `      <feDropShadow dx="${formatNum(sh.offsetX, precision)}" dy="${formatNum(sh.offsetY, precision)}" stdDeviation="${formatNum(Math.max(0, sh.blur / 2), precision)}" flood-color="${escapeXml(sh.color)}"${opacityAttr} />`
+      );
+      lines.push('    </filter>');
+    }
+
     lines.push('  </defs>');
   }
 
@@ -851,6 +914,9 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
     }
     if (layer.blendMode && layer.blendMode !== 'normal') {
       layerAttrs.push(`style="mix-blend-mode: ${escapeXml(layer.blendMode)};"`);
+    }
+    if (layer.dropShadow) {
+      layerAttrs.push(`filter="url(#shadow-${escapeXml(layer.id)})"`);
     }
 
     const layerContent: string[] = [];

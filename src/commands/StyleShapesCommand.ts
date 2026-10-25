@@ -11,6 +11,7 @@ export interface ShapeStyleChangeEntry {
 }
 
 import { isPaintEqual } from '../state/StateManager.ts';
+import { isDropShadowEqual } from '../types/scene-graph.ts';
 
 /**
  * Compara dos objetos ShapeStyleUpdate para verificar si son idénticos.
@@ -22,6 +23,7 @@ function areStylesEqual(a: ShapeStyleUpdate, b: ShapeStyleUpdate): boolean {
   if (a.strokeWidth !== b.strokeWidth) return false;
   if (a.opacity !== b.opacity) return false;
   if (a.blendMode !== b.blendMode) return false;
+  if (!isDropShadowEqual(a.dropShadow, b.dropShadow)) return false;
   if (a.strokeLineCap !== b.strokeLineCap) return false;
   if (a.strokeLineJoin !== b.strokeLineJoin) return false;
   const dashA = a.strokeDashArray ?? [];

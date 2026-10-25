@@ -17,7 +17,7 @@ import type {
 import type { ShapePositionEntry, ShapeDimensionsEntry } from '../state/StateManager.ts';
 import { isGroup, isShape } from '../types/scene-graph.ts';
 import {
-  getShapeAABB,
+  getShapeVisualAABB,
   isPointInPath,
   isPointInShape,
   isPointInText,
@@ -161,7 +161,7 @@ export class SpatialIndex {
           );
         }
       } else if (isShape(node)) {
-        const aabb = getShapeAABB(node);
+        const aabb = getShapeVisualAABB(node);
         const zIndex = this._nextZIndex++;
         items.push({
           id: node.id,
@@ -420,7 +420,7 @@ export class SpatialIndex {
         }
       }
 
-      const newAABB = getShapeAABB(updatedShape);
+      const newAABB = getShapeVisualAABB(updatedShape);
       this.updateShapeAABB(entry.id, newAABB, updatedShape);
     }
   }
@@ -463,7 +463,7 @@ export class SpatialIndex {
         } as Shape;
       }
 
-      const newAABB = getShapeAABB(updatedShape);
+      const newAABB = getShapeVisualAABB(updatedShape);
       this.updateShapeAABB(entry.id, newAABB, updatedShape);
     }
   }
@@ -482,7 +482,7 @@ export class SpatialIndex {
       return false;
     }
 
-    const newAABB = getShapeAABB(updatedShape);
+    const newAABB = getShapeVisualAABB(updatedShape);
     const updatedItem: SpatialItem = {
       ...existing,
       minX: newAABB.minX,
@@ -509,7 +509,7 @@ export class SpatialIndex {
     isLocked: boolean = false,
     clipGroupId?: string
   ): void {
-    const aabb = getShapeAABB(shape);
+    const aabb = getShapeVisualAABB(shape);
     const zIndex = this._nextZIndex++;
     const item: SpatialItem = {
       id: shape.id,

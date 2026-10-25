@@ -29,6 +29,7 @@ import {
   type StrokeLineCap,
   type StrokeLineJoin,
   type BlendMode,
+  type DropShadow,
 } from '../types/scene-graph.ts';
 import {
   getSelectionBounds,
@@ -72,6 +73,7 @@ interface StyleSnapshot {
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
+  readonly dropShadow?: DropShadow | null;
 }
 
 interface TextTypographySnapshot {
@@ -121,6 +123,17 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   const inputOpacity = document.querySelector<HTMLInputElement>('#input-opacity');
   const inputOpacityValue = document.querySelector<HTMLInputElement>('#input-opacity-value');
   const selectBlendMode = document.querySelector<HTMLSelectElement>('#select-blend-mode');
+
+  const checkDropShadow = document.querySelector<HTMLInputElement>('#check-drop-shadow');
+  const groupDropShadowControls = document.querySelector<HTMLElement>('#group-drop-shadow-controls');
+  const inputShadowColor = document.querySelector<HTMLInputElement>('#input-shadow-color');
+  const inputShadowHex = document.querySelector<HTMLInputElement>('#input-shadow-hex');
+  const swatchShadowPreview = document.querySelector<HTMLElement>('#swatch-shadow-preview');
+  const inputShadowOpacity = document.querySelector<HTMLInputElement>('#input-shadow-opacity');
+  const inputShadowOpacityValue = document.querySelector<HTMLInputElement>('#input-shadow-opacity-value');
+  const inputShadowOffsetX = document.querySelector<HTMLInputElement>('#input-shadow-offset-x');
+  const inputShadowOffsetY = document.querySelector<HTMLInputElement>('#input-shadow-offset-y');
+  const inputShadowBlur = document.querySelector<HTMLInputElement>('#input-shadow-blur');
 
   const selectArtboardPreset = document.querySelector<HTMLSelectElement>('#select-artboard-preset');
   const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
@@ -271,6 +284,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
           strokeDashArray: shape.strokeDashArray,
           strokeLineCap: shape.strokeLineCap,
           strokeLineJoin: shape.strokeLineJoin,
+          dropShadow: shape.dropShadow ? { ...shape.dropShadow } : null,
         });
       }
     }
@@ -829,6 +843,51 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       selectBlendMode.value = isBlendModeMixed ? 'normal' : displayedBlendMode;
     }
 
+    const shadows = leafShapes.map((shape) => shape.dropShadow ?? null);
+    const hasAnyShadow = shadows.some((s) => s !== null);
+    const allHaveShadow = shadows.length > 0 && shadows.every((s) => s !== null);
+    const isShadowMixed = hasAnyShadow && !allHaveShadow;
+
+    if (checkDropShadow) {
+      checkDropShadow.checked = allHaveShadow;
+      checkDropShadow.indeterminate = isShadowMixed;
+    }
+
+    if (groupDropShadowControls) {
+      groupDropShadowControls.style.display = hasAnyShadow ? 'flex' : 'none';
+    }
+
+    if (hasAnyShadow) {
+      const activeShadow = shadows.find((s) => s !== null);
+      if (activeShadow) {
+        if (inputShadowColor && (typeof document === 'undefined' || document.activeElement !== inputShadowColor)) {
+          inputShadowColor.value = activeShadow.color;
+        }
+        if (inputShadowHex && (typeof document === 'undefined' || document.activeElement !== inputShadowHex)) {
+          inputShadowHex.value = activeShadow.color;
+        }
+        if (swatchShadowPreview) {
+          swatchShadowPreview.style.backgroundColor = activeShadow.color;
+        }
+        const opVal = Math.round((activeShadow.opacity ?? 1) * 100);
+        if (inputShadowOpacity && (typeof document === 'undefined' || document.activeElement !== inputShadowOpacity)) {
+          inputShadowOpacity.value = String(opVal);
+        }
+        if (inputShadowOpacityValue && (typeof document === 'undefined' || document.activeElement !== inputShadowOpacityValue)) {
+          inputShadowOpacityValue.value = String(opVal);
+        }
+        if (inputShadowOffsetX && (typeof document === 'undefined' || document.activeElement !== inputShadowOffsetX)) {
+          inputShadowOffsetX.value = String(activeShadow.offsetX);
+        }
+        if (inputShadowOffsetY && (typeof document === 'undefined' || document.activeElement !== inputShadowOffsetY)) {
+          inputShadowOffsetY.value = String(activeShadow.offsetY);
+        }
+        if (inputShadowBlur && (typeof document === 'undefined' || document.activeElement !== inputShadowBlur)) {
+          inputShadowBlur.value = String(activeShadow.blur);
+        }
+      }
+    }
+
     const activeArtboard = stateManager.getActiveArtboard();
     if (selectArtboardPreset && (typeof document === 'undefined' || document.activeElement !== selectArtboardPreset)) {
       const matchingPreset = findPresetForSize(activeArtboard.width, activeArtboard.height);
@@ -1327,6 +1386,177 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   };
 
   selectBlendMode?.addEventListener('change', onBlendModeChange);
+
+  const getCurrentInputShadow = (): DropShadow => {
+    const color = inputShadowHex?.value ? (parseHexColor(inputShadowHex.value) ?? '#000000') : '#000000';
+    const percent = inputShadowOpacity ? Math.max(0, Math.min(100, Number(inputShadowOpacity.value) || 50)) : 50;
+    const offsetX = inputShadowOffsetX ? (Number(inputShadowOffsetX.value) || 0) : 0;
+    const offsetY = inputShadowOffsetY ? (Number(inputShadowOffsetY.value) || 0) : 4;
+    const blur = inputShadowBlur ? Math.max(0, Number(inputShadowBlur.value) || 0) : 8;
+    return {
+      color,
+      opacity: percent / 100,
+      offsetX,
+      offsetY,
+      blur,
+    };
+  };
+
+  const applyDropShadowLive = (shadow: DropShadow | null) => {
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    stateManager.setDrawingStyle({ dropShadow: shadow });
+    if (leafShapes.length === 0) return;
+
+    if (!initialStyleSnapshots) captureInitialStyle();
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { dropShadow: shadow },
+    })));
+  };
+
+  const commitDropShadow = (shadow: DropShadow | null) => {
+    const leafShapes = getLeafShapes(stateManager.getSelectedNodes());
+    stateManager.setDrawingStyle({ dropShadow: shadow });
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+    if (!initialStyleSnapshots) captureInitialStyle();
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { dropShadow: initialStyleSnapshots?.get(shape.id)?.dropShadow ?? shape.dropShadow ?? null },
+      after: { dropShadow: shadow },
+    }));
+
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { dropShadow: shadow },
+    })));
+
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) commandManager.recordCommand(command);
+    initialStyleSnapshots = null;
+  };
+
+  const onDropShadowCheckChange = () => {
+    if (!checkDropShadow) return;
+    const enabled = checkDropShadow.checked;
+    if (groupDropShadowControls) {
+      groupDropShadowControls.style.display = enabled ? 'flex' : 'none';
+    }
+    if (enabled) {
+      const sh = getCurrentInputShadow();
+      commitDropShadow(sh);
+    } else {
+      commitDropShadow(null);
+    }
+  };
+
+  const onShadowColorChange = () => {
+    if (!inputShadowColor) return;
+    const hex = inputShadowColor.value.toLowerCase();
+    if (inputShadowHex) inputShadowHex.value = hex;
+    if (swatchShadowPreview) swatchShadowPreview.style.backgroundColor = hex;
+    const sh = getCurrentInputShadow();
+    commitDropShadow({ ...sh, color: hex });
+  };
+
+  const onShadowHexInput = () => {
+    if (!inputShadowHex) return;
+    const parsed = parseHexColor(inputShadowHex.value);
+    if (parsed) {
+      if (inputShadowColor) inputShadowColor.value = parsed;
+      if (swatchShadowPreview) swatchShadowPreview.style.backgroundColor = parsed;
+      const sh = getCurrentInputShadow();
+      applyDropShadowLive({ ...sh, color: parsed });
+    }
+  };
+
+  const onShadowHexChange = () => {
+    if (!inputShadowHex) return;
+    const parsed = parseHexColor(inputShadowHex.value);
+    if (parsed) {
+      if (inputShadowColor) inputShadowColor.value = parsed;
+      if (swatchShadowPreview) swatchShadowPreview.style.backgroundColor = parsed;
+      const sh = getCurrentInputShadow();
+      commitDropShadow({ ...sh, color: parsed });
+    } else {
+      syncPropertiesPanel();
+    }
+  };
+
+  const onShadowOpacitySliderInput = () => {
+    if (!inputShadowOpacity) return;
+    const percent = Math.max(0, Math.min(100, Number(inputShadowOpacity.value) || 0));
+    if (inputShadowOpacityValue) inputShadowOpacityValue.value = String(percent);
+    const sh = getCurrentInputShadow();
+    applyDropShadowLive({ ...sh, opacity: percent / 100 });
+  };
+
+  const onShadowOpacitySliderChange = () => {
+    if (!inputShadowOpacity) return;
+    const percent = Math.max(0, Math.min(100, Number(inputShadowOpacity.value) || 0));
+    if (inputShadowOpacityValue) inputShadowOpacityValue.value = String(percent);
+    const sh = getCurrentInputShadow();
+    commitDropShadow({ ...sh, opacity: percent / 100 });
+  };
+
+  const onShadowOpacityValueInput = () => {
+    if (!inputShadowOpacityValue) return;
+    const percent = Math.max(0, Math.min(100, Number(inputShadowOpacityValue.value) || 0));
+    if (inputShadowOpacity) inputShadowOpacity.value = String(percent);
+    const sh = getCurrentInputShadow();
+    applyDropShadowLive({ ...sh, opacity: percent / 100 });
+  };
+
+  const onShadowOpacityValueChange = () => {
+    if (!inputShadowOpacityValue) return;
+    const percent = Math.max(0, Math.min(100, Number(inputShadowOpacityValue.value) || 0));
+    if (inputShadowOpacity) inputShadowOpacity.value = String(percent);
+    const sh = getCurrentInputShadow();
+    commitDropShadow({ ...sh, opacity: percent / 100 });
+  };
+
+  const onShadowOffsetOrBlurInput = () => {
+    const sh = getCurrentInputShadow();
+    applyDropShadowLive(sh);
+  };
+
+  const onShadowOffsetOrBlurChange = () => {
+    const sh = getCurrentInputShadow();
+    commitDropShadow(sh);
+  };
+
+  checkDropShadow?.addEventListener('click', onInputStart);
+  checkDropShadow?.addEventListener('change', onDropShadowCheckChange);
+
+  inputShadowColor?.addEventListener('mousedown', onInputStart);
+  inputShadowColor?.addEventListener('change', onShadowColorChange);
+
+  inputShadowHex?.addEventListener('focus', onInputStart);
+  inputShadowHex?.addEventListener('input', onShadowHexInput);
+  inputShadowHex?.addEventListener('change', onShadowHexChange);
+
+  inputShadowOpacity?.addEventListener('mousedown', onInputStart);
+  inputShadowOpacity?.addEventListener('input', onShadowOpacitySliderInput);
+  inputShadowOpacity?.addEventListener('change', onShadowOpacitySliderChange);
+
+  inputShadowOpacityValue?.addEventListener('focus', onInputStart);
+  inputShadowOpacityValue?.addEventListener('input', onShadowOpacityValueInput);
+  inputShadowOpacityValue?.addEventListener('change', onShadowOpacityValueChange);
+
+  inputShadowOffsetX?.addEventListener('focus', onInputStart);
+  inputShadowOffsetX?.addEventListener('input', onShadowOffsetOrBlurInput);
+  inputShadowOffsetX?.addEventListener('change', onShadowOffsetOrBlurChange);
+
+  inputShadowOffsetY?.addEventListener('focus', onInputStart);
+  inputShadowOffsetY?.addEventListener('input', onShadowOffsetOrBlurInput);
+  inputShadowOffsetY?.addEventListener('change', onShadowOffsetOrBlurChange);
+
+  inputShadowBlur?.addEventListener('focus', onInputStart);
+  inputShadowBlur?.addEventListener('input', onShadowOffsetOrBlurInput);
+  inputShadowBlur?.addEventListener('change', onShadowOffsetOrBlurChange);
 
   const onFillChange = () => {
     if (!inputFill) return;
@@ -2646,6 +2876,36 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputOpacityValue?.removeEventListener('input', onOpacityValueInput);
       inputOpacityValue?.removeEventListener('change', onOpacityValueChange);
       selectBlendMode?.removeEventListener('change', onBlendModeChange);
+
+      checkDropShadow?.removeEventListener('click', onInputStart);
+      checkDropShadow?.removeEventListener('change', onDropShadowCheckChange);
+
+      inputShadowColor?.removeEventListener('mousedown', onInputStart);
+      inputShadowColor?.removeEventListener('change', onShadowColorChange);
+
+      inputShadowHex?.removeEventListener('focus', onInputStart);
+      inputShadowHex?.removeEventListener('input', onShadowHexInput);
+      inputShadowHex?.removeEventListener('change', onShadowHexChange);
+
+      inputShadowOpacity?.removeEventListener('mousedown', onInputStart);
+      inputShadowOpacity?.removeEventListener('input', onShadowOpacitySliderInput);
+      inputShadowOpacity?.removeEventListener('change', onShadowOpacitySliderChange);
+
+      inputShadowOpacityValue?.removeEventListener('focus', onInputStart);
+      inputShadowOpacityValue?.removeEventListener('input', onShadowOpacityValueInput);
+      inputShadowOpacityValue?.removeEventListener('change', onShadowOpacityValueChange);
+
+      inputShadowOffsetX?.removeEventListener('focus', onInputStart);
+      inputShadowOffsetX?.removeEventListener('input', onShadowOffsetOrBlurInput);
+      inputShadowOffsetX?.removeEventListener('change', onShadowOffsetOrBlurChange);
+
+      inputShadowOffsetY?.removeEventListener('focus', onInputStart);
+      inputShadowOffsetY?.removeEventListener('input', onShadowOffsetOrBlurInput);
+      inputShadowOffsetY?.removeEventListener('change', onShadowOffsetOrBlurChange);
+
+      inputShadowBlur?.removeEventListener('focus', onInputStart);
+      inputShadowBlur?.removeEventListener('input', onShadowOffsetOrBlurInput);
+      inputShadowBlur?.removeEventListener('change', onShadowOffsetOrBlurChange);
 
       inputTextContent?.removeEventListener('focus', onTextContentFocus);
       inputTextContent?.removeEventListener('input', onTextContentInput);

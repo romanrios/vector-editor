@@ -833,6 +833,60 @@
               <option value="exclusion">Exclusión</option>
             </select>
           </div>
+          <!-- Efecto de Sombra Paralela (Drop Shadow) -->
+          <div class="control-group" id="group-drop-shadow">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <label for="check-drop-shadow" style="cursor: pointer; margin: 0; user-select: none;">Sombra paralela</label>
+              <input type="checkbox" id="check-drop-shadow" aria-label="Activar sombra paralela">
+            </div>
+            <div id="group-drop-shadow-controls" style="display: none; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px;">
+              <!-- Fila: Color de sombra -->
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                <label for="input-shadow-hex" style="font-size: 11px; margin: 0;">Color</label>
+                <div class="color-composite-group" style="flex: 1; min-width: 0;">
+                  <div class="color-swatch-wrapper" id="swatch-shadow-wrapper" title="Elegir color de sombra">
+                    <div class="color-swatch-preview" id="swatch-shadow-preview" style="background-color: #000000;"></div>
+                    <input type="color" id="input-shadow-color" value="#000000" title="Color de sombra" aria-label="Color de sombra">
+                  </div>
+                  <input type="text" id="input-shadow-hex" class="input-hex" value="#000000" maxlength="7" spellcheck="false" placeholder="#000000" aria-label="Hexadecimal de color de sombra">
+                </div>
+              </div>
+              <!-- Fila: Opacidad de sombra -->
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                <label for="input-shadow-opacity" style="font-size: 11px; margin: 0;">Opacidad</label>
+                <div class="range-control" style="flex: 1;">
+                  <input type="range" id="input-shadow-opacity" min="0" max="100" step="1" value="50" aria-label="Opacidad de sombra">
+                  <input type="number" id="input-shadow-opacity-value" min="0" max="100" step="1" value="50" aria-label="Porcentaje de opacidad de sombra">
+                  <span class="range-unit" aria-hidden="true">%</span>
+                </div>
+              </div>
+              <!-- Fila: Offsets X e Y -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <label for="input-shadow-offset-x" style="font-size: 11px; margin: 0;">X</label>
+                  <div class="input-number-wrapper" style="flex: 1;">
+                    <input type="number" id="input-shadow-offset-x" value="0" step="1" aria-label="Desplazamiento horizontal de sombra">
+                    <span class="input-unit" aria-hidden="true">px</span>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <label for="input-shadow-offset-y" style="font-size: 11px; margin: 0;">Y</label>
+                  <div class="input-number-wrapper" style="flex: 1;">
+                    <input type="number" id="input-shadow-offset-y" value="4" step="1" aria-label="Desplazamiento vertical de sombra">
+                    <span class="input-unit" aria-hidden="true">px</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Fila: Desenfoque (Blur) -->
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                <label for="input-shadow-blur" style="font-size: 11px; margin: 0;">Desenfoque</label>
+                <div class="input-number-wrapper" style="flex: 1;">
+                  <input type="number" id="input-shadow-blur" min="0" max="200" step="1" value="8" aria-label="Radio de desenfoque de sombra">
+                  <span class="input-unit" aria-hidden="true">px</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </details>
 

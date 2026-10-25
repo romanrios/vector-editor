@@ -14,6 +14,7 @@ import {
   type Text,
   type Vector2D,
   type BlendMode,
+  type DropShadow,
 } from '../types/scene-graph.ts';
 import { getPathBaseAABB } from './geometry.ts';
 import { normalizeColor } from './color.ts';
@@ -70,6 +71,7 @@ interface SvgContext {
   strokeDashArray?: readonly number[];
   opacity?: number;
   blendMode?: BlendMode;
+  dropShadow?: DropShadow;
   fillRule?: 'nonzero' | 'evenodd';
   transformMatrix?: [number, number, number, number, number, number];
 }
@@ -778,6 +780,117 @@ function getMatchedCssStyles(el: SvgElementLike, rules: CssRule[]): Record<strin
 }
 
 /**
+ * Extrae componentes de color y opacidad de cadenas como rgba() o hex8.
+ */
+function extractColorAndAlpha(val: string): { color: string; opacity?: number } {
+  const trimmed = val.trim();
+  let opacity: number | undefined;
+
+  const rgbaMatch = trimmed.match(/^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)/i);
+  if (rgbaMatch) {
+    const a = parseFloat(rgbaMatch[1]);
+    if (!isNaN(a)) opacity = Math.max(0, Math.min(1, a));
+  }
+  const hex8Match = trimmed.match(/^#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})$/);
+  if (hex8Match) {
+    const a = parseInt(hex8Match[2], 16) / 255;
+    opacity = Math.max(0, Math.min(1, a));
+  }
+
+  const norm = normalizeColor(trimmed) ?? '#000000';
+  return { color: norm, opacity };
+}
+
+/**
+ * Parsea filtros CSS drop-shadow(...) inline o en atributos style.
+ */
+function parseCssDropShadow(str: string): DropShadow | undefined {
+  const match = str.match(/drop-shadow\((.+)\)/i);
+  if (!match) return undefined;
+  const content = match[1].trim();
+
+  let colorPart = '';
+  let rest = content;
+
+  const colorFnMatch = content.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/i);
+  if (colorFnMatch) {
+    colorPart = colorFnMatch[1];
+    rest = content.replace(colorFnMatch[1], ' ').trim();
+  }
+
+  const parts = rest.split(/\s+/).filter(Boolean);
+  const numericParts: number[] = [];
+  for (const p of parts) {
+    if (p.startsWith('#') || !/^[+-]?\d/.test(p)) {
+      if (!colorPart) colorPart = p;
+    } else {
+      const num = parseFloat(p);
+      if (!isNaN(num)) numericParts.push(num);
+    }
+  }
+
+  const offsetX = numericParts[0] ?? 0;
+  const offsetY = numericParts[1] ?? 0;
+  const blur = numericParts[2] ?? 0;
+  const { color, opacity } = extractColorAndAlpha(colorPart || '#000000');
+
+  return {
+    color,
+    ...(opacity !== undefined ? { opacity } : {}),
+    offsetX,
+    offsetY,
+    blur: Math.max(0, blur),
+  };
+}
+
+/**
+ * Parsea filtros SVG (<filter>) que contengan <feDropShadow>.
+ */
+function parseSvgFilters(doc: SvgElementLike): Map<string, DropShadow> {
+  const filters = new Map<string, DropShadow>();
+
+  function searchElement(el: SvgElementLike) {
+    if (el.tagName.toLowerCase() === 'filter') {
+      const id = el.getAttribute('id');
+      if (id) {
+        for (let i = 0; i < el.children.length; i++) {
+          const child = el.children[i];
+          if (child.tagName.toLowerCase() === 'fedropshadow') {
+            const dx = parseFloat(child.getAttribute('dx') || '0');
+            const dy = parseFloat(child.getAttribute('dy') || '0');
+            const stdDevAttr = child.getAttribute('stdDeviation') || '0';
+            const stdDevParts = stdDevAttr.trim().split(/[\s,]+/).map(parseFloat);
+            const stdDev = !isNaN(stdDevParts[0]) ? stdDevParts[0] : 0;
+            const blur = Math.max(0, stdDev * 2);
+            const floodColor = child.getAttribute('flood-color') || '#000000';
+            const floodOpacityAttr = child.getAttribute('flood-opacity');
+            const floodOpacity = floodOpacityAttr !== null ? parseFloat(floodOpacityAttr) : undefined;
+            const { color, opacity: extractedOpacity } = extractColorAndAlpha(floodColor);
+            const finalOpacity = floodOpacity !== undefined && !isNaN(floodOpacity) ? Math.max(0, Math.min(1, floodOpacity)) : extractedOpacity;
+
+            const shadow: DropShadow = {
+              color,
+              ...(finalOpacity !== undefined ? { opacity: finalOpacity } : {}),
+              offsetX: isNaN(dx) ? 0 : dx,
+              offsetY: isNaN(dy) ? 0 : dy,
+              blur,
+            };
+            filters.set(id, shadow);
+            break;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < el.children.length; i++) {
+      searchElement(el.children[i]);
+    }
+  }
+
+  searchElement(doc);
+  return filters;
+}
+
+/**
  * Extrae y resuelve estilos combinados para un elemento siguiendo la especificidad estándar
  * (inline style > atributos de presentación > reglas CSS <style> > contexto padre).
  */
@@ -785,7 +898,8 @@ function resolveElementStyles(
   el: SvgElementLike,
   parentContext: SvgContext,
   cssRules: CssRule[],
-  gradients: Map<string, SvgRawGradient>
+  gradients: Map<string, SvgRawGradient>,
+  filters?: Map<string, DropShadow>
 ): SvgContext {
   const css = getMatchedCssStyles(el, cssRules);
   const inline = parseInlineStyle(el.getAttribute('style'));
@@ -909,6 +1023,22 @@ function resolveElementStyles(
     const lower = bmVal.trim().toLowerCase();
     if (validModes.has(lower)) {
       context.blendMode = lower as BlendMode;
+    }
+  }
+
+  // 11. Drop Shadow / Filter
+  const filterVal = getProp('filter');
+  if (filterVal !== undefined) {
+    if (filterVal.includes('url(')) {
+      const idMatch = filterVal.match(/url\(\s*['"]?#?([^'")\s]+)['"]?\s*\)/i);
+      if (idMatch && filters && filters.has(idMatch[1])) {
+        context.dropShadow = filters.get(idMatch[1]);
+      }
+    } else if (filterVal.includes('drop-shadow(')) {
+      const parsedShadow = parseCssDropShadow(filterVal);
+      if (parsedShadow) {
+        context.dropShadow = parsedShadow;
+      }
     }
   }
 
@@ -1219,7 +1349,8 @@ function parseSvgElement(
   el: SvgElementLike,
   parentContext: SvgContext,
   cssRules: CssRule[],
-  gradients: Map<string, SvgRawGradient>
+  gradients: Map<string, SvgRawGradient>,
+  filters?: Map<string, DropShadow>
 ): LayerChildNode | null {
   const tagName = el.tagName.toLowerCase();
 
@@ -1245,14 +1376,14 @@ function parseSvgElement(
   }
 
   // Resolver estilos heredados y combinados
-  const context = resolveElementStyles(el, parentContext, cssRules, gradients);
+  const context = resolveElementStyles(el, parentContext, cssRules, gradients, filters);
   const nameAttr = el.getAttribute('id') || el.getAttribute('data-name') || tagName;
 
   // 1. Grupos (<g>)
   if (tagName === 'g') {
     const children: LayerChildNode[] = [];
     for (let i = 0; i < el.children.length; i++) {
-      const childNode = parseSvgElement(el.children[i], context, cssRules, gradients);
+      const childNode = parseSvgElement(el.children[i], context, cssRules, gradients, filters);
       if (childNode) children.push(childNode);
     }
     if (children.length === 0) return null;
@@ -1271,7 +1402,7 @@ function parseSvgElement(
         }
         if (clipEl) {
           for (let c = 0; c < clipEl.children.length; c++) {
-            const clipShape = parseSvgElement(clipEl.children[c], parentContext, cssRules, gradients);
+            const clipShape = parseSvgElement(clipEl.children[c], parentContext, cssRules, gradients, filters);
             if (clipShape && isShape(clipShape)) {
               isClipMask = true;
               clipChildId = clipShape.id;
@@ -1290,6 +1421,7 @@ function parseSvgElement(
       children,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
       ...(isClipMask ? { isClipMask: true, clipChildId } : {}),
     };
     return group;
@@ -1319,7 +1451,7 @@ function parseSvgElement(
         : tMatrix;
     }
 
-    return parseSvgElement(targetEl, useContext, cssRules, gradients);
+    return parseSvgElement(targetEl, useContext, cssRules, gradients, filters);
   }
 
   // 3. Rectángulos (<rect>)
@@ -1362,6 +1494,7 @@ function parseSvgElement(
       rotation: rotation !== 0 ? rotation : undefined,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
     };
     return rect;
   }
@@ -1404,6 +1537,7 @@ function parseSvgElement(
       rotation: rotation !== 0 ? rotation : undefined,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
     };
     return ellipse;
   }
@@ -1468,6 +1602,7 @@ function parseSvgElement(
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
       fillRule: context.fillRule,
     };
     return pathNode;
@@ -1505,6 +1640,7 @@ function parseSvgElement(
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
     };
     return path;
   }
@@ -1548,6 +1684,7 @@ function parseSvgElement(
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
       fillRule: context.fillRule,
     };
     return path;
@@ -1587,6 +1724,7 @@ function parseSvgElement(
       fill: (materializeGradient(context.fill, textAABB) as any) ?? '#000000',
       opacity: context.opacity,
       ...(context.blendMode ? { blendMode: context.blendMode } : {}),
+      ...(context.dropShadow ? { dropShadow: context.dropShadow } : {}),
     };
     return textNode;
   }
@@ -1804,20 +1942,21 @@ export function parseSvgString(svgText: string): SvgImportResult {
     rootMatrix = [scale, 0, 0, scale, tx, ty];
   }
 
-  // 3. Parsear degradados (con cssRules y rootMatrix)
+  // 3. Parsear degradados y filtros (con cssRules y rootMatrix)
   const gradients = parseSvgGradients(svgEl, cssRules, rootMatrix);
+  const filters = parseSvgFilters(svgEl);
 
   // 4. Contexto base inicializado desde el propio <svg>
   let baseContext: SvgContext = {};
   if (rootMatrix) {
     baseContext.transformMatrix = rootMatrix;
   }
-  baseContext = resolveElementStyles(svgEl, baseContext, cssRules, gradients);
+  baseContext = resolveElementStyles(svgEl, baseContext, cssRules, gradients, filters);
 
   const shapes: LayerChildNode[] = [];
   for (let i = 0; i < svgEl.children.length; i++) {
     const child = svgEl.children[i];
-    const parsed = parseSvgElement(child, baseContext, cssRules, gradients);
+    const parsed = parseSvgElement(child, baseContext, cssRules, gradients, filters);
     if (parsed) {
       shapes.push(parsed);
     }
