@@ -472,4 +472,98 @@ describe('Grupo de Herramientas de Figura y Submenú Flyout (Illustrator-style)'
       mock.restore();
     }
   });
+
+  it('9. Tocar la herramienta de figura activa conmuta el submenú flyout (ideal para táctil en móvil)', () => {
+    const mock = setupMockToolbar();
+    try {
+      const sm = new StateManager();
+      const cm = new CommandManager();
+      const ic = new InputController(createMockCanvas(), sm, cm);
+      const tb = setupToolbarBindings({ inputController: ic, commandManager: cm });
+
+      // Seleccionar rectángulo como herramienta activa
+      ic.setTool('rectangle');
+      assert.strictEqual(ic.currentTool, 'rectangle');
+      assert.strictEqual(mock.flyoutShapes.hasAttribute('hidden'), true);
+
+      // Primer toque cuando ya está activa: abre el flyout
+      mock.btnRectangle.click();
+      assert.strictEqual(mock.flyoutShapes.hasAttribute('hidden'), false);
+      assert.strictEqual(mock.flyoutShapes.classList.contains('open'), true);
+
+      // Segundo toque cuando ya está activa: cierra el flyout
+      mock.btnRectangle.click();
+      assert.strictEqual(mock.flyoutShapes.hasAttribute('hidden'), true);
+
+      tb.cleanup();
+      ic.destroy();
+    } finally {
+      mock.restore();
+    }
+  });
+
+  it('10. Pulsación prolongada táctil (long-press touch) abre el submenú respetando la tolerancia de dedos', async () => {
+    const mock = setupMockToolbar();
+    try {
+      const sm = new StateManager();
+      const cm = new CommandManager();
+      const ic = new InputController(createMockCanvas(), sm, cm);
+      const tb = setupToolbarBindings({ inputController: ic, commandManager: cm });
+
+      const pointerDownEvent = {
+        type: 'pointerdown',
+        pointerType: 'touch',
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        defaultPrevented: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      };
+
+      mock.groupShapes.dispatchEvent(pointerDownEvent);
+
+      // Movimiento leve de 10px característico de un contacto táctil (por debajo del umbral de 18px)
+      const pointerMoveEvent = {
+        type: 'pointermove',
+        pointerType: 'touch',
+        clientX: 106,
+        clientY: 108, // hypot = 10
+        defaultPrevented: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      };
+      mock.groupShapes.dispatchEvent(pointerMoveEvent);
+
+      // Esperar 320ms a que venza el temporizador de long press táctil
+      await new Promise((resolve) => setTimeout(resolve, 320));
+
+      assert.strictEqual(mock.flyoutShapes.hasAttribute('hidden'), false);
+      assert.strictEqual(mock.flyoutShapes.classList.contains('open'), true);
+
+      tb.cleanup();
+      ic.destroy();
+    } finally {
+      mock.restore();
+    }
+  });
+
+  it('11. El indicador en CSS es un triángulo (clip-path polygon) estilo Illustrator en vez de cuadradito', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const cssPath = path.resolve('src/styles/layout/toolbar.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+
+    // Debe contener el clip-path poligonal triangular
+    assert.ok(
+      css.includes('clip-path: polygon(100% 0, 100% 100%, 0 100%)'),
+      'El indicador has-flyout::after debe ser un triángulo con clip-path: polygon(100% 0, 100% 100%, 0 100%)'
+    );
+    // Debe tener touch-action: manipulation en el grupo para prevenir cancelaciones de gestos móviles
+    assert.ok(
+      css.includes('touch-action: manipulation'),
+      '.tool-group debe incluir touch-action: manipulation para soporte táctil móvil fluido'
+    );
+  });
 });
+

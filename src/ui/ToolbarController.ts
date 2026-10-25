@@ -57,11 +57,45 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
 
   let isFlyoutOpen = false;
 
+  const updateFlyoutPosition = () => {
+    if (!flyoutShapes || !groupShapes) return;
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth ?? 1024) <= 600;
+    if (isMobile) {
+      const rect = typeof groupShapes.getBoundingClientRect === 'function'
+        ? groupShapes.getBoundingClientRect()
+        : { left: 10, top: 500 };
+      const flyoutWidth = flyoutShapes.offsetWidth || 180;
+      const windowW = typeof window !== 'undefined' ? (window.innerWidth ?? 360) : 360;
+      const windowH = typeof window !== 'undefined' ? (window.innerHeight ?? 640) : 640;
+      const left = Math.max(8, Math.min(rect.left, windowW - flyoutWidth - 8));
+      const bottom = Math.max(56, windowH - rect.top + 8);
+
+      if (flyoutShapes.style) {
+        flyoutShapes.style.position = 'fixed';
+        flyoutShapes.style.left = `${left}px`;
+        flyoutShapes.style.bottom = `${bottom}px`;
+        flyoutShapes.style.top = 'auto';
+        flyoutShapes.style.right = 'auto';
+        flyoutShapes.style.zIndex = '1000';
+      }
+    } else {
+      if (flyoutShapes.style) {
+        flyoutShapes.style.position = '';
+        flyoutShapes.style.left = '';
+        flyoutShapes.style.bottom = '';
+        flyoutShapes.style.top = '';
+        flyoutShapes.style.right = '';
+        flyoutShapes.style.zIndex = '';
+      }
+    }
+  };
+
   const openShapeFlyout = () => {
     if (!flyoutShapes) return;
     isFlyoutOpen = true;
     flyoutShapes.removeAttribute('hidden');
     flyoutShapes.classList.add('open');
+    updateFlyoutPosition();
     const currentBtn = shapeButtons[currentShapeTool];
     currentBtn?.setAttribute('aria-expanded', 'true');
   };
@@ -220,10 +254,20 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   const onHandClick = () => inputController.setTool('hand');
   const onPenClick = () => inputController.setTool('pen');
   const onPencilClick = () => inputController.setTool('pencil');
-  const onRectangleClick = () => inputController.setTool('rectangle');
-  const onEllipseClick = () => inputController.setTool('ellipse');
-  const onPolygonClick = () => inputController.setTool('polygon');
-  const onStarClick = () => inputController.setTool('star');
+  const onShapeClick = (shape: ShapeTool) => {
+    if (inputController.currentTool === shape) {
+      // Si la figura ya está activa, un clic o toque conmuta el submenú (comportamiento Illustrator / táctil móvil)
+      toggleShapeFlyout();
+    } else {
+      inputController.setTool(shape);
+      closeShapeFlyout();
+    }
+  };
+
+  const onRectangleClick = () => onShapeClick('rectangle');
+  const onEllipseClick = () => onShapeClick('ellipse');
+  const onPolygonClick = () => onShapeClick('polygon');
+  const onStarClick = () => onShapeClick('star');
   const onLineClick = () => inputController.setTool('line');
   const onTextClick = () => inputController.setTool('text');
   const onEyedropperClick = () => inputController.setTool('eyedropper');
@@ -243,32 +287,42 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
   btnEyedropper?.addEventListener('click', onEyedropperClick);
   btnArtboard?.addEventListener('click', onArtboardClick);
 
-  let longPressTimer: number | null = null;
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let didLongPress = false;
   let pointerStartX = 0;
   let pointerStartY = 0;
 
   const onGroupPointerDown = (e: MouseEvent | PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== undefined && e.button !== 0) return;
     didLongPress = false;
     pointerStartX = e.clientX;
     pointerStartY = e.clientY;
 
     if (longPressTimer !== null) {
-      window.clearTimeout(longPressTimer);
+      clearTimeout(longPressTimer);
     }
 
-    longPressTimer = window.setTimeout(() => {
+    const isTouch = (e as PointerEvent).pointerType === 'touch' || (e as PointerEvent).pointerType === 'pen';
+    const delay = isTouch ? 280 : 320;
+
+    longPressTimer = setTimeout(() => {
       didLongPress = true;
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate(35);
+        } catch {}
+      }
       openShapeFlyout();
-    }, 320);
+    }, delay);
   };
 
   const onGroupPointerMove = (e: MouseEvent | PointerEvent) => {
     if (longPressTimer !== null) {
+      const isTouch = (e as PointerEvent).pointerType === 'touch' || (e as PointerEvent).pointerType === 'pen';
+      const maxDistance = isTouch ? 18 : 8;
       const dist = Math.hypot(e.clientX - pointerStartX, e.clientY - pointerStartY);
-      if (dist > 6) {
-        window.clearTimeout(longPressTimer);
+      if (dist > maxDistance) {
+        clearTimeout(longPressTimer);
         longPressTimer = null;
       }
     }
@@ -276,7 +330,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
 
   const onGroupPointerUp = () => {
     if (longPressTimer !== null) {
-      window.clearTimeout(longPressTimer);
+      clearTimeout(longPressTimer);
       longPressTimer = null;
     }
   };
@@ -285,7 +339,9 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
     if (didLongPress) {
       e.preventDefault();
       e.stopPropagation();
-      didLongPress = false;
+      setTimeout(() => {
+        didLongPress = false;
+      }, 50);
     }
   };
 
@@ -293,8 +349,11 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
     e.preventDefault();
     e.stopPropagation();
     if (longPressTimer !== null) {
-      window.clearTimeout(longPressTimer);
+      clearTimeout(longPressTimer);
       longPressTimer = null;
+    }
+    if (didLongPress) {
+      return;
     }
     toggleShapeFlyout();
   };
@@ -310,6 +369,18 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       closeShapeFlyout();
     }
   };
+
+  const onWindowResizeOrScroll = () => {
+    if (isFlyoutOpen) {
+      updateFlyoutPosition();
+    }
+  };
+
+  const toolsSidebar = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('.tools-sidebar') : null;
+  toolsSidebar?.addEventListener?.('scroll', onWindowResizeOrScroll, { passive: true });
+  if (typeof window !== 'undefined') {
+    window.addEventListener?.('resize', onWindowResizeOrScroll);
+  }
 
   if (groupShapes) {
     groupShapes.addEventListener('pointerdown', onGroupPointerDown as any);
@@ -375,7 +446,7 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       btnRedo?.removeEventListener('click', onRedoClick);
 
       if (longPressTimer !== null) {
-        window.clearTimeout(longPressTimer);
+        clearTimeout(longPressTimer);
       }
       groupShapes?.removeEventListener('pointerdown', onGroupPointerDown as any);
       groupShapes?.removeEventListener('pointermove', onGroupPointerMove as any);
@@ -385,6 +456,10 @@ export function setupToolbarBindings(options: ToolbarControllerOptions): Toolbar
       groupShapes?.removeEventListener('contextmenu', onGroupContextMenu);
       document.removeEventListener?.('pointerdown', onDocumentPointerDown as any);
       document.removeEventListener?.('keydown', onDocumentKeyDown);
+      toolsSidebar?.removeEventListener?.('scroll', onWindowResizeOrScroll);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener?.('resize', onWindowResizeOrScroll);
+      }
       for (const unsub of flyoutClickUnsubscribers) {
         unsub();
       }
