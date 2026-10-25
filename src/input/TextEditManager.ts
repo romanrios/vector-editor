@@ -10,6 +10,7 @@ import {
 import {
   getTextIndexAtPosition,
   measureSingleLineTextWidth,
+  getTextBaseAABB,
 } from '../utils/geometry.ts';
 
 export interface TextEditingState {
@@ -34,6 +35,7 @@ export interface TextEditStateView {
 export interface TextEditManagerHooks {
   onStartEditing?: () => void;
   worldToScreen?: (point: Vector2D) => Vector2D;
+  getZoom?: () => number;
 }
 
 /**
@@ -334,6 +336,7 @@ export class TextEditManager {
       this._textDragAnchorIndex = charIndex;
       this.resetCursorBlink();
       this.stateManager.markDirty();
+      this.setupMobileInputProxy(false);
       return true;
     } else {
       this.commitTextEdit();
@@ -794,12 +797,19 @@ export class TextEditManager {
     const canvasRect = this.canvas.getBoundingClientRect ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
     let screenX = canvasRect.left + 50;
     let screenY = canvasRect.top + 50;
+    let textWidth = 60;
+    let textHeight = 36;
 
     const node = this.stateManager.findNode(this._textEditingState.textId);
     if (node && isText(node) && this.hooks?.worldToScreen) {
-      const screenPos = this.hooks.worldToScreen({ x: node.x, y: node.y });
+      const zoom = this.hooks.getZoom?.() ?? 1;
+      const ctx = this.getMeasureContext();
+      const baseAABB = getTextBaseAABB(node, ctx);
+      const screenPos = this.hooks.worldToScreen({ x: baseAABB.minX, y: baseAABB.minY });
       screenX = canvasRect.left + screenPos.x;
       screenY = canvasRect.top + screenPos.y;
+      textWidth = Math.max(60, baseAABB.width * zoom);
+      textHeight = Math.max(36, baseAABB.height * zoom);
     }
 
     const winW = typeof window !== 'undefined' ? window.innerWidth : 400;
@@ -809,9 +819,21 @@ export class TextEditManager {
 
     this._mobileInputProxy.style.top = `${clampedY}px`;
     this._mobileInputProxy.style.left = `${clampedX}px`;
-    this._mobileInputProxy.style.width = '30px';
-    this._mobileInputProxy.style.height = '30px';
+    this._mobileInputProxy.style.width = `${Math.min(winW - clampedX - 10, Math.max(60, textWidth))}px`;
+    this._mobileInputProxy.style.height = `${Math.min(winH - clampedY - 10, Math.max(36, textHeight))}px`;
     this._mobileInputProxy.style.pointerEvents = 'auto';
+  }
+
+  public ensureProxyFocused(): void {
+    if (this._mobileInputProxy && this._textEditingState) {
+      try {
+        if (typeof document !== 'undefined' && document.activeElement !== this._mobileInputProxy) {
+          this._mobileInputProxy.focus({ preventScroll: true });
+        }
+      } catch {
+        this._mobileInputProxy?.focus();
+      }
+    }
   }
 
   private setupMobileInputProxy(selectAll: boolean = false): void {
@@ -868,6 +890,12 @@ export class TextEditManager {
       };
       this._mobileInputProxy.addEventListener('select', onSelectionSync);
       this._mobileInputProxy.addEventListener('keyup', onSelectionSync);
+      this._mobileInputProxy.addEventListener('click', onSelectionSync);
+      this._mobileInputProxy.addEventListener('pointerup', onSelectionSync);
+      this._mobileInputProxy.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        this.resetCursorBlink();
+      });
 
       this._mobileInputProxy.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -908,6 +936,29 @@ export class TextEditManager {
         this._mobileInputProxy.focus({ preventScroll: true });
       } catch {
         this._mobileInputProxy.focus();
+      }
+
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          if (this._textEditingState && this._mobileInputProxy) {
+            try {
+              if (document.activeElement !== this._mobileInputProxy) {
+                this._mobileInputProxy.focus({ preventScroll: true });
+              }
+            } catch {}
+          }
+        });
+      }
+      if (typeof setTimeout !== 'undefined') {
+        setTimeout(() => {
+          if (this._textEditingState && this._mobileInputProxy) {
+            try {
+              if (document.activeElement !== this._mobileInputProxy) {
+                this._mobileInputProxy.focus({ preventScroll: true });
+              }
+            } catch {}
+          }
+        }, 50);
       }
     }
   }

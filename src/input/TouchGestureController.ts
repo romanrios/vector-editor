@@ -160,6 +160,7 @@ export class TouchGestureController {
         now - this.lastTapTime < this.options.doubleTapDelayMs &&
         distFromLastTap < this.options.doubleTapDistanceThreshold
       ) {
+        event.preventDefault?.();
         this.clearLongPressTimer();
         this.lastTapTime = 0;
         this.callbacks.onDoubleTap?.(event);

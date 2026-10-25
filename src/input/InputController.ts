@@ -231,6 +231,7 @@ export class InputController {
           }
         },
         worldToScreen: (point) => this.viewportManager.worldToScreen(point),
+        getZoom: () => this.viewportManager.zoom,
       }
     );
 
@@ -361,6 +362,7 @@ export class InputController {
           this.handleContextMenu(e as MouseEvent);
         },
         onDoubleTap: (e) => {
+          this._lastPointerDownTimestamp = Date.now();
           this.handleDoubleClick(e as MouseEvent);
         },
       }
@@ -1043,6 +1045,16 @@ export class InputController {
   }
 
   public handleDoubleClick(event: MouseEvent): void {
+    const isSyntheticMouse =
+      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+    if (
+      isSyntheticMouse &&
+      (Date.now() - this._lastPointerDownTimestamp < 800 ||
+        Date.now() - this._lastPointerUpTimestamp < 800)
+    ) {
+      return;
+    }
+
     if (this._currentTool !== 'select' && this._currentTool !== 'text') {
       return;
     }
@@ -1054,6 +1066,7 @@ export class InputController {
     }
 
     if (isText(hitShape)) {
+      event.preventDefault?.();
       this._currentTool = 'text';
       this.emit('toolChange', 'text');
       this.canvas.style.cursor = 'text';
@@ -1120,6 +1133,7 @@ export class InputController {
     if (this.textEditManager.isEditingText) {
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.id === this.textEditManager.textEditingState?.textId) {
+        event.preventDefault?.();
         this.textEditManager.handleMouseDown(hitShape, x, y);
         return;
       }
@@ -1173,6 +1187,26 @@ export class InputController {
     }
 
     // Modo 'select'
+    if (this.isTouch && this._currentTool === 'select') {
+      const hitShape = this.hitTest(x, y);
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      if (
+        hitShape &&
+        isText(hitShape) &&
+        selectedNodes.length === 1 &&
+        selectedNodes[0].id === hitShape.id
+      ) {
+        event.preventDefault?.();
+        this._currentTool = 'text';
+        this.emit('toolChange', 'text');
+        this.canvas.style.cursor = 'text';
+        const ctx = this.textEditManager.getMeasureContext();
+        const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
+        this.startEditingText(hitShape.id, charIndex);
+        return;
+      }
+    }
+
     this.selectToolHandler.onMouseDown(event, coords);
   }
 
@@ -1348,6 +1382,10 @@ export class InputController {
         Date.now() - this._lastPointerUpTimestamp < 800)
     ) {
       return;
+    }
+
+    if (this.textEditManager.isEditingText && this.isTouch) {
+      this.textEditManager.ensureProxyFocused();
     }
 
     const coords = this.getLocalCoordinates(event);

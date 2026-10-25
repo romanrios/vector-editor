@@ -52,6 +52,7 @@ export class TextToolHandler implements ToolHandler {
 
     if (this.textEditManager.isEditingText) {
       if (hitShape && hitShape.id === this.textEditManager.textEditingState?.textId) {
+        _event.preventDefault?.();
         this.textEditManager.handleMouseDown(hitShape, coords.x, coords.y);
         return;
       } else {
@@ -60,6 +61,7 @@ export class TextToolHandler implements ToolHandler {
     }
 
     if (hitShape && hitShape.type === 'text') {
+      _event.preventDefault?.();
       const textNode = hitShape as Text;
       const charIndex = getTextIndexAtPosition(
         textNode,
@@ -71,6 +73,7 @@ export class TextToolHandler implements ToolHandler {
       return;
     }
 
+    _event.preventDefault?.();
     this.handleTextMouseDown(coords.x, coords.y);
   }
 
@@ -106,6 +109,7 @@ export class TextToolHandler implements ToolHandler {
   public onDoubleClick(_event: MouseEvent, coords: Vector2D): void {
     const hitShape = this.hitTest(coords.x, coords.y);
     if (hitShape && hitShape.type === 'text') {
+      _event.preventDefault?.();
       const textNode = hitShape as Text;
       const charIndex = getTextIndexAtPosition(
         textNode,

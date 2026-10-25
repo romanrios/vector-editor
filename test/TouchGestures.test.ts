@@ -499,4 +499,202 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       (globalThis as any).window = origWindow;
     }
   });
+
+  it('9. re-tocar un texto existente en Android mantiene el foco del teclado y previene el desenfoque del canvas', () => {
+    const origDoc = (globalThis as any).document;
+    const origWindow = (globalThis as any).window;
+
+    let focusCount = 0;
+    const proxyListeners: Record<string, ((e: any) => void)[]> = {};
+    const mockProxy = {
+      id: '',
+      value: '',
+      selectionStart: 0,
+      selectionEnd: 0,
+      style: {} as Record<string, string>,
+      attributes: {} as Record<string, string>,
+      setAttribute: (k: string, v: string) => { mockProxy.attributes[k] = v; },
+      getAttribute: (k: string) => mockProxy.attributes[k],
+      focus: () => {
+        focusCount++;
+        (mockDocument as any).activeElement = mockProxy;
+      },
+      blur: () => {
+        if ((mockDocument as any).activeElement === mockProxy) {
+          (mockDocument as any).activeElement = null;
+        }
+      },
+      remove: () => {
+        if (appendedElement === mockProxy) {
+          appendedElement = null;
+        }
+      },
+      setSelectionRange: (s: number, e: number) => {
+        mockProxy.selectionStart = s;
+        mockProxy.selectionEnd = e;
+      },
+      addEventListener: (type: string, fn: (e: any) => void) => {
+        proxyListeners[type] = proxyListeners[type] || [];
+        proxyListeners[type].push(fn);
+      },
+      removeEventListener: () => {},
+    };
+
+    let appendedElement: any = null;
+    const mockBody: any = {
+      appendChild: (el: any) => {
+        appendedElement = el;
+        el.parentElement = mockBody;
+      },
+      removeChild: (el: any) => {
+        if (appendedElement === el) {
+          appendedElement = null;
+          el.parentElement = null;
+        }
+      },
+    };
+    const mockDocument: any = {
+      activeElement: null,
+      createElement: (tag: string) => {
+        if (tag === 'textarea') return mockProxy;
+        if (tag === 'canvas') {
+          return {
+            getContext: () => ({
+              font: '16px Inter',
+              textAlign: 'left',
+              textBaseline: 'top',
+              measureText: (str: string) => ({ width: str.length * 10 }),
+            }),
+          };
+        }
+        return {};
+      },
+      body: mockBody,
+      getElementById: (id: string) => {
+        if (appendedElement && appendedElement.id === id) return appendedElement;
+        return null;
+      },
+    };
+    (globalThis as any).document = mockDocument;
+    (globalThis as any).window = {
+      innerWidth: 360,
+      innerHeight: 640,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      requestAnimationFrame: (cb: () => void) => cb(),
+    };
+
+    try {
+      const canvas = createMockCanvas();
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const viewportManager = new ViewportManager({ zoom: 1, panX: 0, panY: 0 });
+
+      const inputController = new InputController(canvas, stateManager, commandManager, {
+        viewportManager,
+      });
+
+      const layerId = stateManager.getState().children[0].id;
+      const textNode: Text = {
+        id: 'text-android-1',
+        type: 'text',
+        name: 'Texto Android',
+        x: 50,
+        y: 120,
+        text: 'Mi Texto',
+        fontFamily: 'Inter',
+        fontSize: 16,
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        textAlign: 'left',
+        fill: '#000000',
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+      };
+      stateManager.addShape(layerId, textNode);
+
+      // Paso 1: Activar modo táctil tocando el texto para seleccionarlo
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 50,
+        clientY: 120,
+        pointerType: 'touch',
+        button: 0,
+      });
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 50,
+        clientY: 120,
+        pointerType: 'touch',
+      });
+
+      assert.equal(stateManager.getSelectedNodes().length, 1);
+      assert.equal(stateManager.getSelectedNodes()[0].id, textNode.id);
+      assert.equal(inputController.currentTool, 'select');
+
+      // Paso 2: Volver a tocar el texto ya seleccionado en táctil
+      // Debe entrar directamente en edición, prevenir el desenfoque del canvas (preventDefault) y enfocar el proxy
+      let preventedDefault2 = false;
+      const initialFocusCount = focusCount;
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 50,
+        clientY: 120,
+        pointerType: 'touch',
+        button: 0,
+        preventDefault: () => { preventedDefault2 = true; },
+      });
+
+      assert.equal(preventedDefault2, true, 'Debe invocar preventDefault para que el canvas no robe el foco');
+      assert.equal(inputController.isEditingText, true, 'Debe entrar en modo de edición de texto');
+      assert.equal(inputController.currentTool, 'text', 'La herramienta debe conmutar a texto');
+      assert.ok(focusCount > initialFocusCount, 'Debe haber llamado a focus en el proxy de texto');
+      assert.equal(mockDocument.activeElement, mockProxy, 'El proxy debe ser el elemento activo');
+
+      // Paso 3: Al levantar el dedo (pointerup), asegurar que no se pierda el foco
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 50,
+        clientY: 120,
+        pointerType: 'touch',
+      });
+      assert.equal(inputController.isEditingText, true);
+      assert.equal(mockDocument.activeElement, mockProxy);
+
+      // Paso 4: Tocar el texto de nuevo estando ya en edición (ej. para mover el cursor)
+      // Debe invocar preventDefault y mantener el proxy enfocado
+      let preventedDefault3 = false;
+      const focusBeforeRetouch = focusCount;
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 60,
+        clientY: 120,
+        pointerType: 'touch',
+        button: 0,
+        preventDefault: () => { preventedDefault3 = true; },
+      });
+
+      assert.equal(preventedDefault3, true, 'Debe llamar a preventDefault al re-tocar el texto en edición');
+      assert.equal(inputController.isEditingText, true);
+      assert.ok(focusCount >= focusBeforeRetouch, 'El proxy debe continuar enfocado');
+      assert.equal(mockDocument.activeElement, mockProxy);
+
+      // Paso 5: Al levantar el dedo tras el re-toque
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 60,
+        clientY: 120,
+        pointerType: 'touch',
+      });
+      assert.equal(inputController.isEditingText, true);
+      assert.equal(mockDocument.activeElement, mockProxy);
+
+      inputController.destroy();
+    } finally {
+      (globalThis as any).document = origDoc;
+      (globalThis as any).window = origWindow;
+    }
+  });
 });
