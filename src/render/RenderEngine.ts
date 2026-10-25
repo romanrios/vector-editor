@@ -1,141 +1,51 @@
 import {
   isGroup,
   isShape,
-  isText,
-  isGradient,
-  isLinearGradient,
-  type AABB,
   type Document,
-  type Ellipse,
   type Group,
   type Layer,
   type LayerChildNode,
-  type Path,
-  type PathPoint,
-  type Rectangle,
-  type SelectableNode,
   type Shape,
-  type Text,
-  type ImageNode,
-  type Polygon,
-  type Star,
-  type Vector2D,
-  type Gradient,
-  type Guide,
   blendModeToCompositeOperation,
-  type DropShadow,
 } from '../types/scene-graph.ts';
-import { assetManager } from '../assets/AssetManager.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import {
-  getGroupAABB,
-  getPathBaseAABB,
-  getTextBaseAABB,
-  getTextLineHeight,
-  getTextLineRanges,
-  measureSingleLineTextWidth,
-  getSelectionBounds,
-  getShapeAABB,
-  getVisiblePathHandles,
-  getPointType,
-  getPolygonBaseVertices,
-  getStarBaseVertices,
-  traceShapeClip,
-} from '../utils/geometry.ts';
-import type { ShapePreview } from '../input/InputController.ts';
-import type { SnapGuide } from '../types/engine.ts';
-import { ViewportManager, screenToWorld, type Viewport } from '../utils/viewport.ts';
-import { isNonePaint } from '../utils/color.ts';
-import { createCanvasGradient, gradientToWorldPoint, colorWithOpacity } from '../utils/gradient.ts';
-import {
-  getPolygonPathPoints,
-  getStarPathPoints,
-  smoothPathPoints,
-  getShapeCornerRadiusHandles,
-} from '../utils/cornerSmoothing.ts';
+import { traceShapeClip } from '../utils/geometry.ts';
+import { ViewportManager } from '../utils/viewport.ts';
 import {
   LayerCacheManager,
   type CachedRenderEntry,
-  type LayerCacheManagerOptions,
 } from './LayerCacheManager.ts';
+import { applyDropShadow } from './utils/shadow.ts';
+import { renderRectangle, renderEllipse } from './primitives/BasicShapeRenderer.ts';
+import { renderPolygon, renderStar } from './primitives/ParametricRenderer.ts';
+import { renderPath } from './primitives/PathRenderer.ts';
+import { renderText } from './primitives/TextRenderer.ts';
+import { renderImage } from './primitives/ImageRenderer.ts';
+import {
+  renderSelectionOverlay,
+  renderSingleShapeSelection,
+  renderSingleGroupSelection,
+  renderBoxWithHandles,
+  renderGroupOutline,
+  renderShapeOutline,
+} from './overlays/SelectionOverlayRenderer.ts';
+import {
+  renderGrid,
+  renderArtboard,
+  renderSnapGuides,
+  renderUserGuides,
+  renderEyedropperPreview,
+} from './overlays/GuidesOverlayRenderer.ts';
+import { renderShapePreview } from './overlays/PreviewRenderer.ts';
 
-export interface TextEditRenderState {
-  textId: string;
-  text: string;
-  cursorIndex?: number;
-  selectionStart?: number;
-  selectionEnd?: number;
-  cursorVisible?: boolean;
-}
-
-export interface RenderEngineOptions {
-  /**
-   * Habilita el escalado automático para pantallas de alta densidad (Retina/HiDPI)
-   * Por defecto es true.
-   */
-  highDpi?: boolean;
-  /**
-   * Color de fondo para limpiar el lienzo en cada frame.
-   * Si es undefined, el lienzo se limpia de forma transparente.
-   */
-  backgroundColor?: string;
-  /**
-   * Proveedor funcional opcional de la vista previa de figuras en creación.
-   */
-  previewProvider?: () => ShapePreview | null;
-  /**
-   * Proveedor funcional opcional del estado de edición de nodos para Selección Directa o Pluma.
-   */
-  pathEditProvider?: () => {
-    pathId: string;
-    selectedAnchors: ReadonlySet<number>;
-    hoverInsertPoint?: Vector2D | null;
-  } | null;
-  /**
-   * Proveedor funcional opcional del estado de edición de texto en curso.
-   */
-  textEditProvider?: () => TextEditRenderState | null;
-  activeGuidesProvider?: () => readonly SnapGuide[];
-  /**
-   * Proveedor funcional opcional de la guía de usuario en arrastre interactivo.
-   */
-  activeGuideDragProvider?: () => Guide | null;
-  /**
-   * Proveedor funcional opcional de la vista previa del cuentagotas (muestreo de color bajo el cursor).
-   */
-  eyedropperPreviewProvider?: () => { readonly screenX: number; readonly screenY: number; readonly color: string } | null;
-  /**
-   * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
-   */
-  viewportManager?: ViewportManager;
-  /**
-   * Proveedor funcional opcional del estado de la herramienta Mesa de Trabajo (tiradores, preview de creación).
-   */
-  artboardOverlayProvider?: () => {
-    readonly isArtboardToolActive: boolean;
-    readonly creationBox?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number } | null;
-  } | null;
-  /**
-   * Indica si se dibuja la mesa de trabajo (Artboard).
-   * Por defecto es true.
-   */
-  showArtboard?: boolean;
-  /**
-   * Habilita el caché de capas o grupos estáticos en OffscreenCanvas
-   * para acelerar el redibujado durante navegación (pan / zoom).
-   * Por defecto false en tests headless, true en producción.
-   */
-  enableLayerCache?: boolean;
-  /**
-   * Opciones de configuración para el gestor de caché de capas.
-   */
-  layerCacheOptions?: LayerCacheManagerOptions;
-  /**
-   * Instancia opcional de LayerCacheManager. Si no se provee y enableLayerCache es true,
-   * RenderEngine crea una internamente.
-   */
-  layerCacheManager?: LayerCacheManager;
-}
+export type {
+  TextEditRenderState,
+  PathEditRenderState,
+  EyedropperPreviewState,
+  ArtboardOverlayState,
+  RenderEngineOptions,
+} from './types.ts';
+import type { RenderEngineOptions } from './types.ts';
 
 /**
  * Motor de renderizado basado en la API Canvas 2D (CanvasRenderingContext2D).
@@ -247,7 +157,6 @@ export class RenderEngine {
     }
   }
 
-
   /**
    * Inicia el bucle de renderizado con requestAnimationFrame.
    * En cada tick, verifica la bandera isDirty antes de ejecutar cualquier operación de pintado.
@@ -306,7 +215,7 @@ export class RenderEngine {
   }
 
   /**
-   * Ejecuta un ciclo de renderizado recorriendo el árbol del Scene Graph.
+   * Limpia y redibuja la totalidad de los elementos visuales del editor en el canvas.
    */
   public render(): void {
     const documentState = this.stateManager.getState();
@@ -337,11 +246,11 @@ export class RenderEngine {
     this.ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * panX, dpr * panY);
 
     // Dibujar cuadrícula tenue adaptativa alineada con el mundo
-    this.renderGrid(logicalWidth, logicalHeight, viewport);
+    renderGrid(this.ctx, logicalWidth, logicalHeight, viewport);
 
     // Dibujar la mesa de trabajo (Artboard) en el espacio del mundo
     if (this.options.showArtboard !== false) {
-      this.renderArtboard(documentState, zoom);
+      renderArtboard(this.ctx, this.stateManager, this.options, zoom);
     }
 
     // Colección de IDs en edición activa (selección, edición de anclas de trazado, edición de texto)
@@ -373,178 +282,35 @@ export class RenderEngine {
     this.renderDocument(documentState, zoom, activeIds, dpr);
 
     // Dibujar caja delimitadora (bounding box) azul con manejadores de tamaño constante
-    this.renderSelectionOverlay(documentState, zoom);
+    renderSelectionOverlay(this.ctx, this.stateManager, this.options, zoom);
 
     // Dibujar guías de usuario (cyan #06b6d4)
-    this.renderUserGuides(documentState, zoom);
+    renderUserGuides(
+      this.ctx,
+      this.stateManager,
+      documentState,
+      this.viewportManager,
+      this.canvas,
+      Boolean(this.options.highDpi),
+      this.options.activeGuideDragProvider?.() ?? null,
+      zoom
+    );
 
     // Dibujar vista previa de creación de figura (trazo punteado y semitransparente)
     const activePreview = this.options.previewProvider?.() ?? null;
-
     if (activePreview) {
-      this.renderShapePreview(activePreview, zoom);
+      renderShapePreview(this.ctx, activePreview, zoom);
     }
 
-    this.renderSnapGuides(this.options.activeGuidesProvider?.() ?? [], zoom);
+    renderSnapGuides(this.ctx, this.options.activeGuidesProvider?.() ?? [], zoom);
 
     const eyedropperPreview = this.options.eyedropperPreviewProvider?.() ?? null;
     if (eyedropperPreview) {
-      this.renderEyedropperPreview(eyedropperPreview, dpr);
+      renderEyedropperPreview(this.ctx, eyedropperPreview, dpr);
     }
 
     this.ctx.restore();
     this._renderCount++;
-  }
-
-  /**
-   * Dibuja una cuadrícula sutil de fondo alineada con el espacio del documento.
-   * Ajusta el espaciado dinámicamente según el nivel de zoom para mantener
-   * una densidad visual agradable (~25px a 80px en pantalla) y un grosor constante de 1px.
-   */
-  private renderGrid(logicalWidth: number, logicalHeight: number, viewport: Viewport): void {
-    const zoom = viewport.zoom;
-    const topLeft = screenToWorld(viewport, { x: 0, y: 0 });
-    const bottomRight = screenToWorld(viewport, { x: logicalWidth, y: logicalHeight });
-
-    let step = 40;
-    while (step * zoom < 25) {
-      step *= 2;
-    }
-    while (step * zoom > 80) {
-      step /= 2;
-    }
-
-    const minX = Math.min(topLeft.x, bottomRight.x);
-    const maxX = Math.max(topLeft.x, bottomRight.x);
-    const minY = Math.min(topLeft.y, bottomRight.y);
-    const maxY = Math.max(topLeft.y, bottomRight.y);
-
-    const startX = Math.floor(minX / step) * step;
-    const endX = Math.ceil(maxX / step) * step;
-    const startY = Math.floor(minY / step) * step;
-    const endY = Math.ceil(maxY / step) * step;
-
-    this.ctx.save();
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
-    this.ctx.lineWidth = 1 / zoom;
-
-    this.ctx.beginPath();
-    for (let x = startX; x <= endX; x += step) {
-      this.ctx.moveTo(x, startY);
-      this.ctx.lineTo(x, endY);
-    }
-    for (let y = startY; y <= endY; y += step) {
-      this.ctx.moveTo(startX, y);
-      this.ctx.lineTo(endX, y);
-    }
-    this.ctx.stroke();
-    this.ctx.restore();
-  }
-
-  /**
-   * Renderiza las Mesas de Trabajo (Artboards) en el espacio de coordenadas del mundo.
-   * Dibuja cada lienzo con sombra perimetral, fondo personalizable y título identificador.
-   */
-  private renderArtboard(_document: Document, zoom: number): void {
-    const artboards = this.stateManager.getArtboards();
-    if (!artboards || artboards.length === 0) {
-      return;
-    }
-
-    const activeArtboardId = this.stateManager.getActiveArtboardId();
-
-    for (const ab of artboards) {
-      const { x, y, width, height, backgroundColor, name, id } = ab;
-      if (!width || !height || width <= 0 || height <= 0) {
-        continue;
-      }
-
-      this.ctx.save();
-
-      // Sombra perimetral visual (drop-shadow) escalada por zoom
-      this.ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-      this.ctx.shadowBlur = 24 / zoom;
-      this.ctx.shadowOffsetX = 0;
-      this.ctx.shadowOffsetY = 4 / zoom;
-
-      // Fondo de la mesa de trabajo (blanco por defecto)
-      this.ctx.fillStyle = backgroundColor || '#ffffff';
-      this.ctx.fillRect(x, y, width, height);
-
-      this.ctx.restore();
-
-      // Borde delimitador sutil de 1 px en pantalla para definir contornos nítidos
-      this.ctx.save();
-      const isActive = id === activeArtboardId;
-      const isToolActive = this.options.artboardOverlayProvider?.()?.isArtboardToolActive === true;
-      const isMulti = artboards.length > 1;
-      const isHighlighted = isActive && (isMulti || isToolActive);
-      this.ctx.lineWidth = (isActive && isToolActive ? 2 : isHighlighted ? 1.5 : 1) / zoom;
-      this.ctx.strokeStyle = isHighlighted
-        ? (isToolActive ? '#38bdf8' : 'rgba(56, 189, 248, 0.4)')
-        : 'rgba(0, 0, 0, 0.1)';
-      this.ctx.strokeRect(x, y, width, height);
-
-      // Etiqueta con el nombre de la mesa de trabajo sobre la esquina superior izquierda (visible si hay varias o la herramienta está activa)
-      if ((artboards.length > 1 || isToolActive) && name && typeof this.ctx.fillText === 'function') {
-        this.ctx.fillStyle = isActive ? '#38bdf8' : '#71717a';
-        const fontSize = Math.max(10, Math.min(14, 12 / zoom));
-        this.ctx.font = `600 ${fontSize}px sans-serif`;
-        this.ctx.fillText(name, x, y - 6 / zoom);
-      }
-
-      // Si la herramienta Mesa de Trabajo está activa y esta es la mesa activa, dibujar 8 tiradores
-      if (isActive && isToolActive) {
-        const handleSize = 8 / zoom;
-        const half = handleSize / 2;
-        const midX = x + width / 2;
-        const midY = y + height / 2;
-        const handles = [
-          [x, y],
-          [midX, y],
-          [x + width, y],
-          [x + width, midY],
-          [x + width, y + height],
-          [midX, y + height],
-          [x, y + height],
-          [x, midY],
-        ];
-
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.strokeStyle = '#38bdf8';
-        this.ctx.lineWidth = 1.5 / zoom;
-        for (const [hx, hy] of handles) {
-          this.ctx.fillRect(hx - half, hy - half, handleSize, handleSize);
-          this.ctx.strokeRect(hx - half, hy - half, handleSize, handleSize);
-        }
-      }
-
-      this.ctx.restore();
-    }
-
-    // Dibujar caja de creación interactiva si la herramienta está arrastrando en el vacío
-    const overlayState = this.options.artboardOverlayProvider?.();
-    if (overlayState?.isArtboardToolActive && overlayState.creationBox) {
-      const box = overlayState.creationBox;
-      if (box.width > 0 && box.height > 0) {
-        this.ctx.save();
-        this.ctx.strokeStyle = '#38bdf8';
-        this.ctx.lineWidth = 1.5 / zoom;
-        this.ctx.setLineDash([4 / zoom, 4 / zoom]);
-        this.ctx.strokeRect(box.x, box.y, box.width, box.height);
-        this.ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
-        this.ctx.fillRect(box.x, box.y, box.width, box.height);
-
-        if (typeof this.ctx.fillText === 'function') {
-          this.ctx.fillStyle = '#38bdf8';
-          const tag = `${Math.round(box.width)} × ${Math.round(box.height)} px`;
-          const fontSize = Math.max(10, Math.min(13, 11 / zoom));
-          this.ctx.font = `600 ${fontSize}px sans-serif`;
-          this.ctx.fillText(tag, box.x, box.y + box.height + 16 / zoom);
-        }
-        this.ctx.restore();
-      }
-    }
   }
 
   /**
@@ -585,7 +351,7 @@ export class RenderEngine {
           this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
         }
         if (layer.dropShadow) {
-          this.applyDropShadow(layer.dropShadow);
+          applyDropShadow(this.ctx, layer.dropShadow);
         }
         this.ctx.drawImage(
           cached.canvas as any,
@@ -609,7 +375,7 @@ export class RenderEngine {
             this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
           }
           if (layer.dropShadow) {
-            this.applyDropShadow(layer.dropShadow);
+            applyDropShadow(this.ctx, layer.dropShadow);
           }
           this.ctx.drawImage(
             entry.canvas as any,
@@ -633,7 +399,7 @@ export class RenderEngine {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
     }
     if (layer.dropShadow) {
-      this.applyDropShadow(layer.dropShadow);
+      applyDropShadow(this.ctx, layer.dropShadow);
     }
 
     for (const child of layer.children) {
@@ -747,7 +513,7 @@ export class RenderEngine {
           this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
         }
         if (group.dropShadow) {
-          this.applyDropShadow(group.dropShadow);
+          applyDropShadow(this.ctx, group.dropShadow);
         }
         this.ctx.drawImage(
           cached.canvas as any,
@@ -771,7 +537,7 @@ export class RenderEngine {
             this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
           }
           if (group.dropShadow) {
-            this.applyDropShadow(group.dropShadow);
+            applyDropShadow(this.ctx, group.dropShadow);
           }
           this.ctx.drawImage(
             entry.canvas as any,
@@ -795,7 +561,7 @@ export class RenderEngine {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
     }
     if (group.dropShadow) {
-      this.applyDropShadow(group.dropShadow);
+      applyDropShadow(this.ctx, group.dropShadow);
     }
 
     if (group.isClipMask === true && group.children.length > 0) {
@@ -824,30 +590,7 @@ export class RenderEngine {
   }
 
   /**
-   * Aplica la configuración de sombra paralela al contexto 2D.
-   */
-  private applyDropShadow(shadow?: DropShadow): void {
-    if (!shadow) return;
-    const color = shadow.color || '#000000';
-    const opacity = shadow.opacity !== undefined ? Math.max(0, Math.min(1, shadow.opacity)) : 1;
-    this.ctx.shadowColor = colorWithOpacity(color, opacity);
-    this.ctx.shadowOffsetX = shadow.offsetX || 0;
-    this.ctx.shadowOffsetY = shadow.offsetY || 0;
-    this.ctx.shadowBlur = Math.max(0, shadow.blur || 0);
-  }
-
-  /**
-   * Restablece las propiedades de sombra para evitar sombras duplicadas (ej: tras dibujar el relleno).
-   */
-  private clearDropShadow(): void {
-    this.ctx.shadowColor = 'transparent';
-    this.ctx.shadowOffsetX = 0;
-    this.ctx.shadowOffsetY = 0;
-    this.ctx.shadowBlur = 0;
-  }
-
-  /**
-   * Renderiza una figura según su tipo discriminado (Rectangle, Ellipse, Path o Text)
+   * Renderiza una figura según su tipo discriminado (Rectangle, Ellipse, Path, Text, Image, Polygon, Star)
    */
   private renderShape(shape: Shape, zoom: number): void {
     this.ctx.save();
@@ -859,1695 +602,48 @@ export class RenderEngine {
       this.ctx.globalCompositeOperation = blendModeToCompositeOperation(shape.blendMode);
     }
     if (shape.dropShadow) {
-      this.applyDropShadow(shape.dropShadow);
+      applyDropShadow(this.ctx, shape.dropShadow);
     }
 
     if (shape.type === 'rectangle') {
-      this.renderRectangle(shape);
+      renderRectangle(this.ctx, shape);
     } else if (shape.type === 'ellipse') {
-      this.renderEllipse(shape);
+      renderEllipse(this.ctx, shape);
     } else if (shape.type === 'path') {
-      this.renderPath(shape, zoom);
+      renderPath(this.ctx, shape, zoom);
     } else if (shape.type === 'text') {
-      this.renderText(shape);
+      renderText(this.ctx, shape, this.options.textEditProvider?.() ?? null);
     } else if (shape.type === 'image') {
-      this.renderImage(shape);
+      renderImage(this.ctx, shape, this.stateManager);
     } else if (shape.type === 'polygon') {
-      this.renderPolygon(shape);
+      renderPolygon(this.ctx, shape);
     } else if (shape.type === 'star') {
-      this.renderStar(shape);
+      renderStar(this.ctx, shape);
     }
 
     this.ctx.restore();
   }
 
   /**
-   * Dibuja un nodo Image aplicando rotación centrada y opacidad.
-   * Si la imagen aún no está decodificada en memoria, inicia su pre-carga
-   * y dibuja un placeholder sutil; al completarse notifica markDirty()
-   * para disparar el redibujado en el siguiente frame del dirty-loop.
+   * Delegados para preservar compatibilidad con pruebas unitarias que inspeccionan métodos de overlay.
    */
-  private renderImage(img: ImageNode): void {
-    this.ctx.save();
-
-    if (img.rotation) {
-      const cx = img.x + img.width / 2;
-      const cy = img.y + img.height / 2;
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((img.rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    if (img.opacity !== undefined && img.opacity < 1) {
-      this.ctx.globalAlpha = Math.max(0, Math.min(1, (this.ctx.globalAlpha ?? 1) * img.opacity));
-    }
-
-    const renderable = assetManager.getRenderable(img.assetId);
-
-    if (renderable && typeof this.ctx.drawImage === 'function') {
-      try {
-        this.ctx.drawImage(
-          renderable as CanvasImageSource,
-          img.x,
-          img.y,
-          img.width,
-          img.height
-        );
-      } catch {
-        this.renderImagePlaceholder(img);
-      }
-    } else {
-      const asset = this.stateManager.getAsset(img.assetId) ?? assetManager.getAsset(img.assetId);
-      if (asset) {
-        void assetManager.preloadAsset(asset, () => {
-          this.stateManager.markDirty();
-        });
-      }
-      this.renderImagePlaceholder(img);
-    }
-
-    if (img.stroke && img.stroke !== 'none' && img.strokeWidth && img.strokeWidth > 0) {
-      this.ctx.strokeStyle = img.stroke as string;
-      this.ctx.lineWidth = img.strokeWidth;
-      this.ctx.strokeRect(img.x, img.y, img.width, img.height);
-    }
-
-    this.ctx.restore();
+  public renderSingleShapeSelection(shape: Shape, zoom: number): void {
+    renderSingleShapeSelection(this.ctx, shape, zoom);
   }
 
-  /**
-   * Dibuja un marco provisional sutil mientras la imagen se decodifica en segundo plano.
-   */
-  private renderImagePlaceholder(img: ImageNode): void {
-    this.ctx.fillStyle = '#f8fafc';
-    this.ctx.fillRect(img.x, img.y, img.width, img.height);
-    this.ctx.strokeStyle = '#cbd5e1';
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeRect(img.x, img.y, img.width, img.height);
+  public renderSingleGroupSelection(group: Group, zoom: number): void {
+    renderSingleGroupSelection(this.ctx, group, zoom);
   }
 
-  /**
-   * Dibuja un nodo Rectangle aplicando rotación centrada y esquinas redondeadas
-   */
-  private renderRectangle(rect: Rectangle): void {
-    this.ctx.save();
-
-    // Rotación respecto al centro del rectángulo
-    if (rect.rotation) {
-      const cx = rect.x + rect.width / 2;
-      const cy = rect.y + rect.height / 2;
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((rect.rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    this.ctx.beginPath();
-    if (rect.cornerRadius && rect.cornerRadius > 0) {
-      if (typeof this.ctx.roundRect === 'function') {
-        this.ctx.roundRect(rect.x, rect.y, rect.width, rect.height, rect.cornerRadius);
-      } else {
-        const r = Math.min(rect.cornerRadius, Math.abs(rect.width) / 2, Math.abs(rect.height) / 2);
-        const rx = rect.x;
-        const ry = rect.y;
-        const rw = rect.width;
-        const rh = rect.height;
-        this.ctx.moveTo(rx + r, ry);
-        this.ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, r);
-        this.ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, r);
-        this.ctx.arcTo(rx, ry + rh, rx, ry, r);
-        this.ctx.arcTo(rx, ry, rx + rw, ry, r);
-        this.ctx.closePath();
-      }
-    } else {
-      this.ctx.rect(rect.x, rect.y, rect.width, rect.height);
-    }
-
-    if (!isNonePaint(rect.fill)) {
-      if (isGradient(rect.fill)) {
-        const baseAABB = {
-          minX: rect.x,
-          minY: rect.y,
-          maxX: rect.x + rect.width,
-          maxY: rect.y + rect.height,
-          width: rect.width,
-          height: rect.height,
-        };
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, rect.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = rect.fill!;
-      }
-      this.ctx.fill();
-      if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
-        this.clearDropShadow();
-      }
-    }
-
-    if (!isNonePaint(rect.stroke) && rect.strokeWidth && rect.strokeWidth > 0) {
-      this.ctx.lineWidth = rect.strokeWidth;
-      if (rect.strokeDashArray && rect.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...rect.strokeDashArray]);
-      }
-      if (rect.strokeLineCap) {
-        this.ctx.lineCap = rect.strokeLineCap;
-      }
-      if (rect.strokeLineJoin) {
-        this.ctx.lineJoin = rect.strokeLineJoin;
-      }
-      if (isGradient(rect.stroke)) {
-        const baseAABB = {
-          minX: rect.x,
-          minY: rect.y,
-          maxX: rect.x + rect.width,
-          maxY: rect.y + rect.height,
-          width: rect.width,
-          height: rect.height,
-        };
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, rect.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = rect.stroke!;
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
+  public renderBoxWithHandles(bounds: import('../types/scene-graph.ts').AABB, zoom: number): void {
+    renderBoxWithHandles(this.ctx, bounds, zoom);
   }
 
-  /**
-   * Dibuja un nodo Ellipse con soporte para rotación y radios X/Y
-   */
-  private renderEllipse(ellipse: Ellipse): void {
-    this.ctx.save();
-
-    if (ellipse.rotation) {
-      this.ctx.translate(ellipse.x, ellipse.y);
-      this.ctx.rotate((ellipse.rotation * Math.PI) / 180);
-      this.ctx.translate(-ellipse.x, -ellipse.y);
-    }
-
-    this.ctx.beginPath();
-    this.ctx.ellipse(
-      ellipse.x,
-      ellipse.y,
-      ellipse.radiusX,
-      ellipse.radiusY,
-      0,
-      0,
-      Math.PI * 2
-    );
-
-    const baseAABB = {
-      minX: ellipse.x - ellipse.radiusX,
-      minY: ellipse.y - ellipse.radiusY,
-      maxX: ellipse.x + ellipse.radiusX,
-      maxY: ellipse.y + ellipse.radiusY,
-      width: ellipse.radiusX * 2,
-      height: ellipse.radiusY * 2,
-    };
-
-    if (!isNonePaint(ellipse.fill)) {
-      if (isGradient(ellipse.fill)) {
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, ellipse.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = ellipse.fill!;
-      }
-      this.ctx.fill();
-      if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
-        this.clearDropShadow();
-      }
-    }
-
-    if (!isNonePaint(ellipse.stroke) && ellipse.strokeWidth && ellipse.strokeWidth > 0) {
-      this.ctx.lineWidth = ellipse.strokeWidth;
-      if (ellipse.strokeDashArray && ellipse.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...ellipse.strokeDashArray]);
-      }
-      if (ellipse.strokeLineCap) {
-        this.ctx.lineCap = ellipse.strokeLineCap;
-      }
-      if (ellipse.strokeLineJoin) {
-        this.ctx.lineJoin = ellipse.strokeLineJoin;
-      }
-      if (isGradient(ellipse.stroke)) {
-        const baseAABB = {
-          minX: ellipse.x - ellipse.radiusX,
-          minY: ellipse.y - ellipse.radiusY,
-          maxX: ellipse.x + ellipse.radiusX,
-          maxY: ellipse.y + ellipse.radiusY,
-          width: ellipse.radiusX * 2,
-          height: ellipse.radiusY * 2,
-        };
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, ellipse.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = ellipse.stroke!;
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
+  public renderGroupOutline(group: Group, zoom: number): void {
+    renderGroupOutline(this.ctx, group, zoom);
   }
 
-  /**
-   * Dibuja un nodo Polygon con soporte para rotación, lados y radio.
-   */
-  private renderPolygon(polygon: Polygon): void {
-    this.ctx.save();
-
-    if (polygon.rotation) {
-      this.ctx.translate(polygon.x, polygon.y);
-      this.ctx.rotate((polygon.rotation * Math.PI) / 180);
-      this.ctx.translate(-polygon.x, -polygon.y);
-    }
-
-    const hasCornerRadius = Boolean(polygon.cornerRadius && polygon.cornerRadius > 0);
-    this.ctx.beginPath();
-    if (hasCornerRadius) {
-      const smoothedPts = getPolygonPathPoints({ ...polygon, rotation: 0 });
-      this.drawSmoothedPoints(smoothedPts);
-    } else {
-      const verts = getPolygonBaseVertices(polygon);
-      if (verts.length > 0) {
-        this.ctx.moveTo(verts[0].x, verts[0].y);
-        for (let i = 1; i < verts.length; i++) {
-          this.ctx.lineTo(verts[i].x, verts[i].y);
-        }
-        this.ctx.closePath();
-      }
-    }
-
-    const baseAABB = {
-      minX: polygon.x - polygon.radius,
-      minY: polygon.y - polygon.radius,
-      maxX: polygon.x + polygon.radius,
-      maxY: polygon.y + polygon.radius,
-      width: polygon.radius * 2,
-      height: polygon.radius * 2,
-    };
-
-    if (!isNonePaint(polygon.fill)) {
-      if (isGradient(polygon.fill)) {
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, polygon.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = polygon.fill!;
-      }
-      this.ctx.fill();
-      if (!isNonePaint(polygon.stroke) && polygon.strokeWidth && polygon.strokeWidth > 0) {
-        this.clearDropShadow();
-      }
-    }
-
-    if (!isNonePaint(polygon.stroke) && polygon.strokeWidth && polygon.strokeWidth > 0) {
-      this.ctx.lineWidth = polygon.strokeWidth;
-      if (polygon.strokeDashArray && polygon.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...polygon.strokeDashArray]);
-      }
-      if (polygon.strokeLineCap) {
-        this.ctx.lineCap = polygon.strokeLineCap;
-      }
-      if (polygon.strokeLineJoin) {
-        this.ctx.lineJoin = polygon.strokeLineJoin;
-      }
-      if (isGradient(polygon.stroke)) {
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, polygon.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = polygon.stroke!;
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja un nodo Star con soporte para rotación, puntas y radios exterior/interior.
-   */
-  private renderStar(star: Star): void {
-    this.ctx.save();
-
-    if (star.rotation) {
-      this.ctx.translate(star.x, star.y);
-      this.ctx.rotate((star.rotation * Math.PI) / 180);
-      this.ctx.translate(-star.x, -star.y);
-    }
-
-    const hasCornerRadius = Boolean(
-      (star.cornerRadius && star.cornerRadius > 0) ||
-      (star.innerCornerRadius && star.innerCornerRadius > 0)
-    );
-    this.ctx.beginPath();
-    if (hasCornerRadius) {
-      const smoothedPts = getStarPathPoints({ ...star, rotation: 0 });
-      this.drawSmoothedPoints(smoothedPts);
-    } else {
-      const verts = getStarBaseVertices(star);
-      if (verts.length > 0) {
-        this.ctx.moveTo(verts[0].x, verts[0].y);
-        for (let i = 1; i < verts.length; i++) {
-          this.ctx.lineTo(verts[i].x, verts[i].y);
-        }
-        this.ctx.closePath();
-      }
-    }
-
-    const baseAABB = {
-      minX: star.x - star.outerRadius,
-      minY: star.y - star.outerRadius,
-      maxX: star.x + star.outerRadius,
-      maxY: star.y + star.outerRadius,
-      width: star.outerRadius * 2,
-      height: star.outerRadius * 2,
-    };
-
-    if (!isNonePaint(star.fill)) {
-      if (isGradient(star.fill)) {
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, star.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = star.fill!;
-      }
-      this.ctx.fill();
-      if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0) {
-        this.clearDropShadow();
-      }
-    }
-
-    if (!isNonePaint(star.stroke) && star.strokeWidth && star.strokeWidth > 0) {
-      this.ctx.lineWidth = star.strokeWidth;
-      if (star.strokeDashArray && star.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...star.strokeDashArray]);
-      }
-      if (star.strokeLineCap) {
-        this.ctx.lineCap = star.strokeLineCap;
-      }
-      if (star.strokeLineJoin) {
-        this.ctx.lineJoin = star.strokeLineJoin;
-      }
-      if (isGradient(star.stroke)) {
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, star.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = star.stroke!;
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja la caja delimitadora (bounding box) y los manejadores de selección.
-   * - Con una sola figura: dibuja la caja OBB con manejadores de esquina y rotación.
-   * - Con un solo grupo: dibuja la caja delimitadora AABB de grosor constante, SIN tiradores.
-   * - Con varias figuras/grupos: dibuja un contorno fino sobre cada elemento y una única caja AABB
-   *   combinada (getSelectionBounds) sin tiradores.
-   * Mantiene un tamaño constante en pantalla dividiendo las medidas entre el factor de zoom.
-   */
-  private renderSelectionOverlay(_document: Document, zoom: number): void {
-    const selectedNodes: SelectableNode[] = [];
-    for (const node of this.stateManager.getSelectedNodes()) {
-      if (
-        this.stateManager.isEffectivelyVisible(node.id) &&
-        !this.stateManager.isEffectivelyLocked(node.id)
-      ) {
-        selectedNodes.push(node);
-      }
-    }
-
-    const pathEdit = this.options.pathEditProvider?.() ?? null;
-
-    if (selectedNodes.length === 0 && !pathEdit) {
-      return;
-    }
-
-    if (selectedNodes.length === 1) {
-      const node = selectedNodes[0];
-      if (isGroup(node)) {
-        this.renderSingleGroupSelection(node, zoom);
-      } else if (isShape(node)) {
-        const textEdit = this.options.textEditProvider?.() ?? null;
-        if (textEdit && textEdit.textId === node.id && isText(node)) {
-          this.renderTextEditOverlay(node, textEdit, zoom);
-        } else if (!pathEdit || pathEdit.pathId !== node.id) {
-          this.renderSingleShapeSelection(node, zoom);
-          if (isGradient(node.fill)) {
-            this.renderGradientOverlay(node, node.fill, zoom);
-          } else if (isGradient(node.stroke)) {
-            this.renderGradientOverlay(node, node.stroke, zoom);
-          }
-        }
-      }
-    } else if (selectedNodes.length > 1) {
-      // Múltiples elementos seleccionados:
-      // 1. Contorno fino sobre cada elemento seleccionado
-      for (const node of selectedNodes) {
-        if (isGroup(node)) {
-          this.renderGroupOutline(node, zoom);
-        } else if (isShape(node)) {
-          this.renderShapeOutline(node, zoom);
-        }
-      }
-
-      // 2. Un recuadro delimitador combinado (getSelectionBounds) con tiradores
-      const combinedBounds = getSelectionBounds(selectedNodes);
-      if (combinedBounds) {
-        this.renderBoxWithHandles(combinedBounds, zoom);
-      }
-    }
-
-    // Dibujar overlay de edición de trazado DESPUÉS de dibujar todo, para que quede por encima
-    if (pathEdit) {
-      const pathNode = this.stateManager.findNode(pathEdit.pathId);
-      if (pathNode && pathNode.type === 'path' && this.stateManager.isEffectivelyVisible(pathNode.id)) {
-        this.renderPathEditOverlay(pathNode as Path, pathEdit, zoom);
-      }
-    }
-  }
-
-  /**
-   * Dibuja el recuadro delimitador de un grupo seleccionado con sus 4 tiradores de esquina y de rotación.
-   */
-  private renderSingleGroupSelection(group: Group, zoom: number): void {
-    const aabb = getSelectionBounds([group]) ?? getGroupAABB(group);
-    if (!aabb) return;
-    this.renderBoxWithHandles(aabb, zoom);
-  }
-
-  /**
-   * Dibuja la caja delimitadora combinada (AABB), conector vertical, los 4 manejadores cuadrados
-   * de esquina y el manejador flotante de rotación para un conjunto (grupo o multiselección).
-   */
-  private renderBoxWithHandles(bounds: AABB, zoom: number): void {
-    const handleSize = 8 / zoom;
-    const halfHandle = handleSize / 2;
-    const rotationDistance = 30 / zoom;
-    const midX = (bounds.minX + bounds.maxX) / 2;
-    const rotY = bounds.minY - rotationDistance;
-
-    this.ctx.save();
-
-    // 1. Recuadro delimitador combinado
-    this.ctx.strokeStyle = '#2563eb';
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.setLineDash([]);
-    this.ctx.strokeRect(bounds.minX, bounds.minY, bounds.width, bounds.height);
-
-    // 2. Conector vertical sutil hacia el manejador de rotación
-    this.ctx.beginPath();
-    this.ctx.strokeStyle = '#2563eb';
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.moveTo(midX, bounds.minY);
-    this.ctx.lineTo(midX, rotY);
-    this.ctx.stroke();
-
-    const midY = (bounds.minY + bounds.maxY) / 2;
-
-    // 3. Manejadores en las 4 esquinas y los 4 laterales
-    const handles = [
-      { x: bounds.minX, y: bounds.minY }, // Superior Izquierda
-      { x: midX, y: bounds.minY },        // Superior Centro
-      { x: bounds.maxX, y: bounds.minY }, // Superior Derecha
-      { x: bounds.maxX, y: midY },        // Centro Derecha
-      { x: bounds.maxX, y: bounds.maxY }, // Inferior Derecha
-      { x: midX, y: bounds.maxY },        // Inferior Centro
-      { x: bounds.minX, y: bounds.maxY }, // Inferior Izquierda
-      { x: bounds.minX, y: midY },        // Centro Izquierda
-    ];
-
-    for (const h of handles) {
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillRect(
-        h.x - halfHandle,
-        h.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.strokeRect(
-        h.x - halfHandle,
-        h.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-    }
-
-    // 4. Manejador de rotación flotante (círculo verde)
-    this.ctx.beginPath();
-    if (typeof this.ctx.arc === 'function') {
-      this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
-    } else if (typeof this.ctx.ellipse === 'function') {
-      this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
-    }
-    this.ctx.fillStyle = '#10b981';
-    this.ctx.fill();
-    this.ctx.strokeStyle = '#059669';
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.stroke();
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja un contorno fino de 1px constante sobre un grupo perteneciente a una selección múltiple.
-   */
-  private renderGroupOutline(group: Group, zoom: number): void {
-    const aabb = getGroupAABB(group);
-    if (!aabb) return;
-
-    this.ctx.save();
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.setLineDash([]);
-    this.ctx.strokeRect(aabb.minX, aabb.minY, aabb.width, aabb.height);
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja un contorno fino de 1px constante sobre una figura individual perteneciente
-   * a una selección múltiple.
-   */
-  private renderShapeOutline(shape: Shape, zoom: number): void {
-    const rotation = shape.rotation ?? 0;
-
-    let baseX = 0;
-    let baseY = 0;
-    let baseWidth = 0;
-    let baseHeight = 0;
-    let cx = 0;
-    let cy = 0;
-
-    if (!rotation) {
-      const aabb = getShapeAABB(shape);
-      baseX = aabb.minX;
-      baseY = aabb.minY;
-      baseWidth = aabb.width;
-      baseHeight = aabb.height;
-    } else if (shape.type === 'rectangle' || shape.type === 'image') {
-      baseX = shape.x;
-      baseY = shape.y;
-      baseWidth = shape.width;
-      baseHeight = shape.height;
-      cx = shape.x + shape.width / 2;
-      cy = shape.y + shape.height / 2;
-    } else if (shape.type === 'ellipse') {
-      baseX = shape.x - shape.radiusX;
-      baseY = shape.y - shape.radiusY;
-      baseWidth = shape.radiusX * 2;
-      baseHeight = shape.radiusY * 2;
-      cx = shape.x;
-      cy = shape.y;
-    } else if (shape.type === 'path') {
-      const baseAABB = getPathBaseAABB(shape);
-      baseX = baseAABB.minX;
-      baseY = baseAABB.minY;
-      baseWidth = baseAABB.width;
-      baseHeight = baseAABB.height;
-      cx = (baseAABB.minX + baseAABB.maxX) / 2;
-      cy = (baseAABB.minY + baseAABB.maxY) / 2;
-    } else if (shape.type === 'polygon') {
-      baseX = shape.x - shape.radius;
-      baseY = shape.y - shape.radius;
-      baseWidth = shape.radius * 2;
-      baseHeight = shape.radius * 2;
-      cx = shape.x;
-      cy = shape.y;
-    } else if (shape.type === 'star') {
-      baseX = shape.x - shape.outerRadius;
-      baseY = shape.y - shape.outerRadius;
-      baseWidth = shape.outerRadius * 2;
-      baseHeight = shape.outerRadius * 2;
-      cx = shape.x;
-      cy = shape.y;
-    }
-
-    this.ctx.save();
-    if (rotation) {
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    this.ctx.strokeStyle = '#38bdf8';
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.setLineDash([]);
-    this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja la caja delimitadora (Bounding Box) azul orientada y los 4 manejadores cuadrados
-   * de redimensionado más el manejador flotante de rotación para una única figura seleccionada.
-   */
-  private renderSingleShapeSelection(shape: Shape, zoom: number): void {
-    const handleSize = 8 / zoom;
-    const halfHandle = handleSize / 2;
-    const rotationDistance = 30 / zoom;
-    const rotation = shape.rotation ?? 0;
-
-    let baseX = 0;
-    let baseY = 0;
-    let baseWidth = 0;
-    let baseHeight = 0;
-    let cx = 0;
-    let cy = 0;
-
-    if (!rotation) {
-      const aabb = getShapeAABB(shape);
-      baseX = aabb.minX;
-      baseY = aabb.minY;
-      baseWidth = aabb.width;
-      baseHeight = aabb.height;
-      cx = (baseX + baseWidth) / 2;
-      cy = (baseY + baseHeight) / 2;
-    } else if (shape.type === 'rectangle' || shape.type === 'image') {
-      baseX = shape.x;
-      baseY = shape.y;
-      baseWidth = shape.width;
-      baseHeight = shape.height;
-      cx = shape.x + shape.width / 2;
-      cy = shape.y + shape.height / 2;
-    } else if (shape.type === 'ellipse') {
-      baseX = shape.x - shape.radiusX;
-      baseY = shape.y - shape.radiusY;
-      baseWidth = shape.radiusX * 2;
-      baseHeight = shape.radiusY * 2;
-      cx = shape.x;
-      cy = shape.y;
-    } else if (shape.type === 'path') {
-      const baseAABB = getPathBaseAABB(shape);
-      baseX = baseAABB.minX;
-      baseY = baseAABB.minY;
-      baseWidth = baseAABB.width;
-      baseHeight = baseAABB.height;
-      cx = (baseAABB.minX + baseAABB.maxX) / 2;
-      cy = (baseAABB.minY + baseAABB.maxY) / 2;
-    } else if (shape.type === 'text') {
-      const baseAABB = getTextBaseAABB(shape, this.ctx);
-      baseX = baseAABB.minX;
-      baseY = baseAABB.minY;
-      baseWidth = baseAABB.width;
-      baseHeight = baseAABB.height;
-      cx = shape.x;
-      cy = shape.y;
-    } else if (shape.type === 'polygon') {
-      baseX = shape.x - shape.radius;
-      baseY = shape.y - shape.radius;
-      baseWidth = shape.radius * 2;
-      baseHeight = shape.radius * 2;
-      cx = shape.x;
-      cy = shape.y;
-    } else if (shape.type === 'star') {
-      baseX = shape.x - shape.outerRadius;
-      baseY = shape.y - shape.outerRadius;
-      baseWidth = shape.outerRadius * 2;
-      baseHeight = shape.outerRadius * 2;
-      cx = shape.x;
-      cy = shape.y;
-    }
-
-    const midX = baseX + baseWidth / 2;
-    const rotY = baseY - rotationDistance;
-
-    this.ctx.save();
-
-    if (rotation) {
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    // 1. Caja delimitadora (Bounding Box) azul
-    this.ctx.strokeStyle = '#2563eb'; // Azul primario vibrante
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.setLineDash([]);
-    this.ctx.strokeRect(baseX, baseY, baseWidth, baseHeight);
-
-    // 2. Conector vertical sutil que une el bounding box principal con el manejador flotante
-    this.ctx.beginPath();
-    this.ctx.strokeStyle = '#2563eb';
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.moveTo(midX, baseY);
-    this.ctx.lineTo(midX, rotY);
-    this.ctx.stroke();
-
-    const midY = baseY + baseHeight / 2;
-
-    // 3. Manejadores (cuadrados en las 4 esquinas y en los 4 laterales)
-    const handles = [
-      { x: baseX, y: baseY },                          // Superior Izquierda
-      { x: midX, y: baseY },                           // Superior Centro
-      { x: baseX + baseWidth, y: baseY },              // Superior Derecha
-      { x: baseX + baseWidth, y: midY },               // Centro Derecha
-      { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
-      { x: midX, y: baseY + baseHeight },              // Inferior Centro
-      { x: baseX, y: baseY + baseHeight },             // Inferior Izquierda
-      { x: baseX, y: midY },                           // Centro Izquierda
-    ];
-
-    for (const h of handles) {
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillRect(
-        h.x - halfHandle,
-        h.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.strokeRect(
-        h.x - halfHandle,
-        h.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-    }
-
-    // 4. Manejador de rotación flotante (círculo verde)
-    this.ctx.beginPath();
-    if (typeof this.ctx.arc === 'function') {
-      this.ctx.arc(midX, rotY, halfHandle, 0, Math.PI * 2);
-    } else if (typeof this.ctx.ellipse === 'function') {
-      this.ctx.ellipse(midX, rotY, halfHandle, halfHandle, 0, 0, Math.PI * 2);
-    }
-    this.ctx.fillStyle = '#10b981';
-    this.ctx.fill();
-    this.ctx.strokeStyle = '#059669';
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.stroke();
-
-    this.ctx.restore();
-
-    // 5. Tiradores de radio de esquina para figuras compatibles (Rectangle, Polygon, Star, Path)
-    this.renderCornerRadiusHandlesOverlay(shape, zoom);
-  }
-
-  /**
-   * Dibuja los tiradores visuales del degradado activo sobre la figura seleccionada:
-   * línea conectora, tiradores de inicio/fin (o centro/radio) y marcadores para cada stop.
-   */
-  private renderGradientOverlay(shape: Shape, gradient: Gradient, zoom: number): void {
-    const handleRadius = 6 / zoom;
-    const stopRadius = 5 / zoom;
-    this.ctx.save();
-
-    if (isLinearGradient(gradient)) {
-      const p1 = gradientToWorldPoint(shape, gradient.x1, gradient.y1, this.ctx);
-      const p2 = gradientToWorldPoint(shape, gradient.x2, gradient.y2, this.ctx);
-
-      // 1. Línea conectora entre inicio y fin (sombra + línea blanca)
-      this.ctx.beginPath();
-      this.ctx.moveTo(p1.x, p1.y);
-      this.ctx.lineTo(p2.x, p2.y);
-      this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
-      this.ctx.lineWidth = 3 / zoom;
-      this.ctx.stroke();
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(p1.x, p1.y);
-      this.ctx.lineTo(p2.x, p2.y);
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.stroke();
-
-      // 2. Marcadores para cada parada (stop) de color a lo largo de la línea
-      for (const stop of gradient.stops) {
-        const offset = Math.max(0, Math.min(1, stop.offset));
-        const px = p1.x + offset * (p2.x - p1.x);
-        const py = p1.y + offset * (p2.y - p1.y);
-
-        this.ctx.beginPath();
-        this.ctx.arc(px, py, stopRadius, 0, Math.PI * 2);
-        this.ctx.fillStyle = stop.color;
-        this.ctx.fill();
-        this.ctx.strokeStyle = '#ffffff';
-        this.ctx.lineWidth = 1.5 / zoom;
-        this.ctx.stroke();
-        this.ctx.beginPath();
-        this.ctx.arc(px, py, stopRadius + 1 / zoom, 0, Math.PI * 2);
-        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-        this.ctx.lineWidth = 1 / zoom;
-        this.ctx.stroke();
-      }
-
-      // 3. Tirador circular de inicio (p1)
-      this.ctx.beginPath();
-      this.ctx.arc(p1.x, p1.y, handleRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 2 / zoom;
-      this.ctx.stroke();
-
-      // 4. Tirador circular de fin (p2)
-      this.ctx.beginPath();
-      this.ctx.arc(p2.x, p2.y, handleRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#2563eb';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 2 / zoom;
-      this.ctx.stroke();
-    } else {
-      // Degradado Radial
-      const center = gradientToWorldPoint(shape, gradient.cx, gradient.cy, this.ctx);
-      const radiusPoint = gradientToWorldPoint(shape, gradient.cx + gradient.r, gradient.cy, this.ctx);
-      const radDist = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
-
-      // Círculo perimetral de referencia tenue
-      this.ctx.beginPath();
-      this.ctx.arc(center.x, center.y, radDist, 0, Math.PI * 2);
-      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-      this.ctx.setLineDash([4 / zoom, 4 / zoom]);
-      this.ctx.lineWidth = 1 / zoom;
-      this.ctx.stroke();
-      this.ctx.setLineDash([]);
-
-      // Línea de radio
-      this.ctx.beginPath();
-      this.ctx.moveTo(center.x, center.y);
-      this.ctx.lineTo(radiusPoint.x, radiusPoint.y);
-      this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
-      this.ctx.lineWidth = 3 / zoom;
-      this.ctx.stroke();
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(center.x, center.y);
-      this.ctx.lineTo(radiusPoint.x, radiusPoint.y);
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.stroke();
-
-      // Stops a lo largo del radio
-      for (const stop of gradient.stops) {
-        const offset = Math.max(0, Math.min(1, stop.offset));
-        const px = center.x + offset * (radiusPoint.x - center.x);
-        const py = center.y + offset * (radiusPoint.y - center.y);
-
-        this.ctx.beginPath();
-        this.ctx.arc(px, py, stopRadius, 0, Math.PI * 2);
-        this.ctx.fillStyle = stop.color;
-        this.ctx.fill();
-        this.ctx.strokeStyle = '#ffffff';
-        this.ctx.lineWidth = 1.5 / zoom;
-        this.ctx.stroke();
-        this.ctx.beginPath();
-        this.ctx.arc(px, py, stopRadius + 1 / zoom, 0, Math.PI * 2);
-        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-        this.ctx.lineWidth = 1 / zoom;
-        this.ctx.stroke();
-      }
-
-      // Tirador central
-      this.ctx.beginPath();
-      this.ctx.arc(center.x, center.y, handleRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 2 / zoom;
-      this.ctx.stroke();
-
-      // Tirador perimetral de radio
-      this.ctx.beginPath();
-      this.ctx.arc(radiusPoint.x, radiusPoint.y, handleRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#2563eb';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 2 / zoom;
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja un nodo Path utilizando curvas de Bézier cúbicas (bezierCurveTo) en Canvas 2D.
-   */
-  private renderPath(path: Path, _zoom?: number): void {
-    if (!path.points || path.points.length === 0) {
-      return;
-    }
-
-    this.ctx.save();
-
-    if (path.rotation) {
-      const baseAABB = getPathBaseAABB(path);
-      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
-      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((path.rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    const hasCornerRadius = Boolean(
-      (path.cornerRadius && path.cornerRadius > 0) ||
-      path.points.some((p) => p.cornerRadius && p.cornerRadius > 0)
-    );
-    const points = hasCornerRadius
-      ? smoothPathPoints(path.points, Boolean(path.closed), path.cornerRadius)
-      : path.points;
-    this.ctx.beginPath();
-    let subpathStartIdx = 0;
-
-    for (let i = 0; i < points.length; i++) {
-      const curr = points[i];
-      if (i === 0 || curr.moveTo) {
-        if (i > 0) {
-          const prevStart = points[subpathStartIdx];
-          const last = points[i - 1];
-          const shouldClose = last.closeSubpath ?? path.closed;
-          if (shouldClose && i - subpathStartIdx > 1) {
-            const cp1x = last.handleOut ? last.handleOut.x : last.x;
-            const cp1y = last.handleOut ? last.handleOut.y : last.y;
-            const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
-            const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
-            this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
-            this.ctx.closePath();
-          }
-        }
-        subpathStartIdx = i;
-        this.ctx.moveTo(curr.x, curr.y);
-      } else {
-        const prev = points[i - 1];
-        const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
-        const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
-        const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
-        const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
-        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
-      }
-    }
-
-    if (points.length > 0) {
-      const prevStart = points[subpathStartIdx];
-      const last = points[points.length - 1];
-      const shouldClose = last.closeSubpath ?? path.closed;
-      if (shouldClose && points.length - subpathStartIdx > 1) {
-        const cp1x = last.handleOut ? last.handleOut.x : last.x;
-        const cp1y = last.handleOut ? last.handleOut.y : last.y;
-        const cp2x = prevStart.handleIn ? prevStart.handleIn.x : prevStart.x;
-        const cp2y = prevStart.handleIn ? prevStart.handleIn.y : prevStart.y;
-        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, prevStart.x, prevStart.y);
-        this.ctx.closePath();
-      }
-    }
-
-    if (!isNonePaint(path.fill)) {
-      if (isGradient(path.fill)) {
-        const baseAABB = getPathBaseAABB(path);
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, path.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = path.fill!;
-      }
-      this.ctx.fill(path.fillRule ?? 'nonzero');
-      if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
-        this.clearDropShadow();
-      }
-    }
-
-    if (!isNonePaint(path.stroke) && path.strokeWidth && path.strokeWidth > 0) {
-      this.ctx.lineWidth = path.strokeWidth;
-      if (path.strokeDashArray && path.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...path.strokeDashArray]);
-      }
-      this.ctx.lineCap = path.strokeLineCap ?? 'round';
-      this.ctx.lineJoin = path.strokeLineJoin ?? 'round';
-      if (isGradient(path.stroke)) {
-        const baseAABB = getPathBaseAABB(path);
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, path.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = path.stroke!;
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja un nodo Text de una sola línea en Canvas 2D respetando propiedades tipográficas,
-   * color de relleno, rotación y alineación.
-   *
-   * Convención de textBaseline:
-   * Se utiliza 'top' de manera consistente para que la coordenada (x, y) represente el ancla
-   * superior del texto, asegurando coherencia con las demás figuras del editor (como Rectangle)
-   * donde el origen (x, y) define el extremo superior y el eje Y crece hacia abajo.
-   */
-  private renderText(text: Text): void {
-    const hasFill = text.fill === undefined || !isNonePaint(text.fill);
-    const hasStroke = !isNonePaint(text.stroke) && (text.strokeWidth ?? 1) > 0;
-    if (!hasFill && !hasStroke) {
-      return;
-    }
-
-    this.ctx.save();
-
-    // 1. Configuración tipográfica (CSS font shorthand: [style] [weight] size family)
-    const fontParts: string[] = [];
-    if (text.fontStyle && text.fontStyle !== 'normal') {
-      fontParts.push(text.fontStyle);
-    }
-    if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
-      fontParts.push(String(text.fontWeight));
-    }
-    const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
-    const fontFamily = text.fontFamily ?? 'sans-serif';
-    fontParts.push(`${fontSize}px`);
-    fontParts.push(fontFamily);
-    this.ctx.font = fontParts.join(' ');
-
-    // 2. Alineación horizontal y vertical
-    this.ctx.textAlign = text.textAlign ?? 'left';
-    // Convención de alineación vertical: 'top' fija (x, y) en el borde superior del texto.
-    this.ctx.textBaseline = 'top';
-
-    if ('letterSpacing' in this.ctx) {
-      const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
-      try {
-        (this.ctx as any).letterSpacing = `${letterSpacing}px`;
-      } catch (_) {}
-    }
-
-    // 3. Color de relleno (negro por defecto si no se indica)
-    if (hasFill) {
-      if (isGradient(text.fill)) {
-        const baseAABB = getTextBaseAABB(text, this.ctx);
-        this.ctx.fillStyle = createCanvasGradient(this.ctx, text.fill, baseAABB);
-      } else {
-        this.ctx.fillStyle = text.fill ?? '#000000';
-      }
-    }
-    if (hasStroke) {
-      if (text.strokeDashArray && text.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...text.strokeDashArray]);
-      }
-      this.ctx.lineCap = text.strokeLineCap ?? 'round';
-      this.ctx.lineJoin = text.strokeLineJoin ?? 'round';
-      if (isGradient(text.stroke)) {
-        const baseAABB = getTextBaseAABB(text, this.ctx);
-        this.ctx.strokeStyle = createCanvasGradient(this.ctx, text.stroke, baseAABB);
-      } else {
-        this.ctx.strokeStyle = text.stroke!;
-      }
-      this.ctx.lineWidth = text.strokeWidth ?? 1;
-    }
-
-    // 4. Transformación de rotación respecto a la posición (x, y) del nodo
-    if (text.rotation) {
-      this.ctx.translate(text.x, text.y);
-      this.ctx.rotate((text.rotation * Math.PI) / 180);
-      this.ctx.translate(-text.x, -text.y);
-    }
-
-    // 5. Dibujo del texto (soporta multilínea y word-wrapping con boxWidth)
-    const textEdit = this.options.textEditProvider?.() ?? null;
-    const isEditingThis = textEdit !== null && textEdit.textId === text.id;
-    const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
-    const lineHeight = getTextLineHeight(text);
-
-    const lines = getTextLineRanges({ ...text, text: displayText }, this.ctx);
-
-    // 6. Si está en edición y existe selección de caracteres, renderizar el resaltado DETRÁS del texto
-    if (
-      isEditingThis &&
-      textEdit.selectionStart !== undefined &&
-      textEdit.selectionEnd !== undefined &&
-      textEdit.selectionStart !== textEdit.selectionEnd
-    ) {
-      this.renderTextSelectionHighlight(
-        text,
-        lines,
-        displayText.length,
-        textEdit.selectionStart,
-        textEdit.selectionEnd,
-        fontSize,
-        lineHeight
-      );
-    }
-
-    // 7. Dibujo de cada línea de texto
-    for (let i = 0; i < lines.length; i++) {
-      const lineY = text.y + i * lineHeight;
-      if (hasFill) {
-        this.ctx.fillText(lines[i].text, text.x, lineY);
-        if (hasStroke) {
-          this.clearDropShadow();
-        }
-      }
-      if (hasStroke) {
-        this.ctx.strokeText(lines[i].text, text.x, lineY);
-      }
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Renderiza el recuadro de selección de caracteres detrás del texto dibujado,
-   * soportando selección multilínea (primera línea desde inicio, intermedias completas, última hasta fin).
-   */
-  private renderTextSelectionHighlight(
-    text: Text,
-    lines: Array<{ text: string; start: number; end: number }>,
-    textLength: number,
-    selectionStart: number,
-    selectionEnd: number,
-    fontSize: number,
-    lineHeight: number
-  ): void {
-    const minIdx = Math.max(0, Math.min(textLength, Math.min(selectionStart, selectionEnd)));
-    const maxIdx = Math.max(0, Math.min(textLength, Math.max(selectionStart, selectionEnd)));
-    if (minIdx === maxIdx) return;
-
-    this.ctx.save();
-    this.ctx.fillStyle = 'rgba(59, 130, 246, 0.35)';
-
-    for (let i = 0; i < lines.length; i++) {
-      const { text: lineText, start: lineStart, end: lineEnd } = lines[i];
-      const selStartInLine = Math.max(lineStart, minIdx);
-      const selEndInLine = Math.min(lineEnd, maxIdx);
-
-      const hasSelectionInThisLine = selStartInLine < selEndInLine;
-      const nextLineStart = lines[i + 1]?.start ?? lineEnd;
-      const isLineBreakSelected = maxIdx > lineEnd && minIdx < nextLineStart;
-
-      if (!hasSelectionInThisLine && !isLineBreakSelected) {
-        continue;
-      }
-
-      const lineWidth = measureSingleLineTextWidth(text, lineText, this.ctx);
-      let lineStartX = text.x;
-      if (text.textAlign === 'center') {
-        lineStartX = text.x - lineWidth / 2;
-      } else if (text.textAlign === 'right') {
-        lineStartX = text.x - lineWidth;
-      }
-
-      const charStart = Math.max(0, selStartInLine - lineStart);
-      const charEnd = Math.max(charStart, selEndInLine - lineStart);
-
-      const wBefore = measureSingleLineTextWidth(text, lineText.slice(0, charStart), this.ctx);
-      let wSelected = charEnd > charStart
-        ? measureSingleLineTextWidth(text, lineText.slice(0, charEnd), this.ctx) - wBefore
-        : 0;
-
-      if (isLineBreakSelected && wSelected === 0) {
-        wSelected = Math.max(6, fontSize * 0.3);
-      }
-
-      const lineY = text.y + i * lineHeight;
-      this.ctx.fillRect(lineStartX + wBefore, lineY, wSelected, lineHeight);
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja la indicación visual de un nodo Text en modo de edición interactiva.
-   * Incluye recuadro punteado de acento y cursor/caret en la posición y línea exacta según métricas reales.
-   */
-  private renderTextEditOverlay(text: Text, textEdit: TextEditRenderState, zoom: number): void {
-    const currentText = textEdit.text;
-    const tempNode: Text = { ...text, text: currentText };
-    const baseAABB = getTextBaseAABB(tempNode, this.ctx);
-    const lineHeight = getTextLineHeight(tempNode);
-
-    this.ctx.save();
-
-    if (text.rotation) {
-      this.ctx.translate(text.x, text.y);
-      this.ctx.rotate((text.rotation * Math.PI) / 180);
-      this.ctx.translate(-text.x, -text.y);
-    }
-
-    const padding = 3 / zoom;
-    const boxX = baseAABB.minX - padding;
-    const boxY = baseAABB.minY - padding;
-    const boxW = Math.max(6, baseAABB.width) + padding * 2;
-    const boxH = Math.max(12, baseAABB.height) + padding * 2;
-
-    // 1. Fondo sutil translúcido para destacar el área activa de escritura
-    this.ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
-    this.ctx.fillRect(boxX, boxY, boxW, boxH);
-
-    // 2. Borde punteado azul primario
-    this.ctx.strokeStyle = '#2563eb';
-    this.ctx.lineWidth = 1.5 / zoom;
-    this.ctx.setLineDash([4 / zoom, 2 / zoom]);
-    this.ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-    // 3. Cursor / Caret visible en la posición calculada según métrica tipográfica real
-    if (textEdit.cursorVisible !== false) {
-      const cursorIndex = Math.max(0, Math.min(currentText.length, textEdit.cursorIndex ?? currentText.length));
-
-      // Configurar fuente para medir prefijo
-      const fontParts: string[] = [];
-      if (text.fontStyle && text.fontStyle !== 'normal') {
-        fontParts.push(text.fontStyle);
-      }
-      if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
-        fontParts.push(String(text.fontWeight));
-      }
-      const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
-      const fontFamily = text.fontFamily ?? 'sans-serif';
-      fontParts.push(`${fontSize}px`);
-      fontParts.push(fontFamily);
-      this.ctx.font = fontParts.join(' ');
-
-      if ('letterSpacing' in this.ctx) {
-        const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
-        try {
-          (this.ctx as any).letterSpacing = `${letterSpacing}px`;
-        } catch (_) {}
-      }
-
-      // Determinar en qué línea está el cursor
-      const lines = getTextLineRanges(tempNode, this.ctx);
-      let lineIdx = 0;
-      for (let i = 0; i < lines.length; i++) {
-        if (cursorIndex <= lines[i].end || i === lines.length - 1) {
-          lineIdx = i;
-          break;
-        }
-      }
-
-      const currentLine = lines[lineIdx]?.text ?? '';
-      const lineStart = lines[lineIdx]?.start ?? 0;
-      const col = Math.max(0, Math.min(currentLine.length, cursorIndex - lineStart));
-      const lineWidth = measureSingleLineTextWidth(tempNode, currentLine, this.ctx);
-
-      let lineStartX = text.x;
-      if (text.textAlign === 'center') {
-        lineStartX = text.x - lineWidth / 2;
-      } else if (text.textAlign === 'right') {
-        lineStartX = text.x - lineWidth;
-      }
-
-      const cursorOffset = measureSingleLineTextWidth(tempNode, currentLine.slice(0, col), this.ctx);
-      const caretX = lineStartX + cursorOffset;
-      const caretY = text.y + lineIdx * lineHeight;
-
-      this.ctx.setLineDash([]);
-      this.ctx.beginPath();
-      this.ctx.moveTo(caretX, caretY);
-      this.ctx.lineTo(caretX, caretY + lineHeight);
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja los manejadores visibles y los puntos de ancla en modo de edición de trazado (Selección Directa).
-   */
-  private renderPathEditOverlay(
-    path: Path,
-    state: {
-      pathId: string;
-      selectedAnchors: ReadonlySet<number>;
-      hoverInsertPoint?: Vector2D | null;
-    },
-    zoom: number
-  ): void {
-    if (!path.points || path.points.length === 0) {
-      return;
-    }
-
-    this.ctx.save();
-
-    // 1. Aplica la misma transformación de rotación que renderPath (centro de getPathBaseAABB)
-    if (path.rotation) {
-      const baseAABB = getPathBaseAABB(path);
-      const cx = (baseAABB.minX + baseAABB.maxX) / 2;
-      const cy = (baseAABB.minY + baseAABB.maxY) / 2;
-      this.ctx.translate(cx, cy);
-      this.ctx.rotate((path.rotation * Math.PI) / 180);
-      this.ctx.translate(-cx, -cy);
-    }
-
-    // 2. Dibuja previsualización de inserción de nodo sobre la curva si existe
-    if (state.hoverInsertPoint) {
-      const hip = state.hoverInsertPoint;
-      const previewRadius = 4 / zoom;
-      this.ctx.beginPath();
-      this.ctx.arc(hip.x, hip.y, previewRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#0284c7';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.stroke();
-
-      // Cruz indicadora '+'
-      const crossSize = 2.2 / zoom;
-      this.ctx.beginPath();
-      this.ctx.moveTo(hip.x - crossSize, hip.y);
-      this.ctx.lineTo(hip.x + crossSize, hip.y);
-      this.ctx.moveTo(hip.x, hip.y - crossSize);
-      this.ctx.lineTo(hip.x, hip.y + crossSize);
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1 / zoom;
-      this.ctx.stroke();
-    }
-
-    // 3. Dibuja solo los manejadores de getVisiblePathHandles: línea ancla→manejador + círculo
-    const handleRadius = 3.5 / zoom;
-    const visibleHandles = getVisiblePathHandles(path, state.selectedAnchors);
-    for (const h of visibleHandles) {
-      // Línea ancla -> manejador
-      this.ctx.beginPath();
-      this.ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)'; // Celeste suave
-      this.ctx.lineWidth = 1 / zoom;
-      this.ctx.moveTo(h.anchorX, h.anchorY);
-      this.ctx.lineTo(h.x, h.y);
-      this.ctx.stroke();
-
-      // Círculo para el manejador
-      this.ctx.beginPath();
-      this.ctx.arc(h.x, h.y, handleRadius, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#38bdf8';
-      this.ctx.fill();
-    }
-
-    // 4. Dibuja TODAS las anclas con forma representativa de su tipo:
-    // - Esquina: cuadrado
-    // - Suavizado: círculo
-    // - Simétrico: rombo (diamante)
-    const anchorSize = 6 / zoom;
-    const halfAnchor = anchorSize / 2;
-
-    for (let i = 0; i < path.points.length; i++) {
-      const pt = path.points[i];
-      const isSelected = state.selectedAnchors.has(i);
-      const ptType = pt.pointType ?? getPointType(pt);
-
-      this.ctx.fillStyle = isSelected ? '#0284c7' : '#ffffff';
-      this.ctx.strokeStyle = '#0284c7';
-      this.ctx.lineWidth = 1.5 / zoom;
-
-      if (ptType === 'smooth') {
-        // Círculo
-        this.ctx.beginPath();
-        this.ctx.arc(pt.x, pt.y, halfAnchor, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.stroke();
-      } else if (ptType === 'symmetric') {
-        // Rombo (diamante)
-        this.ctx.beginPath();
-        this.ctx.moveTo(pt.x, pt.y - halfAnchor);
-        this.ctx.lineTo(pt.x + halfAnchor, pt.y);
-        this.ctx.lineTo(pt.x, pt.y + halfAnchor);
-        this.ctx.lineTo(pt.x - halfAnchor, pt.y);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-      } else {
-        // Esquina: cuadrado
-        this.ctx.fillRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
-        this.ctx.strokeRect(pt.x - halfAnchor, pt.y - halfAnchor, anchorSize, anchorSize);
-      }
-    }
-
-    // 5. Tiradores de radio de esquina sobre el trazado en edición
-    this.renderCornerRadiusHandlesOverlay(path, zoom);
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja los tiradores circulares de radio de esquina para una figura seleccionada.
-   */
-  private renderCornerRadiusHandlesOverlay(shape: Shape, zoom: number): void {
-    const handles = getShapeCornerRadiusHandles(shape, zoom);
-    if (!handles || handles.length === 0) return;
-
-    const handleRadius = 4 / zoom;
-    const dotRadius = 1.5 / zoom;
-
-    this.ctx.save();
-    for (const h of handles) {
-      this.ctx.beginPath();
-      if (typeof this.ctx.arc === 'function') {
-        this.ctx.arc(h.x, h.y, handleRadius, 0, Math.PI * 2);
-      } else if (typeof this.ctx.ellipse === 'function') {
-        this.ctx.ellipse(h.x, h.y, handleRadius, handleRadius, 0, 0, Math.PI * 2);
-      } else {
-        this.ctx.rect(h.x - handleRadius, h.y - handleRadius, handleRadius * 2, handleRadius * 2);
-      }
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#0284c7';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.stroke();
-
-      this.ctx.beginPath();
-      if (typeof this.ctx.arc === 'function') {
-        this.ctx.arc(h.x, h.y, dotRadius, 0, Math.PI * 2);
-      } else if (typeof this.ctx.ellipse === 'function') {
-        this.ctx.ellipse(h.x, h.y, dotRadius, dotRadius, 0, 0, Math.PI * 2);
-      } else {
-        this.ctx.rect(h.x - dotRadius, h.y - dotRadius, dotRadius * 2, dotRadius * 2);
-      }
-      this.ctx.fillStyle = '#0284c7';
-      this.ctx.fill();
-    }
-    this.ctx.restore();
-  }
-
-  /**
-   * Traza en el contexto un array de puntos suavizados que pueden contener segmentos rectos y cúbicos.
-   */
-  private drawSmoothedPoints(points: readonly PathPoint[]): void {
-    if (points.length === 0) return;
-    this.ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const curr = points[i];
-      if (prev.handleOut || curr.handleIn) {
-        const cp1x = prev.handleOut ? prev.handleOut.x : prev.x;
-        const cp1y = prev.handleOut ? prev.handleOut.y : prev.y;
-        const cp2x = curr.handleIn ? curr.handleIn.x : curr.x;
-        const cp2y = curr.handleIn ? curr.handleIn.y : curr.y;
-        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
-      } else {
-        this.ctx.lineTo(curr.x, curr.y);
-      }
-    }
-    const last = points[points.length - 1];
-    const first = points[0];
-    if (last.handleOut || first.handleIn) {
-      const cp1x = last.handleOut ? last.handleOut.x : last.x;
-      const cp1y = last.handleOut ? last.handleOut.y : last.y;
-      const cp2x = first.handleIn ? first.handleIn.x : first.x;
-      const cp2y = first.handleIn ? first.handleIn.y : first.y;
-      this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, first.x, first.y);
-    }
-    this.ctx.closePath();
-  }
-
-  /**
-   * Dibuja la vista previa de una figura en proceso de creación interactiva por arrastre
-   * utilizando trazo punteado y relleno semitransparente, manteniendo grosor de trazo constante.
-   */
-  private renderShapePreview(preview: ShapePreview, zoom: number): void {
-    if (preview.type === 'marquee') {
-      const minX = Math.min(preview.x, preview.x + preview.width);
-      const minY = Math.min(preview.y, preview.y + preview.height);
-      const w = Math.abs(preview.width);
-      const h = Math.abs(preview.height);
-
-      if (w < 1 && h < 1) {
-        return;
-      }
-
-      this.ctx.save();
-      if (typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([4 / zoom, 4 / zoom]);
-      }
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.strokeStyle = '#2563eb';
-      this.ctx.fillStyle = 'rgba(37, 99, 235, 0.12)';
-
-      this.ctx.beginPath();
-      this.ctx.rect(minX, minY, w, h);
-      this.ctx.fill();
-      this.ctx.stroke();
-      this.ctx.restore();
-      return;
-    }
-
-    if (preview.width < 1 && preview.height < 1) {
-      return;
-    }
-
-    this.ctx.save();
-
-    if (typeof preview.opacity === 'number') {
-      this.ctx.globalAlpha *= Math.max(0, Math.min(1, preview.opacity));
-    }
-
-    this.ctx.beginPath();
-    if (preview.type === 'rectangle') {
-      this.ctx.rect(preview.x, preview.y, preview.width, preview.height);
-    } else if (preview.type === 'ellipse') {
-      const rx = preview.radiusX ?? preview.width / 2;
-      const ry = preview.radiusY ?? preview.height / 2;
-      if (typeof this.ctx.ellipse === 'function') {
-        this.ctx.ellipse(preview.x, preview.y, rx, ry, 0, 0, Math.PI * 2);
-      } else if (typeof this.ctx.arc === 'function') {
-        this.ctx.arc(preview.x, preview.y, (rx + ry) / 2, 0, Math.PI * 2);
-      }
-    } else if (preview.type === 'line' && preview.x2 !== undefined && preview.y2 !== undefined) {
-      this.ctx.moveTo(preview.x, preview.y);
-      this.ctx.lineTo(preview.x2, preview.y2);
-    } else if (preview.type === 'pencil' && preview.points && preview.points.length > 0) {
-      this.ctx.moveTo(preview.points[0].x, preview.points[0].y);
-      for (let i = 1; i < preview.points.length; i++) {
-        this.ctx.lineTo(preview.points[i].x, preview.points[i].y);
-      }
-    } else if ((preview.type === 'polygon' || preview.type === 'star') && preview.points && preview.points.length > 0) {
-      this.ctx.moveTo(preview.points[0].x, preview.points[0].y);
-      for (let i = 1; i < preview.points.length; i++) {
-        this.ctx.lineTo(preview.points[i].x, preview.points[i].y);
-      }
-      this.ctx.closePath();
-    }
-
-    if (preview.type !== 'line' && preview.type !== 'pencil' && !isNonePaint(preview.fill)) {
-      this.ctx.fillStyle = preview.fill!;
-      this.ctx.fill();
-    }
-
-    const strokeWidth = preview.strokeWidth;
-    if (!isNonePaint(preview.stroke) && strokeWidth !== undefined && strokeWidth > 0) {
-      this.ctx.lineWidth = strokeWidth;
-      if (preview.strokeDashArray && preview.strokeDashArray.length > 0 && typeof this.ctx.setLineDash === 'function') {
-        this.ctx.setLineDash([...preview.strokeDashArray]);
-      }
-      if (preview.strokeLineCap) {
-        this.ctx.lineCap = preview.strokeLineCap;
-      }
-      if (preview.strokeLineJoin) {
-        this.ctx.lineJoin = preview.strokeLineJoin;
-      }
-      this.ctx.strokeStyle = preview.stroke!;
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  private renderSnapGuides(guides: readonly SnapGuide[], zoom: number): void {
-    if (guides.length === 0) return;
-
-    this.ctx.save();
-    this.ctx.setLineDash([]);
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.strokeStyle = '#FF00FF';
-    this.ctx.beginPath();
-    for (const guide of guides) {
-      if (guide.axis === 'x') {
-        this.ctx.moveTo(guide.position, guide.start);
-        this.ctx.lineTo(guide.position, guide.end);
-      } else {
-        this.ctx.moveTo(guide.start, guide.position);
-        this.ctx.lineTo(guide.end, guide.position);
-      }
-    }
-    this.ctx.stroke();
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja las guías de usuario (cyan #06b6d4) registradas en el Documento y la guía en arrastre activo.
-   */
-  private renderUserGuides(doc: Document, zoom: number): void {
-    if (!this.stateManager.isGuidesVisible()) return;
-
-    const guides = doc.guides ?? [];
-    const activeGuideDrag = this.options.activeGuideDragProvider?.() ?? null;
-    if (guides.length === 0 && !activeGuideDrag) return;
-
-    const isLocked = this.stateManager.isGuidesLocked();
-    const vp = this.viewportManager.getViewport();
-    const screenWidth = this.canvas.width / (this.options.highDpi ? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) : 1);
-    const screenHeight = this.canvas.height / (this.options.highDpi ? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) : 1);
-    const minWorldX = -vp.panX / vp.zoom - 1000;
-    const maxWorldX = (screenWidth - vp.panX) / vp.zoom + 1000;
-    const minWorldY = -vp.panY / vp.zoom - 1000;
-    const maxWorldY = (screenHeight - vp.panY) / vp.zoom + 1000;
-
-    this.ctx.save();
-    this.ctx.lineWidth = 1 / zoom;
-    this.ctx.strokeStyle = isLocked ? 'rgba(6, 182, 212, 0.6)' : '#06b6d4';
-    if (isLocked) {
-      this.ctx.setLineDash([4 / zoom, 4 / zoom]);
-    } else {
-      this.ctx.setLineDash([]);
-    }
-
-    if (guides.length > 0) {
-      this.ctx.beginPath();
-      for (const guide of guides) {
-        if (guide.axis === 'x') {
-          this.ctx.moveTo(guide.position, minWorldY);
-          this.ctx.lineTo(guide.position, maxWorldY);
-        } else {
-          this.ctx.moveTo(minWorldX, guide.position);
-          this.ctx.lineTo(maxWorldX, guide.position);
-        }
-      }
-      this.ctx.stroke();
-    }
-
-    if (activeGuideDrag) {
-      this.ctx.beginPath();
-      this.ctx.strokeStyle = '#38bdf8';
-      this.ctx.lineWidth = 1.5 / zoom;
-      this.ctx.setLineDash([6 / zoom, 3 / zoom]);
-      if (activeGuideDrag.axis === 'x') {
-        this.ctx.moveTo(activeGuideDrag.position, minWorldY);
-        this.ctx.lineTo(activeGuideDrag.position, maxWorldY);
-      } else {
-        this.ctx.moveTo(minWorldX, activeGuideDrag.position);
-        this.ctx.lineTo(maxWorldX, activeGuideDrag.position);
-      }
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  /**
-   * Dibuja una muestra/lupa circular flotante junto al cursor durante el modo Cuentagotas.
-   */
-  private renderEyedropperPreview(
-    preview: { readonly screenX: number; readonly screenY: number; readonly color: string },
-    dpr: number
-  ): void {
-    this.ctx.save();
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const cx = preview.screenX + 16;
-    const cy = preview.screenY - 16;
-    const r = 9;
-
-    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-    this.ctx.shadowBlur = 6;
-    this.ctx.shadowOffsetX = 0;
-    this.ctx.shadowOffsetY = 2;
-
-    this.ctx.beginPath();
-    this.ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    this.ctx.fillStyle = preview.color === 'none' || preview.color === 'transparent' ? '#1e293b' : preview.color;
-    this.ctx.fill();
-
-    this.ctx.shadowColor = 'transparent';
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeStyle = '#ffffff';
-    this.ctx.stroke();
-
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-    this.ctx.stroke();
-
-    this.ctx.restore();
+  public renderShapeOutline(shape: Shape, zoom: number): void {
+    renderShapeOutline(this.ctx, shape, zoom);
   }
 }
