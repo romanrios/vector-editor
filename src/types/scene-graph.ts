@@ -107,6 +107,23 @@ export type StrokeLineCap = 'butt' | 'round' | 'square';
 export type StrokeLineJoin = 'miter' | 'round' | 'bevel';
 
 /**
+ * Modos de fusión (blend modes) admitidos para composición visual entre figuras y capas
+ */
+export type BlendMode =
+  | 'normal'
+  | 'multiply'
+  | 'screen'
+  | 'overlay'
+  | 'darken'
+  | 'lighten'
+  | 'color-dodge'
+  | 'color-burn'
+  | 'hard-light'
+  | 'soft-light'
+  | 'difference'
+  | 'exclusion';
+
+/**
  * Propiedades base compartidas por todos los nodos del árbol
  */
 export interface BaseNode {
@@ -116,6 +133,7 @@ export interface BaseNode {
   readonly visible?: boolean;
   readonly locked?: boolean;
   readonly zIndex?: number;
+  readonly blendMode?: BlendMode;
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
@@ -461,4 +479,15 @@ export function isArtboard(val: unknown): val is Artboard {
     typeof (val as Artboard).height === 'number'
   );
 }
+
+/**
+ * Convierte un BlendMode del Scene Graph al valor correspondiente de GlobalCompositeOperation de Canvas 2D.
+ */
+export function blendModeToCompositeOperation(blendMode?: BlendMode): GlobalCompositeOperation {
+  if (!blendMode || blendMode === 'normal') {
+    return 'source-over';
+  }
+  return blendMode as GlobalCompositeOperation;
+}
+
 

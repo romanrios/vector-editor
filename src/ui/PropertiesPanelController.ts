@@ -28,6 +28,7 @@ import {
   type TextAlign,
   type StrokeLineCap,
   type StrokeLineJoin,
+  type BlendMode,
 } from '../types/scene-graph.ts';
 import {
   getSelectionBounds,
@@ -67,6 +68,7 @@ interface StyleSnapshot {
   readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly opacity?: number;
+  readonly blendMode?: BlendMode;
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
@@ -118,6 +120,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
 
   const inputOpacity = document.querySelector<HTMLInputElement>('#input-opacity');
   const inputOpacityValue = document.querySelector<HTMLInputElement>('#input-opacity-value');
+  const selectBlendMode = document.querySelector<HTMLSelectElement>('#select-blend-mode');
 
   const selectArtboardPreset = document.querySelector<HTMLSelectElement>('#select-artboard-preset');
   const inputArtboardWidth = document.querySelector<HTMLInputElement>('#input-artboard-width');
@@ -264,6 +267,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
           stroke: ('stroke' in shape ? (shape as { stroke?: FillType }).stroke : undefined) ?? 'none',
           strokeWidth: ('strokeWidth' in shape ? (shape as { strokeWidth?: number }).strokeWidth : undefined) ?? 1,
           opacity: shape.opacity ?? 1,
+          blendMode: shape.blendMode ?? 'normal',
           strokeDashArray: shape.strokeDashArray,
           strokeLineCap: shape.strokeLineCap,
           strokeLineJoin: shape.strokeLineJoin,
@@ -818,6 +822,13 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputOpacityValue.placeholder = isOpacityMixed ? 'Mixto' : '';
     }
 
+    const blendModes = leafShapes.map((shape) => shape.blendMode ?? 'normal');
+    const isBlendModeMixed = blendModes.some((mode) => mode !== blendModes[0]);
+    const displayedBlendMode = blendModes.length > 0 ? blendModes[0] : (defaultStyle?.blendMode ?? 'normal');
+    if (selectBlendMode && (typeof document === 'undefined' || document.activeElement !== selectBlendMode)) {
+      selectBlendMode.value = isBlendModeMixed ? 'normal' : displayedBlendMode;
+    }
+
     const activeArtboard = stateManager.getActiveArtboard();
     if (selectArtboardPreset && (typeof document === 'undefined' || document.activeElement !== selectArtboardPreset)) {
       const matchingPreset = findPresetForSize(activeArtboard.width, activeArtboard.height);
@@ -1285,6 +1296,37 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   inputOpacityValue?.addEventListener('focus', onInputStart);
   inputOpacityValue?.addEventListener('input', onOpacityValueInput);
   inputOpacityValue?.addEventListener('change', onOpacityValueChange);
+
+  const onBlendModeChange = () => {
+    if (!selectBlendMode) return;
+    const mode = selectBlendMode.value as BlendMode;
+    const selectedNodes = stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+
+    stateManager.setDrawingStyle({ blendMode: mode });
+    if (leafShapes.length === 0) {
+      initialStyleSnapshots = null;
+      return;
+    }
+    if (!initialStyleSnapshots) captureInitialStyle();
+
+    const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
+      id: shape.id,
+      before: { blendMode: initialStyleSnapshots?.get(shape.id)?.blendMode ?? shape.blendMode ?? 'normal' },
+      after: { blendMode: mode },
+    }));
+
+    stateManager.updateShapesStyle(leafShapes.map((shape) => ({
+      id: shape.id,
+      style: { blendMode: mode },
+    })));
+
+    const command = new StyleShapesCommand(stateManager, entries);
+    if (!command.isAlreadyAtTarget) commandManager.recordCommand(command);
+    initialStyleSnapshots = null;
+  };
+
+  selectBlendMode?.addEventListener('change', onBlendModeChange);
 
   const onFillChange = () => {
     if (!inputFill) return;
@@ -2603,6 +2645,7 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       inputOpacityValue?.removeEventListener('focus', onInputStart);
       inputOpacityValue?.removeEventListener('input', onOpacityValueInput);
       inputOpacityValue?.removeEventListener('change', onOpacityValueChange);
+      selectBlendMode?.removeEventListener('change', onBlendModeChange);
 
       inputTextContent?.removeEventListener('focus', onTextContentFocus);
       inputTextContent?.removeEventListener('input', onTextContentInput);

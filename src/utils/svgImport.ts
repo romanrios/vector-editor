@@ -13,6 +13,7 @@ import {
   type StrokeLineJoin,
   type Text,
   type Vector2D,
+  type BlendMode,
 } from '../types/scene-graph.ts';
 import { getPathBaseAABB } from './geometry.ts';
 import { normalizeColor } from './color.ts';
@@ -68,6 +69,7 @@ interface SvgContext {
   strokeLineJoin?: StrokeLineJoin;
   strokeDashArray?: readonly number[];
   opacity?: number;
+  blendMode?: BlendMode;
   fillRule?: 'nonzero' | 'evenodd';
   transformMatrix?: [number, number, number, number, number, number];
 }
@@ -887,6 +889,29 @@ function resolveElementStyles(
     context.fillRule = frVal;
   }
 
+  // 10. Blend Mode
+  const bmVal = getProp('mix-blend-mode');
+  if (bmVal !== undefined) {
+    const validModes = new Set([
+      'normal',
+      'multiply',
+      'screen',
+      'overlay',
+      'darken',
+      'lighten',
+      'color-dodge',
+      'color-burn',
+      'hard-light',
+      'soft-light',
+      'difference',
+      'exclusion',
+    ]);
+    const lower = bmVal.trim().toLowerCase();
+    if (validModes.has(lower)) {
+      context.blendMode = lower as BlendMode;
+    }
+  }
+
   return context;
 }
 
@@ -1264,6 +1289,7 @@ function parseSvgElement(
       name: nameAttr,
       children,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
       ...(isClipMask ? { isClipMask: true, clipChildId } : {}),
     };
     return group;
@@ -1335,6 +1361,7 @@ function parseSvgElement(
       strokeDashArray: context.strokeDashArray,
       rotation: rotation !== 0 ? rotation : undefined,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
     };
     return rect;
   }
@@ -1376,6 +1403,7 @@ function parseSvgElement(
       strokeDashArray: context.strokeDashArray,
       rotation: rotation !== 0 ? rotation : undefined,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
     };
     return ellipse;
   }
@@ -1439,6 +1467,7 @@ function parseSvgElement(
       strokeLineJoin: context.strokeLineJoin,
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
       fillRule: context.fillRule,
     };
     return pathNode;
@@ -1475,6 +1504,7 @@ function parseSvgElement(
       strokeLineJoin: context.strokeLineJoin,
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
     };
     return path;
   }
@@ -1517,6 +1547,7 @@ function parseSvgElement(
       strokeLineJoin: context.strokeLineJoin,
       strokeDashArray: context.strokeDashArray,
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
       fillRule: context.fillRule,
     };
     return path;
@@ -1555,6 +1586,7 @@ function parseSvgElement(
       fontFamily,
       fill: (materializeGradient(context.fill, textAABB) as any) ?? '#000000',
       opacity: context.opacity,
+      ...(context.blendMode ? { blendMode: context.blendMode } : {}),
     };
     return textNode;
   }

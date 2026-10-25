@@ -20,6 +20,7 @@ import type {
   StrokeLineJoin,
   Guide,
   Artboard,
+  BlendMode,
 } from '../types/scene-graph.ts';
 import type { ShapeDimensions } from '../commands/ResizeCommand.ts';
 import type { CommandManager } from '../commands/CommandManager.ts';
@@ -55,6 +56,7 @@ export interface ShapeStyleUpdate {
   readonly stroke?: FillType;
   readonly strokeWidth?: number;
   readonly opacity?: number;
+  readonly blendMode?: BlendMode;
   readonly strokeDashArray?: readonly number[];
   readonly strokeLineCap?: StrokeLineCap;
   readonly strokeLineJoin?: StrokeLineJoin;
@@ -176,6 +178,7 @@ export interface DrawingStyle {
   stroke: string;
   strokeWidth: number;
   opacity: number;
+  blendMode?: BlendMode;
   strokeDashArray?: readonly number[];
   strokeLineCap?: StrokeLineCap;
   strokeLineJoin?: StrokeLineJoin;
@@ -199,6 +202,7 @@ export class StateManager {
     stroke: '#0284c7',
     strokeWidth: 2,
     opacity: 1,
+    blendMode: 'normal',
     strokeDashArray: undefined,
     strokeLineCap: 'butt',
     strokeLineJoin: 'miter',
@@ -254,6 +258,7 @@ export class StateManager {
       strokeWidth:
         partial.strokeWidth !== undefined ? partial.strokeWidth : this._drawingStyle.strokeWidth,
       opacity: partial.opacity !== undefined ? partial.opacity : this._drawingStyle.opacity,
+      blendMode: partial.blendMode !== undefined ? partial.blendMode : this._drawingStyle.blendMode,
       strokeDashArray:
         partial.strokeDashArray !== undefined ? partial.strokeDashArray : this._drawingStyle.strokeDashArray,
       strokeLineCap:
@@ -273,6 +278,7 @@ export class StateManager {
       nextStyle.stroke === this._drawingStyle.stroke &&
       nextStyle.strokeWidth === this._drawingStyle.strokeWidth &&
       nextStyle.opacity === this._drawingStyle.opacity &&
+      nextStyle.blendMode === this._drawingStyle.blendMode &&
       nextStyle.strokeLineCap === this._drawingStyle.strokeLineCap &&
       nextStyle.strokeLineJoin === this._drawingStyle.strokeLineJoin &&
       isSameDash
@@ -2074,6 +2080,7 @@ export class StateManager {
           const hasDashChange = 'strokeDashArray' in targetStyle && !isDashEqual(targetStyle.strokeDashArray, child.strokeDashArray);
           const hasCapChange = 'strokeLineCap' in targetStyle && targetStyle.strokeLineCap !== child.strokeLineCap;
           const hasJoinChange = 'strokeLineJoin' in targetStyle && targetStyle.strokeLineJoin !== child.strokeLineJoin;
+          const hasBlendModeChange = 'blendMode' in targetStyle && targetStyle.blendMode !== child.blendMode;
 
           if (
             !hasFillChange &&
@@ -2082,7 +2089,8 @@ export class StateManager {
             !hasOpacityChange &&
             !hasDashChange &&
             !hasCapChange &&
-            !hasJoinChange
+            !hasJoinChange &&
+            !hasBlendModeChange
           ) {
             nextChildren[i] = child;
             continue;
@@ -2096,6 +2104,7 @@ export class StateManager {
             ...(targetStyle.stroke !== undefined ? { stroke: targetStyle.stroke } : {}),
             ...(targetStyle.strokeWidth !== undefined ? { strokeWidth: targetStyle.strokeWidth } : {}),
             ...(targetStyle.opacity !== undefined ? { opacity: targetStyle.opacity } : {}),
+            ...('blendMode' in targetStyle ? { blendMode: targetStyle.blendMode } : {}),
             ...('strokeDashArray' in targetStyle ? { strokeDashArray: targetStyle.strokeDashArray } : {}),
             ...('strokeLineCap' in targetStyle ? { strokeLineCap: targetStyle.strokeLineCap } : {}),
             ...('strokeLineJoin' in targetStyle ? { strokeLineJoin: targetStyle.strokeLineJoin } : {}),

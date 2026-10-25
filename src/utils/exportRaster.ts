@@ -13,7 +13,7 @@ import type {
   SelectableNode,
 } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
-import { isGroup, isShape, isGradient, type FillType, type Shape } from '../types/scene-graph.ts';
+import { isGroup, isShape, isGradient, type FillType, type Shape, blendModeToCompositeOperation } from '../types/scene-graph.ts';
 import { isNonePaint } from './color.ts';
 import { getPathBaseAABB, getGroupAABB, getTextLineHeight, getTextLineRanges, getPolygonBaseVertices, getStarBaseVertices, traceShapeClip } from './geometry.ts';
 import { createCanvasGradient, getShapeBaseAABB } from './gradient.ts';
@@ -281,6 +281,10 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
 
   if (typeof shape.opacity === 'number') {
     ctx.globalAlpha *= Math.max(0, Math.min(1, shape.opacity));
+  }
+
+  if (shape.blendMode) {
+    ctx.globalCompositeOperation = blendModeToCompositeOperation(shape.blendMode);
   }
 
   if (shape.type === 'rectangle') {
@@ -590,6 +594,10 @@ function renderChildNode(
       ctx.globalAlpha *= Math.max(0, Math.min(1, child.opacity));
     }
 
+    if (child.blendMode) {
+      ctx.globalCompositeOperation = blendModeToCompositeOperation(child.blendMode);
+    }
+
     if (child.isClipMask === true && child.children.length > 0) {
       const maskChild = child.clipChildId
         ? child.children.find((c) => c.id === child.clipChildId)
@@ -675,6 +683,10 @@ export function renderDocumentToCanvas(
     ctx.save();
     if (typeof layer.opacity === 'number') {
       ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
+    }
+
+    if (layer.blendMode) {
+      ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
     }
 
     for (const child of layer.children) {

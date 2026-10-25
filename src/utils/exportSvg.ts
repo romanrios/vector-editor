@@ -289,6 +289,9 @@ function renderChildToSvg(
     if (typeof child.opacity === 'number' && child.opacity < 1 && child.opacity >= 0) {
       groupAttrs.push(`opacity="${formatNum(child.opacity, 3)}"`);
     }
+    if (child.blendMode && child.blendMode !== 'normal') {
+      groupAttrs.push(`style="mix-blend-mode: ${escapeXml(child.blendMode)};"`);
+    }
 
     let maskChildId: string | null = null;
     if (child.isClipMask && child.children.length > 0) {
@@ -319,6 +322,9 @@ function renderChildToSvg(
   }
   if (typeof child.opacity === 'number' && child.opacity < 1 && child.opacity >= 0) {
     commonAttrs.push(`opacity="${formatNum(child.opacity, 3)}"`);
+  }
+  if (child.blendMode && child.blendMode !== 'normal') {
+    commonAttrs.push(`style="mix-blend-mode: ${escapeXml(child.blendMode)};"`);
   }
 
   // Relleno
@@ -842,6 +848,9 @@ export function exportDocumentToSvg(doc: Document, options: SvgExportOptions = {
     }
     if (typeof layer.opacity === 'number' && layer.opacity < 1 && layer.opacity >= 0) {
       layerAttrs.push(`opacity="${formatNum(layer.opacity, 3)}"`);
+    }
+    if (layer.blendMode && layer.blendMode !== 'normal') {
+      layerAttrs.push(`style="mix-blend-mode: ${escapeXml(layer.blendMode)};"`);
     }
 
     const layerContent: string[] = [];

@@ -21,6 +21,7 @@ function areStylesEqual(a: ShapeStyleUpdate, b: ShapeStyleUpdate): boolean {
   if (a.stroke !== b.stroke) return false;
   if (a.strokeWidth !== b.strokeWidth) return false;
   if (a.opacity !== b.opacity) return false;
+  if (a.blendMode !== b.blendMode) return false;
   if (a.strokeLineCap !== b.strokeLineCap) return false;
   if (a.strokeLineJoin !== b.strokeLineJoin) return false;
   const dashA = a.strokeDashArray ?? [];

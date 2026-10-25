@@ -22,6 +22,7 @@ import {
   type Vector2D,
   type Gradient,
   type Guide,
+  blendModeToCompositeOperation,
 } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import type { StateManager } from '../state/StateManager.ts';
@@ -579,6 +580,9 @@ export class RenderEngine {
         if (typeof layer.opacity === 'number') {
           this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
         }
+        if (layer.blendMode && layer.blendMode !== 'normal') {
+          this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
+        }
         this.ctx.drawImage(
           cached.canvas as any,
           cached.bounds.minX,
@@ -597,6 +601,9 @@ export class RenderEngine {
           if (typeof layer.opacity === 'number') {
             this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
           }
+          if (layer.blendMode && layer.blendMode !== 'normal') {
+            this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
+          }
           this.ctx.drawImage(
             entry.canvas as any,
             entry.bounds.minX,
@@ -614,6 +621,9 @@ export class RenderEngine {
 
     if (typeof layer.opacity === 'number') {
       this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
+    }
+    if (layer.blendMode && layer.blendMode !== 'normal') {
+      this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
     }
 
     for (const child of layer.children) {
@@ -723,6 +733,9 @@ export class RenderEngine {
         if (typeof group.opacity === 'number') {
           this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
         }
+        if (group.blendMode && group.blendMode !== 'normal') {
+          this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
+        }
         this.ctx.drawImage(
           cached.canvas as any,
           cached.bounds.minX,
@@ -741,6 +754,9 @@ export class RenderEngine {
           if (typeof group.opacity === 'number') {
             this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
           }
+          if (group.blendMode && group.blendMode !== 'normal') {
+            this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
+          }
           this.ctx.drawImage(
             entry.canvas as any,
             entry.bounds.minX,
@@ -758,6 +774,9 @@ export class RenderEngine {
 
     if (typeof group.opacity === 'number') {
       this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
+    }
+    if (group.blendMode && group.blendMode !== 'normal') {
+      this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
     }
 
     if (group.isClipMask === true && group.children.length > 0) {
@@ -793,6 +812,9 @@ export class RenderEngine {
 
     if (typeof shape.opacity === 'number') {
       this.ctx.globalAlpha *= Math.max(0, Math.min(1, shape.opacity));
+    }
+    if (shape.blendMode && shape.blendMode !== 'normal') {
+      this.ctx.globalCompositeOperation = blendModeToCompositeOperation(shape.blendMode);
     }
 
     if (shape.type === 'rectangle') {

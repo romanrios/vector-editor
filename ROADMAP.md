@@ -6,7 +6,7 @@ Este documento define la planificación estratégica y técnica para el desarrol
 
 ## Estado Actual y Base Consolidada
 
-A la fecha, el editor cuenta con una base sólida, modular y probada con **1098 tests unitarios**:
+A la fecha, el editor cuenta con una base sólida, modular y probada con **1114 tests unitarios**:
 
 - **Arquitectura Inmutable**: Scene Graph (`Document > Layer > Group* > Shape`) bajo congelación profunda (`Object.freeze`) y persistencia estructural (`StateManager`).
 - **Renderizado Reactivo**: Bucle *dirty-loop* en Canvas 2D nativo acoplado a `requestAnimationFrame`.
@@ -99,6 +99,25 @@ El objetivo de esta fase es garantizar fluidez a 60 FPS en documentos con miles 
   - Rasterización temporal de grupos o capas estáticas en lienzos fuera de pantalla para acelerar el redibujado durante navegación (pan/zoom).
   - Invalidación instantánea en tiempo $O(1)$ mediante verificación estructural (`entry.nodeRef === node`).
   - Bypassing inteligente durante selección y edición activa para mantener manipulación vectorial precisa a 60 FPS.
+
+---
+
+### Fase 5: Efectos Visuales y Modos de Fusión (Blend Modes & Effects)
+
+El objetivo de esta fase es dotar al editor de capacidades estéticas profesionales de composición visual e iluminación.
+
+- [x] **5.1. Modos de Fusión (Blend Modes)**:
+  - Modos de fusión estándar de la industria (`multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`) a nivel de figura, grupo y capa.
+  - Renderizado mediante `ctx.globalCompositeOperation` aislado en bloques save/restore.
+  - Integración en el panel de propiedades (selector rápido en sección Apariencia).
+  - Historial reversible mediante `StyleShapesCommand` con soporte para multi-selección y Undo/Redo.
+  - Exportación e importación SVG completa (`mix-blend-mode` en CSS / atributo `style`).
+
+- [ ] **5.2. Efectos de Sombra Paralela (Drop Shadow)**:
+  - Parámetros de sombra: color, opacidad, desplazamiento X/Y y radio de desenfoque (`blur`).
+  - Renderizado nativo en Canvas 2D (`ctx.shadowColor`, `ctx.shadowOffsetX`, `ctx.shadowOffsetY`, `ctx.shadowBlur`).
+  - Cálculo de AABB extendido considerando la dispersión y desplazamiento de la sombra para hit-testing y spatial index precisos.
+  - Exportación a SVG mediante filtros `<filter><feDropShadow .../></filter>`.
 
 ---
 
