@@ -1,0 +1,76 @@
+/**
+ * Definición estructurada de un atajo de teclado soportado en el editor
+ */
+export interface KeyboardShortcut {
+  readonly key: string;
+  readonly description: string;
+  readonly category: string;
+}
+
+/**
+ * Lista maestra de atajos de teclado reales implementados en InputController
+ */
+export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
+  { key: 'Ctrl+N / Cmd+N', description: 'Crear nuevo documento', category: 'Archivo' },
+  { key: 'Ctrl+E / Cmd+E', description: 'Abrir diálogo de exportación', category: 'Archivo' },
+  { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
+  { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
+  { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
+  { key: 'T', description: 'Herramienta Texto', category: 'Herramientas' },
+  { key: 'L', description: 'Herramienta Línea', category: 'Herramientas' },
+  { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
+  { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
+  { key: 'Y', description: 'Herramienta Polígono regular', category: 'Herramientas' },
+  { key: 'S', description: 'Herramienta Estrella', category: 'Herramientas' },
+  { key: 'B / N', description: 'Herramienta Lápiz (trazo libre)', category: 'Herramientas' },
+  { key: 'I', description: 'Herramienta Cuentagotas (muestreo de color)', category: 'Herramientas' },
+  { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
+  { key: 'Shift+O', description: 'Herramienta Mesa de Trabajo (Artboard)', category: 'Herramientas' },
+  { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
+  { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
+  { key: 'Arrastrar en el vacío', description: 'Selección por marquesina (rectángulo)', category: 'Selección' },
+  { key: 'Alt + arrastrar', description: 'Copiar mientras se mueve', category: 'Selección' },
+  { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
+  { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
+  { key: 'Ctrl+X / Cmd+X', description: 'Cortar figuras seleccionadas', category: 'Edición' },
+  { key: 'Ctrl+C / Cmd+C', description: 'Copiar figuras seleccionadas', category: 'Edición' },
+  { key: 'Ctrl+V / Cmd+V', description: 'Pegar figuras del portapapeles', category: 'Edición' },
+  { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figuras seleccionadas', category: 'Edición' },
+  { key: 'Supr / Backspace', description: 'Eliminar figuras seleccionadas', category: 'Edición' },
+  { key: 'Ctrl+Shift+]', description: 'Traer figuras al frente', category: 'Objeto' },
+  { key: 'Ctrl+Shift+[', description: 'Enviar figuras al fondo', category: 'Objeto' },
+  { key: 'Ctrl+G / Cmd+G', description: 'Agrupar figuras seleccionadas', category: 'Objeto' },
+  { key: 'Ctrl+Shift+G / Cmd+Shift+G', description: 'Desagrupar figuras seleccionadas', category: 'Objeto' },
+  { key: 'Ctrl+7 / Cmd+7', description: 'Crear máscara de recorte', category: 'Objeto' },
+  { key: 'Ctrl+Alt+7 / Cmd+Alt+7', description: 'Liberar máscara de recorte', category: 'Objeto' },
+  { key: 'Ctrl+Shift+O / Cmd+Shift+O', description: 'Trazar contorno (Stroke to Path)', category: 'Objeto' },
+  { key: 'Ctrl+R / Cmd+R', description: 'Mostrar / ocultar reglas graduadas', category: 'Ver' },
+  { key: 'Ctrl+; / Cmd+;', description: 'Mostrar / ocultar guías de usuario', category: 'Ver' },
+  { key: 'Ctrl+Alt+; / Cmd+Alt+;', description: 'Bloquear / desbloquear guías de usuario', category: 'Ver' },
+  { key: 'Ctrl+U / Cmd+U', description: 'Activar / desactivar guías inteligentes (Smart Guides)', category: 'Ver' },
+  { key: 'Flechas', description: 'Mover selección 1 px', category: 'Transformación' },
+  { key: 'Shift + Flechas', description: 'Mover selección 10 px', category: 'Transformación' },
+  { key: 'Shift al redimensionar', description: 'Conservar proporción de aspecto', category: 'Transformación' },
+  { key: 'Alt al redimensionar', description: 'Redimensionar desde el centro', category: 'Transformación' },
+  { key: 'Shift al rotar', description: 'Rotación con saltos discretos de 15°', category: 'Transformación' },
+  { key: 'Shift al crear figuras', description: 'Proporción 1:1 (cuadrado / círculo)', category: 'Creación' },
+  { key: 'Alt al crear figuras', description: 'Creación desde el centro', category: 'Creación' },
+  { key: 'Shift en herramienta Pluma', description: 'Restringir a ángulos rectos y 45°', category: 'Creación' },
+  { key: 'Alt al arrastrar nodo (Pluma)', description: 'Romper simetría de manejadores', category: 'Creación' },
+  { key: 'Enter en herramienta Pluma', description: 'Finalizar trazado abierto activo', category: 'Creación' },
+  { key: 'Enter sobre texto seleccionado', description: 'Iniciar edición rápida de texto', category: 'Texto' },
+  { key: 'Espacio + Arrastrar', description: 'Desplazamiento panorámico (Pan)', category: 'Navegación' },
+  { key: 'Rueda del ratón', description: 'Desplazamiento vertical', category: 'Navegación' },
+  { key: 'Shift + Rueda del ratón', description: 'Desplazamiento horizontal', category: 'Navegación' },
+  { key: 'Ctrl / Cmd + Rueda', description: 'Zoom centrado en el cursor', category: 'Navegación' },
+  { key: 'Ctrl + / Cmd +', description: 'Acercar zoom', category: 'Navegación' },
+  { key: 'Ctrl - / Cmd -', description: 'Alejar zoom', category: 'Navegación' },
+  { key: 'Ctrl 0 / Cmd 0', description: 'Ajustar lienzo a la ventana', category: 'Navegación' },
+  { key: 'Ctrl 1 / Cmd 1', description: 'Restablecer zoom al 100%', category: 'Navegación' },
+  { key: 'Escape', description: 'Cancelar creación/marquesina o deseleccionar', category: 'Navegación' },
+  { key: 'Doble clic en herramienta Mano', description: 'Ajustar todo a la ventana', category: 'Navegación' },
+  { key: 'Doble clic en Texto', description: 'Iniciar edición del contenido', category: 'Texto' },
+  { key: 'Doble clic en Trazado', description: 'Conmutar a Selección Directa', category: 'Herramientas' },
+  { key: 'Doble clic en Figuras Paramétricas', description: 'Convertir a Trazado Bézier editable', category: 'Herramientas' },
+  { key: 'Clic derecho en el lienzo', description: 'Menú contextual de opciones rápidas', category: 'General' },
+];

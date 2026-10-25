@@ -21,9 +21,6 @@ import {
 import {
   getShapeAABB,
   getTextIndexAtPosition,
-  isPointInPath,
-  isPointInShape,
-  isPointInText,
   type AlignmentMode,
   type DistributionAxis,
   type HandleType,
@@ -61,6 +58,9 @@ import { PencilToolHandler } from './tools/PencilToolHandler.ts';
 import { EyedropperToolHandler, type EyedropperPreview, type EyedropperSampleResult } from './tools/EyedropperToolHandler.ts';
 import { TouchGestureController } from './TouchGestureController.ts';
 import { ArtboardToolHandler, type ArtboardBounds } from './tools/ArtboardToolHandler.ts';
+import { KEYBOARD_SHORTCUTS, type KeyboardShortcut } from './keyboardShortcuts.ts';
+import { KeyboardShortcutsHandler } from './KeyboardShortcutsHandler.ts';
+import { HitTestManager } from './HitTestManager.ts';
 
 export type ToolMode = 'select' | 'pen' | 'direct-select' | 'rectangle' | 'ellipse' | 'polygon' | 'star' | 'line' | 'hand' | 'text' | 'pencil' | 'eyedropper' | 'artboard';
 export interface CanvasContextMenuData {
@@ -78,70 +78,7 @@ export type ToolChangeCallback = (tool: ToolMode) => void;
 export type ExportRequestCallback = () => void;
 export type SmartGuidesChangeCallback = (enabled: boolean) => void;
 
-/**
- * Definición estructurada de un atajo de teclado soportado en el editor
- */
-export interface KeyboardShortcut {
-  readonly key: string;
-  readonly description: string;
-  readonly category: string;
-}
-
-/**
- * Lista maestra de atajos de teclado reales implementados en InputController
- */
-export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
-  { key: 'Ctrl+N / Cmd+N', description: 'Crear nuevo documento', category: 'Archivo' },
-  { key: 'Ctrl+E / Cmd+E', description: 'Abrir diálogo de exportación', category: 'Archivo' },
-  { key: 'V', description: 'Herramienta Selección', category: 'Herramientas' },
-  { key: 'A', description: 'Herramienta Selección directa', category: 'Herramientas' },
-  { key: 'P', description: 'Herramienta Pluma (Bézier)', category: 'Herramientas' },
-  { key: 'T', description: 'Herramienta Texto', category: 'Herramientas' },
-  { key: 'L', description: 'Herramienta Línea', category: 'Herramientas' },
-  { key: 'R', description: 'Herramienta Rectángulo', category: 'Herramientas' },
-  { key: 'E', description: 'Herramienta Elipse', category: 'Herramientas' },
-  { key: 'Y', description: 'Herramienta Polígono regular', category: 'Herramientas' },
-  { key: 'S', description: 'Herramienta Estrella', category: 'Herramientas' },
-  { key: 'B / N', description: 'Herramienta Lápiz (trazo libre)', category: 'Herramientas' },
-  { key: 'I', description: 'Herramienta Cuentagotas (muestreo de color)', category: 'Herramientas' },
-  { key: 'H', description: 'Herramienta Mano', category: 'Herramientas' },
-  { key: 'Shift+O', description: 'Herramienta Mesa de Trabajo (Artboard)', category: 'Herramientas' },
-  { key: 'Ctrl+A / Cmd+A', description: 'Seleccionar todas las figuras', category: 'Selección' },
-  { key: 'Shift + Clic', description: 'Añadir / quitar de la selección', category: 'Selección' },
-  { key: 'Arrastrar en el vacío', description: 'Selección por marquesina (rectángulo)', category: 'Selección' },
-  { key: 'Alt + arrastrar', description: 'Copiar mientras se mueve', category: 'Selección' },
-  { key: 'Ctrl+Z / Cmd+Z', description: 'Deshacer última acción', category: 'Edición' },
-  { key: 'Ctrl+Shift+Z / Ctrl+Y', description: 'Rehacer última acción', category: 'Edición' },
-  { key: 'Ctrl+X / Cmd+X', description: 'Cortar figuras seleccionadas', category: 'Edición' },
-  { key: 'Ctrl+C / Cmd+C', description: 'Copiar figuras seleccionadas', category: 'Edición' },
-  { key: 'Ctrl+V / Cmd+V', description: 'Pegar figuras del portapapeles', category: 'Edición' },
-  { key: 'Ctrl+D / Cmd+D', description: 'Duplicar figuras seleccionadas', category: 'Edición' },
-  { key: 'Supr / Backspace', description: 'Eliminar figuras seleccionadas', category: 'Edición' },
-  { key: 'Ctrl+Shift+]', description: 'Traer figuras al frente', category: 'Objeto' },
-  { key: 'Ctrl+Shift+[', description: 'Enviar figuras al fondo', category: 'Objeto' },
-  { key: 'Ctrl+G / Cmd+G', description: 'Agrupar figuras seleccionadas', category: 'Objeto' },
-  { key: 'Ctrl+Shift+G / Cmd+Shift+G', description: 'Desagrupar figuras seleccionadas', category: 'Objeto' },
-  { key: 'Ctrl+7 / Cmd+7', description: 'Crear máscara de recorte', category: 'Objeto' },
-  { key: 'Ctrl+Alt+7 / Cmd+Alt+7', description: 'Soltar máscara de recorte', category: 'Objeto' },
-  { key: 'Ctrl+Shift+O / Cmd+Shift+O', description: 'Contornear trazado (Stroke to Path)', category: 'Objeto' },
-  { key: 'Ctrl++ / Cmd++', description: 'Acercar zoom', category: 'Navegación' },
-  { key: 'Ctrl+- / Cmd+-', description: 'Alejar zoom', category: 'Navegación' },
-  { key: 'Ctrl+0 / Cmd+0', description: 'Ajustar a la ventana', category: 'Navegación' },
-  { key: 'Ctrl+1 / Cmd+1', description: 'Tamaño real 100 %', category: 'Navegación' },
-  { key: 'Ctrl+R / Cmd+R', description: 'Mostrar / ocultar reglas graduadas', category: 'Vista' },
-  { key: 'Ctrl+; / Cmd+;', description: 'Mostrar / ocultar guías de usuario', category: 'Vista' },
-  { key: 'Ctrl+Alt+; / Cmd+Alt+;', description: 'Bloquear / desbloquear guías de usuario', category: 'Vista' },
-  { key: 'Supr / Backspace (sobre guía)', description: 'Eliminar guía bajo el cursor', category: 'Vista' },
-  { key: 'Ctrl+U', description: 'Activar / desactivar guías inteligentes', category: 'Vista' },
-  { key: 'Flechas', description: 'Mover figuras seleccionadas (1 px)', category: 'Transformación' },
-  { key: 'Shift + Flechas', description: 'Mover figuras seleccionadas (10 px)', category: 'Transformación' },
-  { key: 'Shift (al redimensionar)', description: 'Escalar proporcionalmente sin deformar', category: 'Transformación' },
-  { key: 'Shift (al arrastrar)', description: 'Restringir proporción 1:1', category: 'Dibujo' },
-  { key: 'Escape', description: 'Cancelar creación/marquesina o deseleccionar', category: 'Navegación' },
-  { key: 'Enter', description: 'Finalizar trazado Bézier activo', category: 'Dibujo' },
-  { key: 'Espacio + Arrastrar', description: 'Desplazar lienzo (Pan)', category: 'Navegación' },
-  { key: 'Ctrl + Rueda', description: 'Acercar / Alejar zoom', category: 'Navegación' },
-];
+export { KEYBOARD_SHORTCUTS, type KeyboardShortcut };
 
 export {
   SelectionOperations,
@@ -249,6 +186,8 @@ export class InputController {
   public readonly pencilToolHandler: PencilToolHandler;
   public readonly eyedropperToolHandler: EyedropperToolHandler;
   public readonly artboardToolHandler: ArtboardToolHandler;
+  public readonly hitTestManager: HitTestManager;
+  public readonly keyboardShortcutsHandler: KeyboardShortcutsHandler;
 
   // Controlador táctil y gestual desacoplado
   public readonly touchGestureController: TouchGestureController;
@@ -427,7 +366,14 @@ export class InputController {
       }
     );
 
+    this.hitTestManager = new HitTestManager(this.stateManager, () => this.isTouch);
+    this.keyboardShortcutsHandler = new KeyboardShortcutsHandler(this);
+
     this.attachEventListeners();
+  }
+
+  public set isSpacePressed(val: boolean) {
+    this._isSpacePressed = val;
   }
 
   public get isPanning(): boolean {
@@ -920,7 +866,7 @@ export class InputController {
     }
   }
 
-  private restoreToolCursor(): void {
+  public restoreToolCursor(): void {
     if (this._currentTool === 'hand') {
       this.canvas.style.cursor = 'grab';
     } else if (
@@ -1057,67 +1003,19 @@ export class InputController {
     ctx: CanvasRenderingContext2D | null,
     zoom: number
   ): Shape | null {
-    if (node.visible === false || node.locked === true) {
-      return null;
-    }
-
-    if (isGroup(node)) {
-      if (node.isClipMask) {
-        const maskShape = node.clipChildId
-          ? node.children.find((c) => c.id === node.clipChildId)
-          : node.children[node.children.length - 1];
-        if (maskShape && isShape(maskShape)) {
-          let insideMask = false;
-          if (maskShape.type === 'path') {
-            insideMask = isPointInPath(x, y, maskShape as Path, ctx, 8 / zoom);
-          } else {
-            insideMask = isPointInShape(x, y, maskShape, 4 / zoom);
+    return this.hitTestManager.hitTestNode(
+      node,
+      x,
+      y,
+      ctx,
+      zoom,
+      this.textEditManager.isEditingText && this.textEditManager.textEditingState
+        ? {
+            textId: this.textEditManager.textEditingState.textId,
+            currentText: this.textEditManager.textEditingState.currentText,
           }
-          if (!insideMask) {
-            return null;
-          }
-        }
-      }
-
-      for (let i = node.children.length - 1; i >= 0; i--) {
-        const hit = this.hitTestNode(node.children[i], x, y, ctx, zoom);
-        if (hit) {
-          return hit;
-        }
-      }
-      return null;
-    }
-
-    const isTouch = this.isTouch;
-
-    if (isShape(node)) {
-      if (node.type === 'path') {
-        const tolerance = (isTouch ? 20 : 8) / zoom;
-        if (isPointInPath(x, y, node as Path, ctx, tolerance)) {
-          return node;
-        }
-      } else if (node.type === 'text') {
-        const tolerance = (isTouch ? 16 : 4) / zoom;
-        const currentText =
-          this.textEditManager.isEditingText && this.textEditManager.textEditingState?.textId === node.id
-            ? this.textEditManager.textEditingState.currentText
-            : node.text;
-        const effectiveText = {
-          ...node,
-          text: currentText.length > 0 ? currentText : ' ',
-        };
-        if (isPointInText(x, y, effectiveText, tolerance, ctx)) {
-          return node;
-        }
-      } else {
-        const tolerance = (isTouch ? 16 : 4) / zoom;
-        if (isPointInShape(x, y, node, tolerance)) {
-          return node;
-        }
-      }
-    }
-
-    return null;
+        : null
+    );
   }
 
   public hitTest(x: number, y: number): Shape | null {
@@ -1140,48 +1038,8 @@ export class InputController {
     });
   }
 
-  private getOutermostGroupOrSelf(node: SelectableNode): SelectableNode {
-    let current: SelectableNode = node;
-    while (true) {
-      const parent = this.stateManager.findParent(current.id);
-      if (parent && isGroup(parent)) {
-        current = parent;
-      } else {
-        break;
-      }
-    }
-    return current;
-  }
-
-  private findDirectChildInGroup(group: Group, target: SelectableNode): SelectableNode | null {
-    let current: SelectableNode = target;
-    while (true) {
-      const parent = this.stateManager.findParent(current.id);
-      if (!parent) return null;
-      if (parent.id === group.id) {
-        return current;
-      }
-      if (isLayer(parent) || !isGroup(parent)) {
-        return null;
-      }
-      current = parent;
-    }
-  }
-
   public resolveNodeToSelect(hitShape: Shape): SelectableNode {
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1) {
-      const currentSelected = selectedNodes[0];
-      const parent = this.stateManager.findParent(currentSelected.id);
-      if (parent && isGroup(parent)) {
-        const directChild = this.findDirectChildInGroup(parent, hitShape);
-        if (directChild) {
-          return directChild;
-        }
-      }
-    }
-
-    return this.getOutermostGroupOrSelf(hitShape);
+    return this.hitTestManager.resolveNodeToSelect(hitShape);
   }
 
   public handleDoubleClick(event: MouseEvent): void {
@@ -1209,7 +1067,7 @@ export class InputController {
     const selectedNodes = this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 1 && isGroup(selectedNodes[0])) {
       const selectedGroup = selectedNodes[0];
-      const directChild = this.findDirectChildInGroup(selectedGroup, hitShape);
+      const directChild = this.hitTestManager.findDirectChildInGroup(selectedGroup, hitShape);
       if (directChild) {
         this.stateManager.setSelection([directChild.id]);
         this.selectToolHandler.resetDrag();
@@ -1549,345 +1407,14 @@ export class InputController {
   }
 
   public handleKeyDown(event: KeyboardEvent): void {
-    if (this.isInputFocused(event)) {
-      return;
-    }
-
-    if (this._currentTool === 'artboard') {
-      if (this.artboardToolHandler.onKeyDown(event)) {
-        return;
-      }
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key && event.key.toLowerCase() === 'u') {
-      event.preventDefault?.();
-      this.setSmartGuidesEnabled(!this.smartGuidesEnabled);
-      return;
-    }
-
-    if (this.textEditManager.isEditingText) {
-      this.textEditManager.handleKeyDown(event);
-      return;
-    }
-
-    const isCtrlOrCmd = event.ctrlKey || event.metaKey;
-
-    if (isCtrlOrCmd) {
-      const key = event.key;
-      const keyLower = key ? key.toLowerCase() : '';
-
-      if (keyLower === 'z') {
-        event.preventDefault?.();
-        if (event.shiftKey) {
-          this.commandManager.redo();
-        } else {
-          this.commandManager.undo();
-        }
-        return;
-      } else if (keyLower === 'y') {
-        event.preventDefault?.();
-        this.commandManager.redo();
-        return;
-      }
-
-      if (keyLower === 'x') {
-        event.preventDefault?.();
-        this.cut();
-        return;
-      }
-
-      if (keyLower === 'c') {
-        event.preventDefault?.();
-        this.copy();
-        return;
-      }
-
-      if (keyLower === 'v') {
-        event.preventDefault?.();
-        this.paste();
-        return;
-      }
-
-      if (keyLower === 'd') {
-        event.preventDefault?.();
-        this.duplicate();
-        return;
-      }
-
-      if (keyLower === 'a') {
-        event.preventDefault?.();
-        this.stateManager.selectAll();
-        return;
-      }
-
-      if (keyLower === 'e') {
-        event.preventDefault?.();
-        this.emit('exportRequest');
-        return;
-      }
-
-      if (keyLower === 'g') {
-        event.preventDefault?.();
-        if (event.shiftKey) {
-          this.ungroupSelection();
-        } else {
-          this.groupSelection();
-        }
-        return;
-      }
-
-      if (key === '7' || event.code === 'Digit7' || event.code === 'Numpad7') {
-        event.preventDefault?.();
-        if (event.altKey) {
-          this.releaseClipMask();
-        } else {
-          this.makeClipMask();
-        }
-        return;
-      }
-
-      if (keyLower === 'o' && event.shiftKey) {
-        event.preventDefault?.();
-        this.outlineStroke();
-        return;
-      }
-
-      const isBringToFront = event.shiftKey && (key === ']' || key === '}' || event.code === 'BracketRight');
-      const isSendToBack = event.shiftKey && (key === '[' || key === '{' || event.code === 'BracketLeft');
-
-      if (isBringToFront || isSendToBack) {
-        if (!this.isInputFocused(event)) {
-          if (this.stateManager.getSelection().length > 0) {
-            event.preventDefault?.();
-            if (isBringToFront) {
-              this.bringToFront();
-            } else {
-              this.sendToBack();
-            }
-          }
-        }
-        return;
-      }
-
-      if (keyLower === 'r' && !event.shiftKey && !event.altKey) {
-        event.preventDefault?.();
-        this.stateManager.setRulersVisible(!this.stateManager.isRulersVisible());
-        return;
-      }
-
-      if (key === ';' || event.code === 'Semicolon') {
-        event.preventDefault?.();
-        if (event.altKey) {
-          this.stateManager.setGuidesLocked(!this.stateManager.isGuidesLocked());
-        } else {
-          this.stateManager.setGuidesVisible(!this.stateManager.isGuidesVisible());
-        }
-        return;
-      }
-
-      if (key === '+' || key === '=') {
-        event.preventDefault?.();
-        this.zoomIn();
-        return;
-      } else if (key === '-') {
-        event.preventDefault?.();
-        this.zoomOut();
-        return;
-      } else if (key === '0') {
-        event.preventDefault?.();
-        this.zoomFit();
-        return;
-      } else if (key === '1') {
-        event.preventDefault?.();
-        this.zoomReset();
-        return;
-      }
-    }
-
-    if (event.code === 'Space' || event.key === ' ') {
-      event.preventDefault?.();
-      if (!this._isSpacePressed) {
-        this._isSpacePressed = true;
-        if (!this._isPanning) {
-          this.canvas.style.cursor = 'grab';
-        }
-      }
-      return;
-    }
-
-    if (event.key === 'Shift') {
-      this.selectToolHandler.handleShiftToggle(true);
-      if (this.creationToolHandler.isCreatingShape) {
-        this.creationToolHandler.updateShapePreview(
-          this._currentTool as 'rectangle' | 'ellipse' | 'polygon' | 'star',
-          true
-        );
-        this.stateManager.markDirty();
-      } else if (this._currentTool === 'line' && this.lineToolHandler.isCreating) {
-        this.lineToolHandler.updatePreview(true);
-        this.stateManager.markDirty();
-      }
-    }
-
-    if (event.key === 'Alt') {
-      this.selectToolHandler.handleAltToggle(true);
-    }
-
-    const key = event.key;
-    const isArrowKey =
-      key === 'ArrowUp' ||
-      key === 'ArrowDown' ||
-      key === 'ArrowLeft' ||
-      key === 'ArrowRight' ||
-      key === 'Up' ||
-      key === 'Down' ||
-      key === 'Left' ||
-      key === 'Right';
-
-    if (isArrowKey) {
-      if (this._currentTool !== 'select') {
-        return;
-      }
-
-      const selectedShapes = this.stateManager.getSelectedNodes().filter((s) => !s.locked);
-      if (selectedShapes.length === 0) {
-        return;
-      }
-
-      event.preventDefault?.();
-
-      const step = event.shiftKey ? 10 : 1;
-      let dx = 0;
-      let dy = 0;
-
-      if (key === 'ArrowUp' || key === 'Up') dy = -step;
-      else if (key === 'ArrowDown' || key === 'Down') dy = step;
-      else if (key === 'ArrowLeft' || key === 'Left') dx = -step;
-      else if (key === 'ArrowRight' || key === 'Right') dx = step;
-
-      const customEvent = event as KeyboardEvent & { customTimestamp?: number; time?: number };
-      const customTimestamp = customEvent.customTimestamp ?? customEvent.time;
-      this.moveSelection(dx, dy, customTimestamp);
-      return;
-    }
-
-    const keyLower = key ? key.toLowerCase() : '';
-    if (keyLower === 'delete' || keyLower === 'backspace') {
-      if (this.selectToolHandler.deleteHoveredGuide()) {
-        event.preventDefault?.();
-        return;
-      }
-      if (this.deleteSelected()) {
-        event.preventDefault?.();
-      }
-      return;
-    }
-
-    if (keyLower === 'p') {
-      this.setTool('pen');
-    } else if (event.shiftKey && keyLower === 'o') {
-      this.setTool('artboard');
-    } else if (keyLower === 'b' || keyLower === 'n') {
-      this.setTool('pencil');
-    } else if (keyLower === 'i') {
-      this.setTool('eyedropper');
-    } else if (keyLower === 'v') {
-      this.setTool('select');
-    } else if (keyLower === 'a') {
-      this.setTool('direct-select');
-    } else if (keyLower === 'r') {
-      this.setTool('rectangle');
-    } else if (keyLower === 'e') {
-      this.setTool('ellipse');
-    } else if (keyLower === 'y') {
-      this.setTool('polygon');
-    } else if (keyLower === 's') {
-      this.setTool('star');
-    } else if (keyLower === 'l') {
-      this.setTool('line');
-    } else if (keyLower === 'h') {
-      this.setTool('hand');
-    } else if (keyLower === 't') {
-      this.setTool('text');
-    } else if (keyLower === 'escape') {
-      if (this.selectToolHandler.handleEscape()) {
-        return;
-      } else if (this.creationToolHandler.isCreatingShape) {
-        this.creationToolHandler.cancelCreation();
-      } else if (this._currentTool === 'line') {
-        this.lineToolHandler.cancelCreation();
-      } else if (this._currentTool === 'pencil') {
-        this.pencilToolHandler.cancelDrawing();
-      } else if (this._currentTool === 'pen') {
-        this.penToolHandler.finishActivePath();
-      } else if (
-        !this.selectToolHandler.isDragging &&
-        !this.selectToolHandler.isResizing &&
-        !this.selectToolHandler.isRotating &&
-        !this._isPanning &&
-        !this.directSelectToolHandler.isDraggingPoint &&
-        this.stateManager.getSelection().length > 0
-      ) {
-        this.stateManager.selectNode(null);
-      }
-    } else if (keyLower === 'enter') {
-      if (this._currentTool === 'pen') {
-        this.penToolHandler.finishActivePath();
-      } else {
-        const selectedNodes = this.stateManager.getSelectedNodes();
-        if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
-          event.preventDefault?.();
-          this._currentTool = 'text';
-          this.emit('toolChange', 'text');
-          this.startEditingText(selectedNodes[0].id);
-          return;
-        }
-      }
-    }
+    this.keyboardShortcutsHandler.handleKeyDown(event);
   }
 
   public handleKeyUp(event: KeyboardEvent): void {
-    if (event.key === 'Shift') {
-      this.selectToolHandler.handleShiftToggle(false);
-      if (this.creationToolHandler.isCreatingShape) {
-        this.creationToolHandler.updateShapePreview(
-          this._currentTool as 'rectangle' | 'ellipse' | 'polygon' | 'star',
-          false
-        );
-        this.stateManager.markDirty();
-      } else if (this._currentTool === 'line' && this.lineToolHandler.isCreating) {
-        this.lineToolHandler.updatePreview(false);
-        this.stateManager.markDirty();
-      }
-    }
-
-    if (event.key === 'Alt') {
-      this.selectToolHandler.handleAltToggle(false);
-    }
-
-    if (event.code === 'Space' || event.key === ' ') {
-      this._isSpacePressed = false;
-      if (!this._isPanning) {
-        this.restoreToolCursor();
-      }
-    }
+    this.keyboardShortcutsHandler.handleKeyUp(event);
   }
 
-  private isInputFocused(event: KeyboardEvent): boolean {
-    const target =
-      (event.target as HTMLElement | null) ??
-      (typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null);
-    if (!target || target.id === 'mobile-text-proxy') {
-      return false;
-    }
-    const tagName = target.tagName;
-    return (
-      tagName === 'INPUT' ||
-      tagName === 'TEXTAREA' ||
-      tagName === 'SELECT' ||
-      (target as any).isContentEditable === true
-    );
-  }
+
 
   public getSelectedShapesGroupedByLayer(
     shapes: readonly Shape[] = this.stateManager.getSelectedNodes().filter(isShape)
