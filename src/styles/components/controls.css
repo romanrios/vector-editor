@@ -381,3 +381,21 @@
         display: flex;
         gap: 6px;
       }
+
+      /* Contenedores para Sombra Paralela */
+      .shadow-group-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+      }
+
+      .shadow-controls-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 6px 8px 10px;
+        background: rgba(255, 255, 255, 0.02);
+        border-left: 2px solid var(--accent);
+        border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+      }
