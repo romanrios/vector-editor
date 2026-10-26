@@ -48,11 +48,20 @@ export function renderTextSelectionHighlight(
     }
 
     const lineWidth = measureSingleLineTextWidth(text, lineText, ctx);
+    const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
     let lineStartX = text.x;
-    if (text.textAlign === 'center') {
-      lineStartX = text.x - lineWidth / 2;
-    } else if (text.textAlign === 'right') {
-      lineStartX = text.x - lineWidth;
+    if (hasBoxWidth) {
+      if (text.textAlign === 'center') {
+        lineStartX = text.x + (text.boxWidth! - lineWidth) / 2;
+      } else if (text.textAlign === 'right') {
+        lineStartX = text.x + text.boxWidth! - lineWidth;
+      }
+    } else {
+      if (text.textAlign === 'center') {
+        lineStartX = text.x - lineWidth / 2;
+      } else if (text.textAlign === 'right') {
+        lineStartX = text.x - lineWidth;
+      }
     }
 
     const charStart = Math.max(0, selStartInLine - lineStart);
@@ -88,9 +97,10 @@ export function renderText(
   text: Text,
   textEdit: TextEditRenderState | null
 ): void {
+  const isEditingThis = textEdit !== null && textEdit.textId === text.id;
   const hasFill = text.fill === undefined || !isNonePaint(text.fill);
   const hasStroke = !isNonePaint(text.stroke) && (text.strokeWidth ?? 1) > 0;
-  if (!hasFill && !hasStroke) {
+  if (!hasFill && !hasStroke && !isEditingThis) {
     return;
   }
 
@@ -126,12 +136,12 @@ export function renderText(
   }
 
   // 3. Color de relleno (negro por defecto si no se indica)
-  if (hasFill) {
+  if (hasFill || isEditingThis) {
     if (isGradient(text.fill)) {
       const baseAABB = getTextBaseAABB(text, ctx);
       ctx.fillStyle = createCanvasGradient(ctx, text.fill, baseAABB);
     } else {
-      ctx.fillStyle = text.fill ?? '#000000';
+      ctx.fillStyle = hasFill ? (text.fill ?? '#000000') : 'rgba(0, 0, 0, 0.4)';
     }
   }
   if (hasStroke) {
@@ -157,7 +167,6 @@ export function renderText(
   }
 
   // 5. Dibujo del texto (soporta multilínea y word-wrapping con boxWidth)
-  const isEditingThis = textEdit !== null && textEdit.textId === text.id;
   const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
   const lineHeight = getTextLineHeight(text);
 
@@ -183,16 +192,26 @@ export function renderText(
   }
 
   // 7. Dibujo de cada línea de texto
+  const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
+  let textAnchorX = text.x;
+  if (hasBoxWidth) {
+    if (text.textAlign === 'center') {
+      textAnchorX = text.x + text.boxWidth! / 2;
+    } else if (text.textAlign === 'right') {
+      textAnchorX = text.x + text.boxWidth!;
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const lineY = text.y + i * lineHeight;
-    if (hasFill) {
-      ctx.fillText(lines[i].text, text.x, lineY);
+    if (hasFill || isEditingThis) {
+      ctx.fillText(lines[i].text, textAnchorX, lineY);
       if (hasStroke) {
         clearDropShadow(ctx);
       }
     }
     if (hasStroke) {
-      ctx.strokeText(lines[i].text, text.x, lineY);
+      ctx.strokeText(lines[i].text, textAnchorX, lineY);
     }
   }
 

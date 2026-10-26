@@ -425,4 +425,29 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     const nodeInState = stateManager.findNode(textNode!.id) as Text;
     assert.equal(nodeInState.text, 'Titulo!');
   });
+
+  it('17. selectWordAt selecciona la palabra completa delimitada por espacios o símbolos', () => {
+    const { controller, textNode } = setupTestEnvironment('Hola Mundo Vectorial');
+    controller.startEditingText(textNode!.id);
+
+    // Seleccionar palabra "Mundo" con índice 7 ('u')
+    controller.textEditManager.selectWordAt(7);
+    const range = controller.textSelectionRange!;
+    assert.equal(range.start, 5);
+    assert.equal(range.end, 10);
+    assert.equal(controller.textEditingState!.currentText.slice(range.start, range.end), 'Mundo');
+  });
+
+  it('18. selectLineAt selecciona la línea completa sin incluir el salto de línea', () => {
+    const { controller, textNode } = setupTestEnvironment('Primera linea\nSegunda linea\nTercera');
+    controller.startEditingText(textNode!.id);
+
+    // Cursor en "Segunda" (índice 17)
+    controller.textEditManager.selectLineAt(17);
+    const range = controller.textSelectionRange!;
+    assert.equal(range.start, 14);
+    assert.equal(range.end, 27);
+    assert.equal(controller.textEditingState!.currentText.slice(range.start, range.end), 'Segunda linea');
+  });
 });
+

@@ -70,6 +70,7 @@ export class TextToolHandler implements ToolHandler {
         this.textEditManager.getMeasureContext()
       );
       this.textEditManager.startEditingText(textNode.id, charIndex, false);
+      this.textEditManager.handleMouseDown(textNode, coords.x, coords.y);
       return;
     }
 
@@ -118,6 +119,7 @@ export class TextToolHandler implements ToolHandler {
         this.textEditManager.getMeasureContext()
       );
       this.textEditManager.startEditingText(textNode.id, charIndex, false);
+      this.textEditManager.selectWordAt(charIndex);
     }
   }
 

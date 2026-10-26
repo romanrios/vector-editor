@@ -89,11 +89,20 @@ export function renderTextEditOverlay(
     const col = Math.max(0, Math.min(currentLine.length, cursorIndex - lineStart));
     const lineWidth = measureSingleLineTextWidth(tempNode, currentLine, ctx);
 
+    const hasBoxWidth = typeof tempNode.boxWidth === 'number' && tempNode.boxWidth > 0;
     let lineStartX = text.x;
-    if (text.textAlign === 'center') {
-      lineStartX = text.x - lineWidth / 2;
-    } else if (text.textAlign === 'right') {
-      lineStartX = text.x - lineWidth;
+    if (hasBoxWidth) {
+      if (text.textAlign === 'center') {
+        lineStartX = text.x + (tempNode.boxWidth! - lineWidth) / 2;
+      } else if (text.textAlign === 'right') {
+        lineStartX = text.x + tempNode.boxWidth! - lineWidth;
+      }
+    } else {
+      if (text.textAlign === 'center') {
+        lineStartX = text.x - lineWidth / 2;
+      } else if (text.textAlign === 'right') {
+        lineStartX = text.x - lineWidth;
+      }
     }
 
     const cursorOffset = measureSingleLineTextWidth(tempNode, currentLine.slice(0, col), ctx);

@@ -181,6 +181,14 @@ export function renderShapeOutline(
     baseHeight = baseAABB.height;
     cx = (baseAABB.minX + baseAABB.maxX) / 2;
     cy = (baseAABB.minY + baseAABB.maxY) / 2;
+  } else if (shape.type === 'text') {
+    const baseAABB = getTextBaseAABB(shape, ctx);
+    baseX = baseAABB.minX;
+    baseY = baseAABB.minY;
+    baseWidth = baseAABB.width;
+    baseHeight = baseAABB.height;
+    cx = shape.x;
+    cy = shape.y;
   } else if (shape.type === 'polygon') {
     baseX = shape.x - shape.radius;
     baseY = shape.y - shape.radius;

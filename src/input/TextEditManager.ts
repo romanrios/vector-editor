@@ -972,6 +972,71 @@ export class TextEditManager {
     }
   }
 
+  /**
+   * Selecciona la palabra completa ubicada en la posición `index` (para eventos de doble clic).
+   */
+  public selectWordAt(index: number): void {
+    if (!this._textEditingState) return;
+    const text = this._textEditingState.currentText;
+    if (!text || text.length === 0) return;
+    const pos = Math.max(0, Math.min(text.length, index));
+
+    const isWordChar = (char: string) => /[\p{L}\p{N}_]/u.test(char);
+
+    let start = pos;
+    let end = pos;
+
+    if (pos < text.length && isWordChar(text[pos])) {
+      while (start > 0 && isWordChar(text[start - 1])) {
+        start--;
+      }
+      while (end < text.length && isWordChar(text[end])) {
+        end++;
+      }
+    } else if (pos > 0 && isWordChar(text[pos - 1])) {
+      start = pos - 1;
+      while (start > 0 && isWordChar(text[start - 1])) {
+        start--;
+      }
+      end = pos;
+      while (end < text.length && isWordChar(text[end])) {
+        end++;
+      }
+    } else {
+      while (start > 0 && !isWordChar(text[start - 1]) && text[start - 1] !== '\n') {
+        start--;
+      }
+      while (end < text.length && !isWordChar(text[end]) && text[end] !== '\n') {
+        end++;
+      }
+    }
+
+    this._textEditingState.selectionStart = start;
+    this._textEditingState.selectionEnd = end;
+    this._textEditingState.cursorIndex = end;
+    this.resetCursorBlink();
+    this.stateManager.markDirty();
+  }
+
+  /**
+   * Selecciona la línea completa ubicada en la posición `index` (para eventos de triple clic).
+   */
+  public selectLineAt(index: number): void {
+    if (!this._textEditingState) return;
+    const text = this._textEditingState.currentText;
+    if (!text) return;
+    const pos = Math.max(0, Math.min(text.length, index));
+    const lastNewline = text.lastIndexOf('\n', pos - 1);
+    const start = lastNewline === -1 ? 0 : lastNewline + 1;
+    const nextNewline = text.indexOf('\n', pos);
+    const end = nextNewline === -1 ? text.length : nextNewline;
+    this._textEditingState.selectionStart = start;
+    this._textEditingState.selectionEnd = end;
+    this._textEditingState.cursorIndex = end;
+    this.resetCursorBlink();
+    this.stateManager.markDirty();
+  }
+
   public destroy(): void {
     this.teardownMobileInputProxy();
     if (this._mobileInputProxy) {

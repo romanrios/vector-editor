@@ -139,6 +139,17 @@ export class AppearanceSectionController {
       }
     });
     this.stateManager.updateShapesStyle(entries);
+    if (property === 'fill' && this.elements.swatchTextColorPreview && this.elements.inputTextHex) {
+      const hex = typeof color === 'string' && !isNonePaint(color) ? toValidHexColor(color, '#000000') : '';
+      if (hex) {
+        this.elements.swatchTextColorPreview.className = 'color-swatch-preview';
+        this.elements.swatchTextColorPreview.style.backgroundColor = hex;
+        if (typeof document === 'undefined' || document.activeElement !== this.elements.inputTextHex) {
+          this.elements.inputTextHex.value = hex;
+          this.elements.inputTextHex.placeholder = hex;
+        }
+      }
+    }
   }
 
   public commitColor(property: 'fill' | 'stroke', color: FillType, targetEl?: EventTarget | null): void {
@@ -211,6 +222,7 @@ export class AppearanceSectionController {
       this.commandManager.recordCommand(command);
     }
     this.clearSnapshot();
+    this.syncPropertiesPanel();
   }
 
   private onInputStart = (e?: Event) => {

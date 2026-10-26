@@ -303,9 +303,12 @@ export function getPaintState(shapes: readonly Shape[], property: 'fill' | 'stro
     return { kind: 'none' };
   }
 
-  const rawPaints = shapes.map((shape) =>
-    property === 'fill' ? shape.fill : ('stroke' in shape ? shape.stroke : undefined)
-  );
+  const rawPaints = shapes.map((shape) => {
+    if (property === 'fill') {
+      return shape.type === 'text' ? (shape.fill ?? '#000000') : shape.fill;
+    }
+    return 'stroke' in shape ? shape.stroke : undefined;
+  });
 
   const allNone = rawPaints.every(isNonePaint);
   if (allNone) {

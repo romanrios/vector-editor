@@ -254,11 +254,20 @@ export function getTextIndexAtPosition(
   // 4. Determinar la posición horizontal de inicio de la línea seleccionada según textAlign
   const { text: currentLine, start: lineStart, end: lineEnd } = lines[lineIndex];
   const lineWidth = measureSingleLineTextWidth(text, currentLine, ctx);
+  const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
   let startX = text.x;
-  if (text.textAlign === 'center') {
-    startX = text.x - lineWidth / 2;
-  } else if (text.textAlign === 'right') {
-    startX = text.x - lineWidth;
+  if (hasBoxWidth) {
+    if (text.textAlign === 'center') {
+      startX = text.x + (text.boxWidth! - lineWidth) / 2;
+    } else if (text.textAlign === 'right') {
+      startX = text.x + text.boxWidth! - lineWidth;
+    }
+  } else {
+    if (text.textAlign === 'center') {
+      startX = text.x - lineWidth / 2;
+    } else if (text.textAlign === 'right') {
+      startX = text.x - lineWidth;
+    }
   }
 
   // 5. Desplazamiento horizontal relativo al inicio de la línea
@@ -300,10 +309,12 @@ export function getTextBaseAABB(text: Text, ctx?: CanvasRenderingContext2D | nul
   const height = lines.length <= 1 && text.lineHeight === undefined ? fontSize : lines.length * lineHeight;
 
   let minX = text.x;
-  if (text.textAlign === 'center') {
-    minX = text.x - width / 2;
-  } else if (text.textAlign === 'right') {
-    minX = text.x - width;
+  if (!isWrapped) {
+    if (text.textAlign === 'center') {
+      minX = text.x - width / 2;
+    } else if (text.textAlign === 'right') {
+      minX = text.x - width;
+    }
   }
 
   const strokePadding = !isNonePaint(text.stroke) ? Math.max(0, text.strokeWidth ?? 1) / 2 : 0;

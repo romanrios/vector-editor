@@ -279,7 +279,7 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     stateManager.setSelection(['text-1']);
     assert.equal(elements['#section-typography'].style.display, 'block');
     assert.equal(elements['#section-appearance'].style.display, 'block');
-    assert.equal(elements['#group-text-color'].style.display, 'none');
+    assert.equal(elements['#group-text-color'].style.display, '');
 
     // Selección múltiple (Text + Rectangle): tipografía oculta, apariencia visible
     stateManager.setSelection(['text-1', 'rect-1']);
@@ -306,7 +306,7 @@ describe('Propiedades tipográficas para Text en el panel de propiedades', () =>
     stateManager.setSelection(['text-default']);
 
     assert.equal(elements['#section-appearance'].style.display, 'block');
-    assert.equal(elements['#group-text-color'].style.display, 'none');
+    assert.equal(elements['#group-text-color'].style.display, '');
     // Comprobar valores iniciales solicitados:
     // fontFamily: Inter, fontSize: 32, fontWeight: 400, fontStyle: normal, textAlign: left
     assert.equal(elements['#input-text-content'].value, 'Texto Inicial');

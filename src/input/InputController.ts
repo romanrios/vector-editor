@@ -1077,6 +1077,7 @@ export class InputController {
       const ctx = this.textEditManager.getMeasureContext();
       const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
       this.startEditingText(hitShape.id, charIndex);
+      this.textEditManager.selectWordAt(charIndex);
       this.canvas.style.cursor = 'text';
       return;
     }

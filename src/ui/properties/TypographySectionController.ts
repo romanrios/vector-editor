@@ -127,7 +127,17 @@ export class TypographySectionController {
         this.elements.inputTextHex.value = color;
         this.elements.inputTextHex.placeholder = color;
       }
+      if (this.elements.swatchFillPreview) {
+        this.elements.swatchFillPreview.className = 'color-swatch-preview';
+        this.elements.swatchFillPreview.style.backgroundColor = color;
+        this.elements.swatchFillPreview.style.backgroundImage = 'none';
+      }
+      if (this.elements.inputFillHex && (typeof document === 'undefined' || document.activeElement !== this.elements.inputFillHex)) {
+        this.elements.inputFillHex.value = color;
+        this.elements.inputFillHex.placeholder = color;
+      }
       this.elements.btnTextColorNone?.setAttribute('aria-pressed', 'false');
+      this.elements.btnFillNone?.setAttribute('aria-pressed', 'false');
     }
   }
 
@@ -458,7 +468,7 @@ export class TypographySectionController {
       this.elements.sectionTypography.style.display = isSingleTextSelected ? 'block' : 'none';
     }
     if (this.elements.groupTextColor) {
-      this.elements.groupTextColor.style.display = isSingleTextSelected ? 'none' : '';
+      this.elements.groupTextColor.style.display = isSingleTextSelected ? '' : 'none';
     }
 
     if (!isSingleTextSelected || !singleTextNode) {
