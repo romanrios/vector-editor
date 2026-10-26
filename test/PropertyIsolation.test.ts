@@ -80,6 +80,8 @@ class MockElement {
   public dispatchEvent(e: any): void {
     if (!e.stopPropagation) e.stopPropagation = () => {};
     if (!e.preventDefault) e.preventDefault = () => {};
+    if (!e.target) e.target = this;
+    e.currentTarget = this;
     const set = this.listeners.get(e.type);
     if (set) {
       for (const listener of set) {
@@ -181,7 +183,7 @@ function setupMockDOM(): {
       const cleanId = sel.replace(/^#/, '');
       return domMap[cleanId] ?? null;
     },
-    querySelectorAll: (sel: string) => [],
+    querySelectorAll: (_sel: string) => [],
     addEventListener: () => {},
     removeEventListener: () => {},
   };
@@ -210,6 +212,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const shape1: Rectangle = {
       id: 'rect1',
+      name: 'rect1',
       type: 'rectangle',
       x: 10,
       y: 10,
@@ -221,6 +224,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const shape2: Rectangle = {
       id: 'rect2',
+      name: 'rect2',
       type: 'rectangle',
       x: 200,
       y: 200,
@@ -231,8 +235,8 @@ describe('Property Isolation when Switching Selection', () => {
       stroke: '#000000',
     };
 
-    state.addNode(state.getActiveLayer().id, shape1);
-    state.addNode(state.getActiveLayer().id, shape2);
+    state.addNode(state.getActiveLayer()!.id, shape1);
+    state.addNode(state.getActiveLayer()!.id, shape2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -275,6 +279,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const shape1: Rectangle = {
       id: 'rect1',
+      name: 'rect1',
       type: 'rectangle',
       x: 10,
       y: 10,
@@ -284,6 +289,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const shape2: Rectangle = {
       id: 'rect2',
+      name: 'rect2',
       type: 'rectangle',
       x: 200,
       y: 200,
@@ -292,8 +298,8 @@ describe('Property Isolation when Switching Selection', () => {
       fill: '#222222',
     };
 
-    state.addNode(state.getActiveLayer().id, shape1);
-    state.addNode(state.getActiveLayer().id, shape2);
+    state.addNode(state.getActiveLayer()!.id, shape1);
+    state.addNode(state.getActiveLayer()!.id, shape2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -331,6 +337,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const shape1: Rectangle = {
       id: 'rect1',
+      name: 'rect1',
       type: 'rectangle',
       x: 10,
       y: 10,
@@ -339,6 +346,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const shape2: Rectangle = {
       id: 'rect2',
+      name: 'rect2',
       type: 'rectangle',
       x: 100,
       y: 200,
@@ -346,8 +354,8 @@ describe('Property Isolation when Switching Selection', () => {
       height: 80,
     };
 
-    state.addNode(state.getActiveLayer().id, shape1);
-    state.addNode(state.getActiveLayer().id, shape2);
+    state.addNode(state.getActiveLayer()!.id, shape1);
+    state.addNode(state.getActiveLayer()!.id, shape2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -385,6 +393,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const text1: Text = {
       id: 'text1',
+      name: 'text1',
       type: 'text',
       x: 10,
       y: 10,
@@ -394,6 +403,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const text2: Text = {
       id: 'text2',
+      name: 'text2',
       type: 'text',
       x: 50,
       y: 50,
@@ -402,8 +412,8 @@ describe('Property Isolation when Switching Selection', () => {
       fontSize: 32,
     };
 
-    state.addNode(state.getActiveLayer().id, text1);
-    state.addNode(state.getActiveLayer().id, text2);
+    state.addNode(state.getActiveLayer()!.id, text1);
+    state.addNode(state.getActiveLayer()!.id, text2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -441,6 +451,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const poly1: Polygon = {
       id: 'poly1',
+      name: 'poly1',
       type: 'polygon',
       x: 10,
       y: 10,
@@ -449,6 +460,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const poly2: Polygon = {
       id: 'poly2',
+      name: 'poly2',
       type: 'polygon',
       x: 100,
       y: 100,
@@ -456,8 +468,8 @@ describe('Property Isolation when Switching Selection', () => {
       radius: 60,
     };
 
-    state.addNode(state.getActiveLayer().id, poly1);
-    state.addNode(state.getActiveLayer().id, poly2);
+    state.addNode(state.getActiveLayer()!.id, poly1);
+    state.addNode(state.getActiveLayer()!.id, poly2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -495,6 +507,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const rect1: Rectangle = {
       id: 'rect1',
+      name: 'rect1',
       type: 'rectangle',
       x: 10,
       y: 10,
@@ -504,6 +517,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const rect2: Rectangle = {
       id: 'rect2',
+      name: 'rect2',
       type: 'rectangle',
       x: 200,
       y: 200,
@@ -511,8 +525,8 @@ describe('Property Isolation when Switching Selection', () => {
       height: 100,
     };
 
-    state.addNode(state.getActiveLayer().id, rect1);
-    state.addNode(state.getActiveLayer().id, rect2);
+    state.addNode(state.getActiveLayer()!.id, rect1);
+    state.addNode(state.getActiveLayer()!.id, rect2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,
@@ -550,6 +564,7 @@ describe('Property Isolation when Switching Selection', () => {
 
     const shape1: Rectangle = {
       id: 'rect1',
+      name: 'rect1',
       type: 'rectangle',
       x: 10,
       y: 10,
@@ -559,6 +574,7 @@ describe('Property Isolation when Switching Selection', () => {
     };
     const shape2: Rectangle = {
       id: 'rect2',
+      name: 'rect2',
       type: 'rectangle',
       x: 200,
       y: 200,
@@ -566,8 +582,8 @@ describe('Property Isolation when Switching Selection', () => {
       height: 100,
     };
 
-    state.addNode(state.getActiveLayer().id, shape1);
-    state.addNode(state.getActiveLayer().id, shape2);
+    state.addNode(state.getActiveLayer()!.id, shape1);
+    state.addNode(state.getActiveLayer()!.id, shape2);
 
     const controller = setupPropertiesPanelBindings({
       stateManager: state,

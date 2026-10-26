@@ -5,6 +5,7 @@ import { StyleShapesCommand, type ShapeStyleChangeEntry } from '../../commands/S
 import type { DropShadow, Shape } from '../../types/scene-graph.ts';
 import { parseHexColor } from '../../utils/color.ts';
 import type { PropertiesPanelElements } from './types.ts';
+import { markInputTarget, isInputTargetValid, clearInputTarget } from './types.ts';
 import type { StyleSnapshotManager } from './StyleSnapshotManager.ts';
 
 export class DropShadowSectionController {
@@ -25,22 +26,12 @@ export class DropShadowSectionController {
     this.styleSnapshotManager = styleSnapshotManager;
   }
 
-
-  private editingTargetIds: readonly string[] | null = null;
-
   public clearSnapshot(): void {
-    this.editingTargetIds = null;
     this.styleSnapshotManager.clear();
   }
 
-  private isTargetValid(leafShapes: readonly Shape[]): boolean {
-    if (!this.editingTargetIds) {
-      return false;
-    }
-    if (
-      leafShapes.length !== this.editingTargetIds.length ||
-      !leafShapes.every((s) => this.editingTargetIds!.includes(s.id))
-    ) {
+  private isTargetValid(leafShapes: readonly Shape[], targetEl?: EventTarget | null): boolean {
+    if (targetEl && !isInputTargetValid(targetEl, leafShapes)) {
       return false;
     }
     const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
@@ -55,8 +46,11 @@ export class DropShadowSectionController {
     return true;
   }
 
-  private onInputStart = () => {
-    this.editingTargetIds = getLeafShapes(this.stateManager.getSelectedNodes()).map((s) => s.id);
+  private onInputStart = (e?: Event) => {
+    const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+    if (e?.currentTarget) {
+      markInputTarget(e.currentTarget, leafShapes);
+    }
     this.styleSnapshotManager.capture();
   };
 
@@ -79,12 +73,13 @@ export class DropShadowSectionController {
     };
   };
 
-  private applyDropShadowLive = (shadow: DropShadow | null) => {
+  private applyDropShadowLive = (shadow: DropShadow | null, targetEl?: EventTarget | null) => {
     const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
     this.stateManager.setDrawingStyle({ dropShadow: shadow });
     if (leafShapes.length === 0) return;
 
-    if (!this.isTargetValid(leafShapes)) {
+    if (!this.isTargetValid(leafShapes, targetEl)) {
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       return;
     }
@@ -98,15 +93,17 @@ export class DropShadowSectionController {
     })));
   };
 
-  private commitDropShadow = (shadow: DropShadow | null) => {
+  private commitDropShadow = (shadow: DropShadow | null, targetEl?: EventTarget | null) => {
     const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
     this.stateManager.setDrawingStyle({ dropShadow: shadow });
     if (leafShapes.length === 0) {
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       return;
     }
 
-    if (!this.isTargetValid(leafShapes)) {
+    if (!this.isTargetValid(leafShapes, targetEl)) {
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       return;
     }
@@ -117,6 +114,7 @@ export class DropShadowSectionController {
 
     const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
     if (initialStyleSnapshots && !leafShapes.every((s) => initialStyleSnapshots.has(s.id))) {
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       return;
     }
@@ -134,98 +132,93 @@ export class DropShadowSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
+    if (targetEl) clearInputTarget(targetEl);
     this.clearSnapshot();
   };
 
-  private onDropShadowCheckChange = () => {
+  private onDropShadowCheckChange = (e?: Event) => {
     if (!this.elements.checkDropShadow) return;
-    if (!this.editingTargetIds) {
-      this.onInputStart();
-    }
     const enabled = this.elements.checkDropShadow.checked;
     if (this.elements.groupDropShadowControls) {
       this.elements.groupDropShadowControls.style.display = enabled ? 'flex' : 'none';
     }
     if (enabled) {
       const sh = this.getCurrentInputShadow();
-      this.commitDropShadow(sh);
+      this.commitDropShadow(sh, e?.currentTarget);
     } else {
-      this.commitDropShadow(null);
+      this.commitDropShadow(null, e?.currentTarget);
     }
   };
 
-  private onShadowColorChange = () => {
+  private onShadowColorChange = (e?: Event) => {
     if (!this.elements.inputShadowColor) return;
     const color = this.elements.inputShadowColor.value.toLowerCase();
     if (this.elements.inputShadowHex) this.elements.inputShadowHex.value = color;
     if (this.elements.swatchShadowPreview) this.elements.swatchShadowPreview.style.backgroundColor = color;
-    this.commitDropShadow(this.getCurrentInputShadow());
+    this.commitDropShadow(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowHexInput = () => {
+  private onShadowHexInput = (e?: Event) => {
     if (!this.elements.inputShadowHex) return;
     const parsed = parseHexColor(this.elements.inputShadowHex.value);
     if (parsed) {
       if (this.elements.inputShadowColor) this.elements.inputShadowColor.value = parsed;
       if (this.elements.swatchShadowPreview) this.elements.swatchShadowPreview.style.backgroundColor = parsed;
-      this.applyDropShadowLive(this.getCurrentInputShadow());
+      this.applyDropShadowLive(this.getCurrentInputShadow(), e?.currentTarget);
     }
   };
 
-  private onShadowHexChange = () => {
+  private onShadowHexChange = (e?: Event) => {
     if (!this.elements.inputShadowHex) return;
     const parsed = parseHexColor(this.elements.inputShadowHex.value);
     if (parsed) {
       this.elements.inputShadowHex.value = parsed;
       if (this.elements.inputShadowColor) this.elements.inputShadowColor.value = parsed;
       if (this.elements.swatchShadowPreview) this.elements.swatchShadowPreview.style.backgroundColor = parsed;
-      this.commitDropShadow(this.getCurrentInputShadow());
+      this.commitDropShadow(this.getCurrentInputShadow(), e?.currentTarget);
     } else {
       const sh = this.getCurrentInputShadow();
       this.elements.inputShadowHex.value = sh.color;
     }
   };
 
-  private onShadowOpacitySliderInput = () => {
+  private onShadowOpacitySliderInput = (e?: Event) => {
     if (!this.elements.inputShadowOpacity) return;
     const val = this.elements.inputShadowOpacity.value;
     if (this.elements.inputShadowOpacityValue) this.elements.inputShadowOpacityValue.value = val;
-    this.applyDropShadowLive(this.getCurrentInputShadow());
+    this.applyDropShadowLive(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowOpacitySliderChange = () => {
+  private onShadowOpacitySliderChange = (e?: Event) => {
     if (!this.elements.inputShadowOpacity) return;
     const val = this.elements.inputShadowOpacity.value;
     if (this.elements.inputShadowOpacityValue) this.elements.inputShadowOpacityValue.value = val;
-    this.commitDropShadow(this.getCurrentInputShadow());
+    this.commitDropShadow(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowOpacityValueInput = () => {
+  private onShadowOpacityValueInput = (e?: Event) => {
     if (!this.elements.inputShadowOpacityValue) return;
     const val = this.elements.inputShadowOpacityValue.value;
     if (this.elements.inputShadowOpacity) this.elements.inputShadowOpacity.value = val;
-    this.applyDropShadowLive(this.getCurrentInputShadow());
+    this.applyDropShadowLive(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowOpacityValueChange = () => {
+  private onShadowOpacityValueChange = (e?: Event) => {
     if (!this.elements.inputShadowOpacityValue) return;
     const val = this.elements.inputShadowOpacityValue.value;
     if (this.elements.inputShadowOpacity) this.elements.inputShadowOpacity.value = val;
-    this.commitDropShadow(this.getCurrentInputShadow());
+    this.commitDropShadow(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowOffsetOrBlurInput = () => {
-    this.applyDropShadowLive(this.getCurrentInputShadow());
+  private onShadowOffsetOrBlurInput = (e?: Event) => {
+    this.applyDropShadowLive(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
-  private onShadowOffsetOrBlurChange = () => {
-    this.commitDropShadow(this.getCurrentInputShadow());
+  private onShadowOffsetOrBlurChange = (e?: Event) => {
+    this.commitDropShadow(this.getCurrentInputShadow(), e?.currentTarget);
   };
 
   public sync(leafShapes: readonly Shape[]): void {
-    if (this.editingTargetIds && !this.isTargetValid(leafShapes)) {
-      this.editingTargetIds = null;
-    }
     const shadows = leafShapes.map((shape) => shape.dropShadow ?? null);
     const hasAnyShadow = shadows.some((s) => s !== null);
     const allHaveShadow = shadows.length > 0 && shadows.every((s) => s !== null);

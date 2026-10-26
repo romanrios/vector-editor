@@ -12,6 +12,7 @@ import { getTextLineHeight } from '../../utils/geometry.ts';
 import { parseHexColor, isNonePaint } from '../../utils/color.ts';
 import { toValidHexColor } from '../uiUtils.ts';
 import type { PropertiesPanelElements, TextTypographySnapshot } from './types.ts';
+import { markInputTarget, isInputTargetValid, clearInputTarget } from './types.ts';
 
 export class TypographySectionController {
   private initialTextTypographySnapshot: TextTypographySnapshot | null = null;
@@ -40,11 +41,14 @@ export class TypographySectionController {
   }
 
 
-  public captureInitialTextTypography(): void {
+  public captureInitialTextTypography(e?: Event): void {
     const selectedNodes = this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
       const textNode = selectedNodes[0];
       this.editingTextId = textNode.id;
+      if (e?.currentTarget) {
+        markInputTarget(e.currentTarget, [textNode]);
+      }
       this.initialTextTypographySnapshot = {
         text: textNode.text,
         fontFamily: textNode.fontFamily ?? 'Inter',
@@ -66,24 +70,32 @@ export class TypographySectionController {
     this.editingTextId = null;
   }
 
-  private getTargetTextNode(): Text | null {
+  private getTargetTextNode(targetEl?: EventTarget | null): Text | null {
     const selectedNodes = this.stateManager.getSelectedNodes();
     if (selectedNodes.length === 1 && isText(selectedNodes[0])) {
       const textNode = selectedNodes[0];
+      if (targetEl && !isInputTargetValid(targetEl, [textNode])) {
+        clearInputTarget(targetEl);
+        this.clearSnapshot();
+        this.syncPropertiesPanel();
+        return null;
+      }
       if (this.editingTextId !== null && this.editingTextId !== textNode.id) {
+        if (targetEl) clearInputTarget(targetEl);
         this.clearSnapshot();
         this.syncPropertiesPanel();
         return null;
       }
       return textNode;
     }
+    if (targetEl) clearInputTarget(targetEl);
     this.clearSnapshot();
     return null;
   }
 
 
-  public commitTextColor(color: string): void {
-    const textNode = this.getTargetTextNode();
+  public commitTextColor(color: string, targetEl?: EventTarget | null): void {
+    const textNode = this.getTargetTextNode(targetEl);
     if (textNode) {
       const beforeColor = this.initialTextTypographySnapshot?.fill ?? textNode.fill ?? '#000000';
       this.stateManager.setDrawingStyle({ fill: color });
@@ -95,13 +107,14 @@ export class TypographySectionController {
         { fill: color }
       );
       if (!cmd.isAlreadyAtTarget) this.commandManager.recordCommand(cmd);
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       this.syncPropertiesPanel();
     }
   }
 
-  public previewTextColor(color: string): void {
-    const textNode = this.getTargetTextNode();
+  public previewTextColor(color: string, targetEl?: EventTarget | null): void {
+    const textNode = this.getTargetTextNode(targetEl);
     if (textNode) {
       if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography();
       this.stateManager.setDrawingStyle({ fill: color });
@@ -118,20 +131,20 @@ export class TypographySectionController {
     }
   }
 
-  private onTypographyControlFocus = () => this.captureInitialTextTypography();
-  private onTextContentFocus = () => this.captureInitialTextTypography();
-  private onTextContentInput = () => {
+  private onTypographyControlFocus = (e?: Event) => this.captureInitialTextTypography(e);
+  private onTextContentFocus = (e?: Event) => this.captureInitialTextTypography(e);
+  private onTextContentInput = (e?: Event) => {
     if (!this.elements.inputTextContent) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
-      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography();
+      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography(e);
       this.stateManager.updateShape<Text>(textNode.id, { text: this.elements.inputTextContent.value });
     }
   };
 
-  private onTextContentChange = () => {
+  private onTextContentChange = (e?: Event) => {
     if (!this.elements.inputTextContent) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.text ?? textNode.text ?? 'Texto';
       const after = this.elements.inputTextContent.value;
@@ -140,13 +153,14 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { text: before }, { text: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onFontFamilyChange = () => {
+  private onFontFamilyChange = (e?: Event) => {
     if (!this.elements.selectFontFamily) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontFamily ?? textNode.fontFamily ?? 'Inter';
       const after = this.elements.selectFontFamily.value;
@@ -161,16 +175,17 @@ export class TypographySectionController {
           this.stateManager.markDirty();
         }).catch(() => {});
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onFontSizeFocus = () => this.captureInitialTextTypography();
-  private onFontSizeInput = () => {
+  private onFontSizeFocus = (e?: Event) => this.captureInitialTextTypography(e);
+  private onFontSizeInput = (e?: Event) => {
     if (!this.elements.inputFontSize) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
-      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography();
+      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography(e);
       const parsed = parseFloat(this.elements.inputFontSize.value);
       if (!isNaN(parsed) && parsed > 0) {
         this.stateManager.updateShape<Text>(textNode.id, { fontSize: parsed });
@@ -178,9 +193,9 @@ export class TypographySectionController {
     }
   };
 
-  private onFontSizeChange = () => {
+  private onFontSizeChange = (e?: Event) => {
     if (!this.elements.inputFontSize) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const parsed = parseFloat(this.elements.inputFontSize.value);
       const after = isNaN(parsed) || parsed <= 0 ? 32 : parsed;
@@ -191,16 +206,17 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontSize: before }, { fontSize: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onLineHeightFocus = () => this.captureInitialTextTypography();
-  private onLineHeightInput = () => {
+  private onLineHeightFocus = (e?: Event) => this.captureInitialTextTypography(e);
+  private onLineHeightInput = (e?: Event) => {
     if (!this.elements.inputLineHeight) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
-      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography();
+      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography(e);
       const val = this.elements.inputLineHeight.value.trim();
       if (val === '') {
         this.stateManager.updateShape<Text>(textNode.id, { lineHeight: undefined });
@@ -213,9 +229,9 @@ export class TypographySectionController {
     }
   };
 
-  private onLineHeightChange = () => {
+  private onLineHeightChange = (e?: Event) => {
     if (!this.elements.inputLineHeight) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const val = this.elements.inputLineHeight.value.trim();
       let after: number | undefined;
@@ -238,16 +254,17 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { lineHeight: before }, { lineHeight: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onLetterSpacingFocus = () => this.captureInitialTextTypography();
-  private onLetterSpacingInput = () => {
+  private onLetterSpacingFocus = (e?: Event) => this.captureInitialTextTypography(e);
+  private onLetterSpacingInput = (e?: Event) => {
     if (!this.elements.inputLetterSpacing) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
-      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography();
+      if (!this.initialTextTypographySnapshot) this.captureInitialTextTypography(e);
       const parsed = parseFloat(this.elements.inputLetterSpacing.value);
       if (!isNaN(parsed)) {
         this.stateManager.updateShape<Text>(textNode.id, { letterSpacing: parsed });
@@ -255,9 +272,9 @@ export class TypographySectionController {
     }
   };
 
-  private onLetterSpacingChange = () => {
+  private onLetterSpacingChange = (e?: Event) => {
     if (!this.elements.inputLetterSpacing) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const parsed = parseFloat(this.elements.inputLetterSpacing.value);
       const after = isNaN(parsed) ? 0 : this.roundToFourDecimals(parsed);
@@ -268,13 +285,14 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { letterSpacing: before }, { letterSpacing: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onFontWeightChange = () => {
+  private onFontWeightChange = (e?: Event) => {
     if (!this.elements.selectFontWeight) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontWeight ?? textNode.fontWeight ?? 400;
       const parsed = parseInt(this.elements.selectFontWeight.value, 10);
@@ -284,13 +302,14 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontWeight: before }, { fontWeight: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  private onFontStyleChange = () => {
+  private onFontStyleChange = (e?: Event) => {
     if (!this.elements.selectFontStyle) return;
-    const textNode = this.getTargetTextNode();
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontStyle ?? textNode.fontStyle ?? 'normal';
       const after = this.elements.selectFontStyle.value as FontStyle;
@@ -299,12 +318,13 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontStyle: before }, { fontStyle: after });
         this.commandManager.recordCommand(cmd);
       }
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
       this.clearSnapshot();
     }
   };
 
-  public applyTextAlign(align: TextAlign): void {
-    const textNode = this.getTargetTextNode();
+  public applyTextAlign(align: TextAlign, targetEl?: EventTarget | null): void {
+    const textNode = this.getTargetTextNode(targetEl);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.textAlign ?? textNode.textAlign ?? 'left';
       this.stateManager.updateShape<Text>(textNode.id, { textAlign: align });
@@ -312,6 +332,7 @@ export class TypographySectionController {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { textAlign: before }, { textAlign: align });
         this.commandManager.recordCommand(cmd);
       }
+      if (targetEl) clearInputTarget(targetEl);
       this.clearSnapshot();
       if (this.elements.selectTextAlign) this.elements.selectTextAlign.value = align;
       this.elements.btnTextAlignLeft?.classList.toggle('active', align === 'left');
@@ -320,32 +341,35 @@ export class TypographySectionController {
     }
   }
 
-  private onTextAlignChange = () => {
+  private onTextAlignChange = (e?: Event) => {
     if (!this.elements.selectTextAlign) return;
-    this.applyTextAlign(this.elements.selectTextAlign.value as TextAlign);
+    this.applyTextAlign(this.elements.selectTextAlign.value as TextAlign, e?.currentTarget);
   };
-  private onTextAlignLeftClick = () => this.applyTextAlign('left');
-  private onTextAlignCenterClick = () => this.applyTextAlign('center');
-  private onTextAlignRightClick = () => this.applyTextAlign('right');
+  private onTextAlignLeftClick = (e?: Event) => this.applyTextAlign('left', e?.currentTarget);
+  private onTextAlignCenterClick = (e?: Event) => this.applyTextAlign('center', e?.currentTarget);
+  private onTextAlignRightClick = (e?: Event) => this.applyTextAlign('right', e?.currentTarget);
 
-  private onTextColorInput = () => {
+  private onTextColorInput = (e?: Event) => {
     if (!this.elements.inputTextNative) return;
-    this.previewTextColor(this.elements.inputTextNative.value.toLowerCase());
+    this.previewTextColor(this.elements.inputTextNative.value.toLowerCase(), e?.currentTarget);
   };
-  private onTextColorChange = () => {
+  private onTextColorChange = (e?: Event) => {
     if (!this.elements.inputTextNative) return;
-    this.commitTextColor(this.elements.inputTextNative.value.toLowerCase());
+    this.commitTextColor(this.elements.inputTextNative.value.toLowerCase(), e?.currentTarget);
   };
 
-  private handleTextColorHexCommit = () => {
+  private handleTextColorHexCommit = (targetEl?: EventTarget | null) => {
     if (!this.elements.inputTextHex) return;
-    const textNode = this.getTargetTextNode();
-    if (!textNode) return;
+    const textNode = this.getTargetTextNode(targetEl ?? this.elements.inputTextHex);
+    if (!textNode) {
+      clearInputTarget(this.elements.inputTextHex);
+      return;
+    }
     const text = this.elements.inputTextHex.value;
     const parsed = parseHexColor(text);
     if (parsed !== null) {
       this.elements.inputTextHex.removeAttribute('aria-invalid');
-      this.commitTextColor(parsed);
+      this.commitTextColor(parsed, this.elements.inputTextHex);
       this.elements.inputTextHex.value = parsed;
       this.syncPropertiesPanel();
     } else {
@@ -365,6 +389,7 @@ export class TypographySectionController {
         this.elements.inputTextHex.value = hex;
         this.elements.inputTextHex.placeholder = hex;
       }
+      clearInputTarget(this.elements.inputTextHex);
       this.clearSnapshot();
     }
   };
@@ -372,6 +397,7 @@ export class TypographySectionController {
   private handleTextColorHexRevert = () => {
     if (!this.elements.inputTextHex) return;
     this.elements.inputTextHex.removeAttribute('aria-invalid');
+    clearInputTarget(this.elements.inputTextHex);
     const textNode = this.getTargetTextNode();
     if (textNode) {
       const val = textNode.fill ?? '#000000';
@@ -387,13 +413,13 @@ export class TypographySectionController {
     this.clearSnapshot();
   };
 
-  private onTextColorHexFocus = () => this.captureInitialTextTypography();
+  private onTextColorHexFocus = (e?: Event) => this.captureInitialTextTypography(e);
   private onTextColorHexKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (this.elements.inputTextHex) {
         this.isTextColorHexSubmitting = true;
-        this.handleTextColorHexCommit();
+        this.handleTextColorHexCommit(this.elements.inputTextHex);
         this.elements.inputTextHex.blur();
         this.isTextColorHexSubmitting = false;
       }
@@ -409,19 +435,19 @@ export class TypographySectionController {
   };
   private onTextColorHexBlur = () => {
     if (this.isTextColorHexSubmitting) return;
-    this.handleTextColorHexCommit();
+    this.handleTextColorHexCommit(this.elements.inputTextHex);
   };
 
-  private onTextColorNoneClick = () => {
-    const textNode = this.getTargetTextNode();
+  private onTextColorNoneClick = (e?: Event) => {
+    const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const currentFill = textNode.fill ?? '#000000';
-      this.captureInitialTextTypography();
+      this.captureInitialTextTypography(e);
       if (!isNonePaint(currentFill)) {
         this.lastRememberedTextColor = toValidHexColor(currentFill, this.lastRememberedTextColor);
-        this.commitTextColor('none');
+        this.commitTextColor('none', e?.currentTarget);
       } else {
-        this.commitTextColor(this.lastRememberedTextColor);
+        this.commitTextColor(this.lastRememberedTextColor, e?.currentTarget);
       }
     }
   };

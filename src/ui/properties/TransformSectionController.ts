@@ -16,6 +16,7 @@ import type {
 import { getSelectionBounds, normalizeAngle } from '../../utils/geometry.ts';
 import { getShapeDimensions, rotateShapesAboutPivot } from '../../utils/transform.ts';
 import type { PropertiesPanelElements } from './types.ts';
+import { markInputTarget, isInputTargetValid, clearInputTarget } from './types.ts';
 
 export class TransformSectionController {
   private initialCornerRadiusSnapshots: Map<string, number> | null = null;
@@ -40,7 +41,7 @@ export class TransformSectionController {
   }
 
 
-  public captureInitialCornerRadius(): void {
+  public captureInitialCornerRadius(e?: Event): void {
     const selectedNodes = this.stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
     const cornerShapes = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
@@ -49,6 +50,9 @@ export class TransformSectionController {
     if (cornerShapes.length > 0) {
       this.initialCornerRadiusSnapshots = new Map(cornerShapes.map((r) => [r.id, r.cornerRadius ?? 0]));
       this.editingNodeIds = cornerShapes.map((r) => r.id);
+      if (e?.currentTarget) {
+        markInputTarget(e.currentTarget, cornerShapes);
+      }
     } else {
       this.initialCornerRadiusSnapshots = null;
       this.editingNodeIds = null;
@@ -70,11 +74,18 @@ export class TransformSectionController {
     }
 
     const selectedNodes = this.stateManager.getSelectedNodes();
+    if (!isInputTargetValid(input, selectedNodes)) {
+      clearInputTarget(input);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     if (this.editingNodeIds) {
       if (
         selectedNodes.length !== this.editingNodeIds.length ||
         !selectedNodes.every((n) => this.editingNodeIds!.includes(n.id))
       ) {
+        clearInputTarget(input);
         this.clearSnapshot();
         this.syncPropertiesPanel();
         return;
@@ -182,16 +193,23 @@ export class TransformSectionController {
     });
 
     const transformCommand = new TransformShapesCommand(this.stateManager, entries);
-    const command = leafShapes.length > 1
-      ? new BatchCommand([transformCommand], 'Transform Selection')
-      : transformCommand;
-    command.execute();
-    this.commandManager.recordCommand(command);
+    if (!transformCommand.isAlreadyAtTarget) {
+      const command = leafShapes.length > 1
+        ? new BatchCommand([transformCommand], 'Transform Selection')
+        : transformCommand;
+      command.execute();
+      this.commandManager.recordCommand(command);
+    }
+    clearInputTarget(input);
     this.clearSnapshot();
   }
 
-  private onTransformFocus = () => {
-    this.editingNodeIds = this.stateManager.getSelectedNodes().map((n) => n.id);
+  private onTransformFocus = (e?: Event) => {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    this.editingNodeIds = selectedNodes.map((n) => n.id);
+    if (e?.currentTarget) {
+      markInputTarget(e.currentTarget, selectedNodes);
+    }
   };
 
   private onObjectXChange = () => this.elements.inputObjectX && this.applyObjectGeometry('x', this.elements.inputObjectX);
@@ -200,16 +218,23 @@ export class TransformSectionController {
   private onObjectHeightChange = () => this.elements.inputObjectHeight && this.applyObjectGeometry('height', this.elements.inputObjectHeight);
   private onObjectGeometryBlur = () => this.syncPropertiesPanel();
 
-  private onObjectRotationChange = () => {
+  private onObjectRotationChange = (e?: Event) => {
     if (!this.elements.inputObjectRotation) return;
     const parsedRotation = Number(this.elements.inputObjectRotation.value);
     const targetRotation = Number.isFinite(parsedRotation) ? this.roundToFourDecimals(parsedRotation) : parsedRotation;
     const selectedNodes = this.stateManager.getSelectedNodes();
+    if (e?.currentTarget && !isInputTargetValid(e.currentTarget, selectedNodes)) {
+      clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     if (this.editingNodeIds) {
       if (
         selectedNodes.length !== this.editingNodeIds.length ||
         !selectedNodes.every((n) => this.editingNodeIds!.includes(n.id))
       ) {
+        if (e?.currentTarget) clearInputTarget(e.currentTarget);
         this.clearSnapshot();
         this.syncPropertiesPanel();
         return;
@@ -248,11 +273,12 @@ export class TransformSectionController {
       : transformCommand;
     command.execute();
     this.commandManager.recordCommand(command);
+    if (e?.currentTarget) clearInputTarget(e.currentTarget);
     this.clearSnapshot();
   };
 
-  private onCornerRadiusFocus = () => {
-    this.captureInitialCornerRadius();
+  private onCornerRadiusFocus = (e?: Event) => {
+    this.captureInitialCornerRadius(e);
   };
 
   private onCornerRadiusInput = () => {
@@ -279,7 +305,7 @@ export class TransformSectionController {
     );
   };
 
-  private onCornerRadiusChange = () => {
+  private onCornerRadiusChange = (e?: Event) => {
     if (!this.elements.inputCornerRadius) return;
     const parsed = parseFloat(this.elements.inputCornerRadius.value);
     const selectedNodes = this.stateManager.getSelectedNodes();
@@ -293,11 +319,19 @@ export class TransformSectionController {
       return;
     }
 
+    if (e?.currentTarget && !isInputTargetValid(e.currentTarget, cornerShapes)) {
+      clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
+
     if (this.editingNodeIds) {
       if (
         cornerShapes.length !== this.editingNodeIds.length ||
         !cornerShapes.every((s) => this.editingNodeIds!.includes(s.id))
       ) {
+        if (e?.currentTarget) clearInputTarget(e.currentTarget);
         this.clearSnapshot();
         this.syncPropertiesPanel();
         return;
@@ -308,6 +342,7 @@ export class TransformSectionController {
         cornerShapes.length !== this.initialCornerRadiusSnapshots.size ||
         !cornerShapes.every((s) => this.initialCornerRadiusSnapshots!.has(s.id))
       ) {
+        if (e?.currentTarget) clearInputTarget(e.currentTarget);
         this.clearSnapshot();
         this.syncPropertiesPanel();
         return;
@@ -340,6 +375,7 @@ export class TransformSectionController {
       command.execute();
       this.commandManager.recordCommand(command);
     }
+    if (e?.currentTarget) clearInputTarget(e.currentTarget);
     this.clearSnapshot();
   };
 

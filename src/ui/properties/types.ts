@@ -173,3 +173,24 @@ export interface PropertiesPanelElements {
   readonly btnDeleteSelection: HTMLButtonElement | null;
   readonly btnTogglePanel: HTMLButtonElement | null;
 }
+
+export function markInputTarget(el: EventTarget | null | undefined, nodes: readonly { id: string }[]): void {
+  if (el && typeof el === 'object') {
+    (el as any)._targetShapeIds = nodes.map((s) => s.id);
+  }
+}
+
+export function isInputTargetValid(el: EventTarget | null | undefined, nodes: readonly { id: string }[]): boolean {
+  if (!el || typeof el !== 'object') return true;
+  const targetIds: string[] | undefined = (el as any)._targetShapeIds;
+  if (!targetIds) return true;
+  if (targetIds.length !== nodes.length) return false;
+  const currentIds = nodes.map((s) => s.id);
+  return targetIds.every((id) => currentIds.includes(id));
+}
+
+export function clearInputTarget(el: EventTarget | null | undefined): void {
+  if (el && typeof el === 'object') {
+    delete (el as any)._targetShapeIds;
+  }
+}
