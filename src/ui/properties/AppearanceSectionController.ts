@@ -36,6 +36,7 @@ export class AppearanceSectionController {
   private strokeInvalidTimer: ReturnType<typeof setTimeout> | null = null;
   private isFillHexSubmitting = false;
   private isStrokeHexSubmitting = false;
+  private editingTargetIds: readonly string[] | null = null;
   private readonly gradientEditor: ReturnType<typeof setupGradientEditor>;
   private readonly stateManager: StateManager;
   private readonly commandManager: CommandManager;
@@ -60,7 +61,11 @@ export class AppearanceSectionController {
       getCurrentPaintState: (property, leafShapes) => this.getCurrentPaintState(property, leafShapes),
       commitColor: (property, color) => this.commitColor(property, color),
       previewColor: (property, color) => this.previewColor(property, color),
-      captureInitialStyle: () => this.styleSnapshotManager.capture(),
+      captureInitialStyle: () => {
+        const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+        this.editingTargetIds = leafShapes.map((s) => s.id);
+        this.styleSnapshotManager.capture();
+      },
       syncPropertiesPanel: () => this.syncPropertiesPanel(),
       getLastRememberedFill: () => this.lastRememberedFill,
     });
@@ -82,9 +87,43 @@ export class AppearanceSectionController {
     return hex ? { kind: 'color', hex } : { kind: 'none' };
   }
 
+  public clearSnapshot(): void {
+    this.editingTargetIds = null;
+    this.styleSnapshotManager.clear();
+  }
+
+  private isTargetValid(leafShapes: readonly Shape[]): boolean {
+    if (leafShapes.length > 0 && !this.editingTargetIds && !this.styleSnapshotManager.hasSnapshots()) {
+      return false;
+    }
+    if (this.editingTargetIds) {
+      if (
+        leafShapes.length !== this.editingTargetIds.length ||
+        !leafShapes.every((s) => this.editingTargetIds!.includes(s.id))
+      ) {
+        return false;
+      }
+    }
+    const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
+    if (initialStyleSnapshots) {
+      if (
+        leafShapes.length !== initialStyleSnapshots.size ||
+        !leafShapes.every((s) => initialStyleSnapshots.has(s.id))
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   public previewColor(property: 'fill' | 'stroke', color: FillType): void {
     const selectedNodes = this.stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     if (leafShapes.length === 0) {
       this.stateManager.setDrawingStyle({ [property]: color });
       return;
@@ -124,7 +163,12 @@ export class AppearanceSectionController {
         [property]: color,
         ...(needsStrokeWidth ? { strokeWidth: 1 } : {}),
       });
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
+      return;
+    }
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
       return;
     }
     const needsStrokeWidthDefault =
@@ -174,10 +218,12 @@ export class AppearanceSectionController {
     if (!command.isAlreadyAtTarget) {
       this.commandManager.recordCommand(command);
     }
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   }
 
   private onInputStart = () => {
+    const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+    this.editingTargetIds = leafShapes.map((s) => s.id);
     this.styleSnapshotManager.capture();
   };
 
@@ -264,9 +310,14 @@ export class AppearanceSectionController {
     if (!Number.isFinite(opacity)) return;
 
     const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     this.stateManager.setDrawingStyle({ opacity });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
       return;
     }
     if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
@@ -283,7 +334,7 @@ export class AppearanceSectionController {
     })));
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private onOpacitySliderInput = () => this.elements.inputOpacity && this.onOpacityInput(this.elements.inputOpacity);
@@ -296,10 +347,15 @@ export class AppearanceSectionController {
     const mode = this.elements.selectBlendMode.value as BlendMode;
     const selectedNodes = this.stateManager.getSelectedNodes();
     const leafShapes = getLeafShapes(selectedNodes);
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
 
     this.stateManager.setDrawingStyle({ blendMode: mode });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
       return;
     }
     if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
@@ -318,10 +374,17 @@ export class AppearanceSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private handleHexCommit = (property: 'fill' | 'stroke', inputEl: HTMLInputElement) => {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const leafShapes = getLeafShapes(selectedNodes);
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     const text = inputEl.value;
     const parsed = parseHexColor(text);
     if (parsed !== null) {
@@ -346,8 +409,6 @@ export class AppearanceSectionController {
         }, 1000);
       }
 
-      const selectedNodes = this.stateManager.getSelectedNodes();
-      const leafShapes = getLeafShapes(selectedNodes);
       const paintState = this.getCurrentPaintState(property, leafShapes);
       if (paintState.kind === 'color') {
         inputEl.value = paintState.hex;
@@ -359,7 +420,7 @@ export class AppearanceSectionController {
         inputEl.value = '';
         inputEl.placeholder = 'Mixto';
       }
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
     }
   };
 
@@ -378,10 +439,14 @@ export class AppearanceSectionController {
       inputEl.value = '';
       inputEl.placeholder = 'Mixto';
     }
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
-  private onFillHexFocus = () => this.styleSnapshotManager.capture();
+  private onFillHexFocus = () => {
+    const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+    this.editingTargetIds = leafShapes.map((s) => s.id);
+    this.styleSnapshotManager.capture();
+  };
   private onFillHexKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -406,7 +471,11 @@ export class AppearanceSectionController {
     if (this.elements.inputFillHex) this.handleHexCommit('fill', this.elements.inputFillHex);
   };
 
-  private onStrokeHexFocus = () => this.styleSnapshotManager.capture();
+  private onStrokeHexFocus = () => {
+    const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
+    this.editingTargetIds = leafShapes.map((s) => s.id);
+    this.styleSnapshotManager.capture();
+  };
   private onStrokeHexKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -444,6 +513,7 @@ export class AppearanceSectionController {
       }
       return;
     }
+    this.editingTargetIds = leafShapes.map((s) => s.id);
     this.styleSnapshotManager.capture();
     const fillState = getPaintState(leafShapes, 'fill');
     if (fillState.kind === 'color' || fillState.kind === 'mixed') {
@@ -469,6 +539,7 @@ export class AppearanceSectionController {
       }
       return;
     }
+    this.editingTargetIds = leafShapes.map((s) => s.id);
     this.styleSnapshotManager.capture();
     const strokeState = getPaintState(leafShapes, 'stroke');
     if (strokeState.kind === 'color' || strokeState.kind === 'mixed') {
@@ -500,7 +571,13 @@ export class AppearanceSectionController {
 
     if (leafShapes.length === 0) {
       this.stateManager.setDrawingStyle({ strokeWidth: finalVal });
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
+      return;
+    }
+
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
       return;
     }
 
@@ -530,7 +607,7 @@ export class AppearanceSectionController {
     } else if (commands.length > 1) {
       this.commandManager.recordCommand(new BatchCommand(commands, 'Style Stroke Width'));
     }
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private onStrokeDashChange = () => {
@@ -542,7 +619,13 @@ export class AppearanceSectionController {
 
     this.stateManager.setDrawingStyle({ strokeDashArray: dashArray });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
+      return;
+    }
+
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
       return;
     }
     if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
@@ -561,7 +644,7 @@ export class AppearanceSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private onStrokeCapChange = () => {
@@ -572,9 +655,16 @@ export class AppearanceSectionController {
 
     this.stateManager.setDrawingStyle({ strokeLineCap: cap });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
       return;
     }
+
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
+
     if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
 
     const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
@@ -591,7 +681,7 @@ export class AppearanceSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private onStrokeJoinChange = () => {
@@ -602,9 +692,16 @@ export class AppearanceSectionController {
 
     this.stateManager.setDrawingStyle({ strokeLineJoin: join });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
       return;
     }
+
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
+
     if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
 
     const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
@@ -621,10 +718,20 @@ export class AppearanceSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   public sync(leafShapes: readonly Shape[], hasSelection: boolean): void {
+    if (this.editingTargetIds) {
+      const currentLeafIds = leafShapes.map((s) => s.id);
+      if (
+        this.editingTargetIds.length !== currentLeafIds.length ||
+        !this.editingTargetIds.every((id, i) => id === currentLeafIds[i])
+      ) {
+        this.editingTargetIds = null;
+      }
+    }
+
     const firstShape = leafShapes[0];
     const defaultStyle = hasSelection ? null : this.stateManager.getDrawingStyle();
     const isEditing = this.styleSnapshotManager.hasSnapshots();
@@ -815,6 +922,8 @@ export class AppearanceSectionController {
     this.elements.inputOpacityValue?.addEventListener('input', this.onOpacityValueInput);
     this.elements.inputOpacityValue?.addEventListener('change', this.onOpacityValueChange);
 
+    this.elements.selectBlendMode?.addEventListener('focus', this.onInputStart);
+    this.elements.selectBlendMode?.addEventListener('mousedown', this.onInputStart);
     this.elements.selectBlendMode?.addEventListener('change', this.onBlendModeChange);
 
     this.elements.inputFillHex?.addEventListener('focus', this.onFillHexFocus);
@@ -828,8 +937,16 @@ export class AppearanceSectionController {
     this.elements.btnFillNone?.addEventListener('click', this.onFillNoneClick);
     this.elements.btnStrokeNone?.addEventListener('click', this.onStrokeNoneClick);
 
+    this.elements.selectStrokeDash?.addEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeDash?.addEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeDash?.addEventListener('change', this.onStrokeDashChange);
+
+    this.elements.selectStrokeCap?.addEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeCap?.addEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeCap?.addEventListener('change', this.onStrokeCapChange);
+
+    this.elements.selectStrokeJoin?.addEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeJoin?.addEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeJoin?.addEventListener('change', this.onStrokeJoinChange);
   }
 
@@ -873,8 +990,17 @@ export class AppearanceSectionController {
     this.elements.inputStrokeWidth?.removeEventListener('focus', this.onInputStart);
     this.elements.inputStrokeWidth?.removeEventListener('input', this.onStrokeWidthInput);
     this.elements.inputStrokeWidth?.removeEventListener('change', this.onStrokeWidthChange);
+
+    this.elements.selectStrokeDash?.removeEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeDash?.removeEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeDash?.removeEventListener('change', this.onStrokeDashChange);
+
+    this.elements.selectStrokeCap?.removeEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeCap?.removeEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeCap?.removeEventListener('change', this.onStrokeCapChange);
+
+    this.elements.selectStrokeJoin?.removeEventListener('focus', this.onInputStart);
+    this.elements.selectStrokeJoin?.removeEventListener('mousedown', this.onInputStart);
     this.elements.selectStrokeJoin?.removeEventListener('change', this.onStrokeJoinChange);
 
     this.elements.inputOpacity?.removeEventListener('mousedown', this.onInputStart);
@@ -889,6 +1015,8 @@ export class AppearanceSectionController {
     this.elements.inputOpacityValue?.removeEventListener('input', this.onOpacityValueInput);
     this.elements.inputOpacityValue?.removeEventListener('change', this.onOpacityValueChange);
 
+    this.elements.selectBlendMode?.removeEventListener('focus', this.onInputStart);
+    this.elements.selectBlendMode?.removeEventListener('mousedown', this.onInputStart);
     this.elements.selectBlendMode?.removeEventListener('change', this.onBlendModeChange);
   }
 }

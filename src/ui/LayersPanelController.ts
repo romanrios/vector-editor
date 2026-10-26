@@ -788,6 +788,20 @@ export function setupLayersPanelBindings(options: LayersPanelControllerOptions):
     syncLayersToolbar();
   }
 
+  const onLayersTreePointerDownCapture = () => {
+    if (
+      typeof document !== 'undefined' &&
+      document.activeElement &&
+      document.activeElement !== document.body &&
+      (document.activeElement.tagName === 'INPUT' ||
+        document.activeElement.tagName === 'SELECT' ||
+        document.activeElement.tagName === 'TEXTAREA')
+    ) {
+      (document.activeElement as HTMLElement).blur();
+    }
+  };
+  layersTree?.addEventListener('pointerdown', onLayersTreePointerDownCapture, { capture: true });
+
   // Render inicial del árbol
   renderLayersTree();
 
@@ -804,6 +818,7 @@ export function setupLayersPanelBindings(options: LayersPanelControllerOptions):
       btnAddLayer?.removeEventListener('click', onAddLayerClick);
       layersTree?.removeEventListener('dragover', onLayersTreeDragOver);
       layersTree?.removeEventListener('drop', onLayersTreeDrop);
+      layersTree?.removeEventListener('pointerdown', onLayersTreePointerDownCapture, { capture: true });
     },
   };
 }

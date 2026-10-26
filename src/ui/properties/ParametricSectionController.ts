@@ -11,6 +11,7 @@ import type { PropertiesPanelElements, ParametricShapeSnapshot } from './types.t
 
 export class ParametricSectionController {
   private initialParametricShapeSnapshot: ParametricShapeSnapshot | null = null;
+  private editingNodeId: string | null = null;
   private readonly roundToFourDecimals = (value: number): number => Number(value.toFixed(4));
 
   private readonly stateManager: StateManager;
@@ -33,6 +34,7 @@ export class ParametricSectionController {
     if (selectedNodes.length === 1) {
       const node = selectedNodes[0];
       if (isPolygon(node)) {
+        this.editingNodeId = node.id;
         this.initialParametricShapeSnapshot = {
           sides: node.sides,
           radius: node.radius,
@@ -40,6 +42,7 @@ export class ParametricSectionController {
         return;
       }
       if (isStar(node)) {
+        this.editingNodeId = node.id;
         this.initialParametricShapeSnapshot = {
           points: node.points,
           outerRadius: node.outerRadius,
@@ -48,20 +51,48 @@ export class ParametricSectionController {
         return;
       }
     }
-    this.initialParametricShapeSnapshot = null;
+    this.clearSnapshot();
   }
 
   public clearSnapshot(): void {
     this.initialParametricShapeSnapshot = null;
+    this.editingNodeId = null;
+  }
+
+  private getTargetPolygon(): Polygon | null {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (this.editingNodeId !== null && this.editingNodeId !== node.id) {
+        this.clearSnapshot();
+        return null;
+      }
+      return node;
+    }
+    this.clearSnapshot();
+    return null;
+  }
+
+  private getTargetStar(): Star | null {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
+      const node = selectedNodes[0];
+      if (this.editingNodeId !== null && this.editingNodeId !== node.id) {
+        this.clearSnapshot();
+        return null;
+      }
+      return node;
+    }
+    this.clearSnapshot();
+    return null;
   }
 
 
   private onPolygonSidesFocus = () => this.captureInitialParametricShape();
   private onPolygonSidesInput = () => {
     if (!this.elements.inputPolygonSides) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetPolygon();
+    if (node) {
       if (!this.initialParametricShapeSnapshot) this.captureInitialParametricShape();
       const parsed = parseInt(this.elements.inputPolygonSides.value, 10);
       if (!isNaN(parsed) && parsed >= 3) {
@@ -71,9 +102,8 @@ export class ParametricSectionController {
   };
   private onPolygonSidesChange = () => {
     if (!this.elements.inputPolygonSides) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetPolygon();
+    if (node) {
       const parsed = parseInt(this.elements.inputPolygonSides.value, 10);
       const after = isNaN(parsed) || parsed < 3 ? 3 : Math.min(100, parsed);
       this.elements.inputPolygonSides.value = String(after);
@@ -83,16 +113,15 @@ export class ParametricSectionController {
         const cmd = new UpdateParametricShapeCommand(this.stateManager, node.id, { sides: before }, { sides: after });
         this.commandManager.recordCommand(cmd);
       }
-      this.initialParametricShapeSnapshot = null;
+      this.clearSnapshot();
     }
   };
 
   private onPolygonRadiusFocus = () => this.captureInitialParametricShape();
   private onPolygonRadiusInput = () => {
     if (!this.elements.inputPolygonRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetPolygon();
+    if (node) {
       if (!this.initialParametricShapeSnapshot) this.captureInitialParametricShape();
       const parsed = parseFloat(this.elements.inputPolygonRadius.value);
       if (!isNaN(parsed) && parsed > 0) {
@@ -102,9 +131,8 @@ export class ParametricSectionController {
   };
   private onPolygonRadiusChange = () => {
     if (!this.elements.inputPolygonRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isPolygon(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetPolygon();
+    if (node) {
       const parsed = parseFloat(this.elements.inputPolygonRadius.value);
       const after = isNaN(parsed) || parsed < 1 ? 10 : this.roundToFourDecimals(parsed);
       this.elements.inputPolygonRadius.value = String(after);
@@ -114,16 +142,15 @@ export class ParametricSectionController {
         const cmd = new UpdateParametricShapeCommand(this.stateManager, node.id, { radius: before }, { radius: after });
         this.commandManager.recordCommand(cmd);
       }
-      this.initialParametricShapeSnapshot = null;
+      this.clearSnapshot();
     }
   };
 
   private onStarPointsFocus = () => this.captureInitialParametricShape();
   private onStarPointsInput = () => {
     if (!this.elements.inputStarPoints) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       if (!this.initialParametricShapeSnapshot) this.captureInitialParametricShape();
       const parsed = parseInt(this.elements.inputStarPoints.value, 10);
       if (!isNaN(parsed) && parsed >= 3) {
@@ -133,9 +160,8 @@ export class ParametricSectionController {
   };
   private onStarPointsChange = () => {
     if (!this.elements.inputStarPoints) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       const parsed = parseInt(this.elements.inputStarPoints.value, 10);
       const after = isNaN(parsed) || parsed < 3 ? 3 : Math.min(100, parsed);
       this.elements.inputStarPoints.value = String(after);
@@ -145,16 +171,15 @@ export class ParametricSectionController {
         const cmd = new UpdateParametricShapeCommand(this.stateManager, node.id, { points: before }, { points: after });
         this.commandManager.recordCommand(cmd);
       }
-      this.initialParametricShapeSnapshot = null;
+      this.clearSnapshot();
     }
   };
 
   private onStarOuterRadiusFocus = () => this.captureInitialParametricShape();
   private onStarOuterRadiusInput = () => {
     if (!this.elements.inputStarOuterRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       if (!this.initialParametricShapeSnapshot) this.captureInitialParametricShape();
       const parsed = parseFloat(this.elements.inputStarOuterRadius.value);
       if (!isNaN(parsed) && parsed > 0) {
@@ -164,9 +189,8 @@ export class ParametricSectionController {
   };
   private onStarOuterRadiusChange = () => {
     if (!this.elements.inputStarOuterRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       const parsed = parseFloat(this.elements.inputStarOuterRadius.value);
       const after = isNaN(parsed) || parsed < 1 ? 50 : this.roundToFourDecimals(parsed);
       this.elements.inputStarOuterRadius.value = String(after);
@@ -176,16 +200,15 @@ export class ParametricSectionController {
         const cmd = new UpdateParametricShapeCommand(this.stateManager, node.id, { outerRadius: before }, { outerRadius: after });
         this.commandManager.recordCommand(cmd);
       }
-      this.initialParametricShapeSnapshot = null;
+      this.clearSnapshot();
     }
   };
 
   private onStarInnerRadiusFocus = () => this.captureInitialParametricShape();
   private onStarInnerRadiusInput = () => {
     if (!this.elements.inputStarInnerRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       if (!this.initialParametricShapeSnapshot) this.captureInitialParametricShape();
       const parsed = parseFloat(this.elements.inputStarInnerRadius.value);
       if (!isNaN(parsed) && parsed > 0) {
@@ -195,9 +218,8 @@ export class ParametricSectionController {
   };
   private onStarInnerRadiusChange = () => {
     if (!this.elements.inputStarInnerRadius) return;
-    const selectedNodes = this.stateManager.getSelectedNodes();
-    if (selectedNodes.length === 1 && isStar(selectedNodes[0])) {
-      const node = selectedNodes[0];
+    const node = this.getTargetStar();
+    if (node) {
       const parsed = parseFloat(this.elements.inputStarInnerRadius.value);
       const after = isNaN(parsed) || parsed < 1 ? 25 : this.roundToFourDecimals(parsed);
       this.elements.inputStarInnerRadius.value = String(after);
@@ -207,11 +229,18 @@ export class ParametricSectionController {
         const cmd = new UpdateParametricShapeCommand(this.stateManager, node.id, { innerRadius: before }, { innerRadius: after });
         this.commandManager.recordCommand(cmd);
       }
-      this.initialParametricShapeSnapshot = null;
+      this.clearSnapshot();
     }
   };
 
   public sync(singlePolygonNode: Polygon | null, singleStarNode: Star | null): void {
+    if (this.editingNodeId !== null) {
+      const currentId = singlePolygonNode?.id ?? singleStarNode?.id;
+      if (!currentId || currentId !== this.editingNodeId) {
+        this.clearSnapshot();
+      }
+    }
+
     const isSinglePolygonSelected = singlePolygonNode !== null;
     const isSingleStarSelected = singleStarNode !== null;
 

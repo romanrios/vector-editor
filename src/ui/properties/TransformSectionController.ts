@@ -19,6 +19,7 @@ import type { PropertiesPanelElements } from './types.ts';
 
 export class TransformSectionController {
   private initialCornerRadiusSnapshots: Map<string, number> | null = null;
+  private editingNodeIds: readonly string[] | null = null;
   private readonly roundToFourDecimals = (value: number): number => Number(value.toFixed(4));
 
   private readonly stateManager: StateManager;
@@ -47,13 +48,16 @@ export class TransformSectionController {
     );
     if (cornerShapes.length > 0) {
       this.initialCornerRadiusSnapshots = new Map(cornerShapes.map((r) => [r.id, r.cornerRadius ?? 0]));
+      this.editingNodeIds = cornerShapes.map((r) => r.id);
     } else {
       this.initialCornerRadiusSnapshots = null;
+      this.editingNodeIds = null;
     }
   }
 
   public clearSnapshot(): void {
     this.initialCornerRadiusSnapshots = null;
+    this.editingNodeIds = null;
   }
 
 
@@ -66,6 +70,16 @@ export class TransformSectionController {
     }
 
     const selectedNodes = this.stateManager.getSelectedNodes();
+    if (this.editingNodeIds) {
+      if (
+        selectedNodes.length !== this.editingNodeIds.length ||
+        !selectedNodes.every((n) => this.editingNodeIds!.includes(n.id))
+      ) {
+        this.clearSnapshot();
+        this.syncPropertiesPanel();
+        return;
+      }
+    }
     const leafShapes = getLeafShapes(selectedNodes);
     const bounds = getSelectionBounds(selectedNodes);
     if (leafShapes.length === 0 || !bounds) return;
@@ -173,7 +187,12 @@ export class TransformSectionController {
       : transformCommand;
     command.execute();
     this.commandManager.recordCommand(command);
+    this.clearSnapshot();
   }
+
+  private onTransformFocus = () => {
+    this.editingNodeIds = this.stateManager.getSelectedNodes().map((n) => n.id);
+  };
 
   private onObjectXChange = () => this.elements.inputObjectX && this.applyObjectGeometry('x', this.elements.inputObjectX);
   private onObjectYChange = () => this.elements.inputObjectY && this.applyObjectGeometry('y', this.elements.inputObjectY);
@@ -186,6 +205,16 @@ export class TransformSectionController {
     const parsedRotation = Number(this.elements.inputObjectRotation.value);
     const targetRotation = Number.isFinite(parsedRotation) ? this.roundToFourDecimals(parsedRotation) : parsedRotation;
     const selectedNodes = this.stateManager.getSelectedNodes();
+    if (this.editingNodeIds) {
+      if (
+        selectedNodes.length !== this.editingNodeIds.length ||
+        !selectedNodes.every((n) => this.editingNodeIds!.includes(n.id))
+      ) {
+        this.clearSnapshot();
+        this.syncPropertiesPanel();
+        return;
+      }
+    }
     const leafShapes = getLeafShapes(selectedNodes);
     const bounds = getSelectionBounds(selectedNodes);
     if (!Number.isFinite(targetRotation) || leafShapes.length === 0 || !bounds) {
@@ -219,6 +248,7 @@ export class TransformSectionController {
       : transformCommand;
     command.execute();
     this.commandManager.recordCommand(command);
+    this.clearSnapshot();
   };
 
   private onCornerRadiusFocus = () => {
@@ -258,9 +288,30 @@ export class TransformSectionController {
       s.type === 'rectangle' || s.type === 'polygon' || s.type === 'star' || s.type === 'path'
     );
     if (cornerShapes.length === 0) {
-      this.initialCornerRadiusSnapshots = null;
+      this.clearSnapshot();
       this.syncPropertiesPanel();
       return;
+    }
+
+    if (this.editingNodeIds) {
+      if (
+        cornerShapes.length !== this.editingNodeIds.length ||
+        !cornerShapes.every((s) => this.editingNodeIds!.includes(s.id))
+      ) {
+        this.clearSnapshot();
+        this.syncPropertiesPanel();
+        return;
+      }
+    }
+    if (this.initialCornerRadiusSnapshots) {
+      if (
+        cornerShapes.length !== this.initialCornerRadiusSnapshots.size ||
+        !cornerShapes.every((s) => this.initialCornerRadiusSnapshots!.has(s.id))
+      ) {
+        this.clearSnapshot();
+        this.syncPropertiesPanel();
+        return;
+      }
     }
 
     const targetRadius = isNaN(parsed) || parsed < 0 ? 0 : this.roundToFourDecimals(parsed);
@@ -289,7 +340,7 @@ export class TransformSectionController {
       command.execute();
       this.commandManager.recordCommand(command);
     }
-    this.initialCornerRadiusSnapshots = null;
+    this.clearSnapshot();
   };
 
   private onCornerRadiusBlur = () => {
@@ -302,6 +353,16 @@ export class TransformSectionController {
     selectionBounds: AABB | null,
     firstLeafRotation: number | null
   ): void {
+    if (this.editingNodeIds) {
+      const currentIds = selectedNodes.map((n) => n.id);
+      if (
+        this.editingNodeIds.length !== currentIds.length ||
+        !this.editingNodeIds.every((id, i) => id === currentIds[i])
+      ) {
+        this.clearSnapshot();
+      }
+    }
+
     const hasSelection = selectedNodes.length > 0;
     if (this.elements.sectionTransform) {
       this.elements.sectionTransform.style.display = hasSelection ? 'block' : 'none';
@@ -311,7 +372,7 @@ export class TransformSectionController {
       if (this.elements.groupCornerRadius) {
         this.elements.groupCornerRadius.style.display = 'none';
       }
-      this.initialCornerRadiusSnapshots = null;
+      this.clearSnapshot();
       return;
     }
 
@@ -364,10 +425,15 @@ export class TransformSectionController {
   }
 
   public bind(): void {
+    this.elements.inputObjectX?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectX?.addEventListener('change', this.onObjectXChange);
+    this.elements.inputObjectY?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectY?.addEventListener('change', this.onObjectYChange);
+    this.elements.inputObjectWidth?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectWidth?.addEventListener('change', this.onObjectWidthChange);
+    this.elements.inputObjectHeight?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectHeight?.addEventListener('change', this.onObjectHeightChange);
+    this.elements.inputObjectRotation?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectRotation?.addEventListener('change', this.onObjectRotationChange);
     this.elements.inputObjectX?.addEventListener('blur', this.onObjectGeometryBlur);
     this.elements.inputObjectY?.addEventListener('blur', this.onObjectGeometryBlur);
@@ -382,10 +448,15 @@ export class TransformSectionController {
   }
 
   public cleanup(): void {
+    this.elements.inputObjectX?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectX?.removeEventListener('change', this.onObjectXChange);
+    this.elements.inputObjectY?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectY?.removeEventListener('change', this.onObjectYChange);
+    this.elements.inputObjectWidth?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectWidth?.removeEventListener('change', this.onObjectWidthChange);
+    this.elements.inputObjectHeight?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectHeight?.removeEventListener('change', this.onObjectHeightChange);
+    this.elements.inputObjectRotation?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectRotation?.removeEventListener('change', this.onObjectRotationChange);
     this.elements.inputObjectX?.removeEventListener('blur', this.onObjectGeometryBlur);
     this.elements.inputObjectY?.removeEventListener('blur', this.onObjectGeometryBlur);

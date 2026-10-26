@@ -85,7 +85,20 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
   artboardController.bind();
   actionButtonsController.bind();
 
+  let lastSelectionKey: string = '';
+
   syncPropertiesPanel = (selectedNodes: readonly SelectableNode[] = stateManager.getSelectedNodes()): void => {
+    const currentSelectionKey = selectedNodes.map((n) => n.id).sort().join(',');
+    if (currentSelectionKey !== lastSelectionKey) {
+      lastSelectionKey = currentSelectionKey;
+      styleSnapshotManager.clear();
+      typographyController.clearSnapshot();
+      parametricController.clearSnapshot();
+      transformController.clearSnapshot();
+      appearanceController.clearSnapshot();
+      dropShadowController.clearSnapshot();
+    }
+
     const leafShapes = getLeafShapes(selectedNodes);
     const hasSelection = selectedNodes.length > 0;
     const selectionBounds = hasSelection ? getSelectionBounds(selectedNodes) : null;
@@ -135,6 +148,8 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
       typographyController.clearSnapshot();
       parametricController.clearSnapshot();
       transformController.clearSnapshot();
+      appearanceController.clearSnapshot();
+      dropShadowController.clearSnapshot();
     }
 
     transformController.sync(selectedNodes, leafShapes, selectionBounds, firstLeafRotation);

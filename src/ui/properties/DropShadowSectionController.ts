@@ -26,7 +26,37 @@ export class DropShadowSectionController {
   }
 
 
+  private editingTargetIds: readonly string[] | null = null;
+
+  public clearSnapshot(): void {
+    this.editingTargetIds = null;
+    this.styleSnapshotManager.clear();
+  }
+
+  private isTargetValid(leafShapes: readonly Shape[]): boolean {
+    if (!this.editingTargetIds) {
+      return false;
+    }
+    if (
+      leafShapes.length !== this.editingTargetIds.length ||
+      !leafShapes.every((s) => this.editingTargetIds!.includes(s.id))
+    ) {
+      return false;
+    }
+    const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
+    if (initialStyleSnapshots) {
+      if (
+        leafShapes.length !== initialStyleSnapshots.size ||
+        !leafShapes.every((s) => initialStyleSnapshots.has(s.id))
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private onInputStart = () => {
+    this.editingTargetIds = getLeafShapes(this.stateManager.getSelectedNodes()).map((s) => s.id);
     this.styleSnapshotManager.capture();
   };
 
@@ -54,7 +84,14 @@ export class DropShadowSectionController {
     this.stateManager.setDrawingStyle({ dropShadow: shadow });
     if (leafShapes.length === 0) return;
 
-    if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      return;
+    }
+
+    if (!this.styleSnapshotManager.hasSnapshots()) {
+      this.styleSnapshotManager.capture();
+    }
     this.stateManager.updateShapesStyle(leafShapes.map((shape) => ({
       id: shape.id,
       style: { dropShadow: shadow },
@@ -65,12 +102,25 @@ export class DropShadowSectionController {
     const leafShapes = getLeafShapes(this.stateManager.getSelectedNodes());
     this.stateManager.setDrawingStyle({ dropShadow: shadow });
     if (leafShapes.length === 0) {
-      this.styleSnapshotManager.clear();
+      this.clearSnapshot();
       return;
     }
-    if (!this.styleSnapshotManager.hasSnapshots()) this.styleSnapshotManager.capture();
+
+    if (!this.isTargetValid(leafShapes)) {
+      this.clearSnapshot();
+      return;
+    }
+
+    if (!this.styleSnapshotManager.hasSnapshots()) {
+      this.styleSnapshotManager.capture();
+    }
 
     const initialStyleSnapshots = this.styleSnapshotManager.getSnapshots();
+    if (initialStyleSnapshots && !leafShapes.every((s) => initialStyleSnapshots.has(s.id))) {
+      this.clearSnapshot();
+      return;
+    }
+
     const entries: ShapeStyleChangeEntry[] = leafShapes.map((shape) => ({
       id: shape.id,
       before: { dropShadow: initialStyleSnapshots?.get(shape.id)?.dropShadow ?? shape.dropShadow ?? null },
@@ -84,11 +134,14 @@ export class DropShadowSectionController {
 
     const command = new StyleShapesCommand(this.stateManager, entries);
     if (!command.isAlreadyAtTarget) this.commandManager.recordCommand(command);
-    this.styleSnapshotManager.clear();
+    this.clearSnapshot();
   };
 
   private onDropShadowCheckChange = () => {
     if (!this.elements.checkDropShadow) return;
+    if (!this.editingTargetIds) {
+      this.onInputStart();
+    }
     const enabled = this.elements.checkDropShadow.checked;
     if (this.elements.groupDropShadowControls) {
       this.elements.groupDropShadowControls.style.display = enabled ? 'flex' : 'none';
@@ -170,6 +223,9 @@ export class DropShadowSectionController {
   };
 
   public sync(leafShapes: readonly Shape[]): void {
+    if (this.editingTargetIds && !this.isTargetValid(leafShapes)) {
+      this.editingTargetIds = null;
+    }
     const shadows = leafShapes.map((shape) => shape.dropShadow ?? null);
     const hasAnyShadow = shadows.some((s) => s !== null);
     const allHaveShadow = shadows.length > 0 && shadows.every((s) => s !== null);

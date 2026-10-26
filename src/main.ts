@@ -299,6 +299,22 @@ export function setupUIBindings(
     },
   });
 
+  // Desenforcar cualquier input de propiedades activo antes de que un clic en canvas altere la selección
+  const onCanvasPointerDownCapture = () => {
+    if (
+      typeof document !== 'undefined' &&
+      document.activeElement &&
+      document.activeElement !== document.body &&
+      document.activeElement !== canvas &&
+      (document.activeElement.tagName === 'INPUT' ||
+        document.activeElement.tagName === 'SELECT' ||
+        document.activeElement.tagName === 'TEXTAREA')
+    ) {
+      (document.activeElement as HTMLElement).blur();
+    }
+  };
+  canvas?.addEventListener('pointerdown', onCanvasPointerDownCapture, { capture: true });
+
   // Suscripciones reactivas del estado y de la entrada
   const unsubscribeState = stateManager.subscribe(() => {
     const sel = stateManager.getSelectedNodes();
@@ -359,6 +375,7 @@ export function setupUIBindings(
       placementController.cleanup();
       activeRulerGuideDrag = null;
       rulersController.cleanup();
+      canvas?.removeEventListener('pointerdown', onCanvasPointerDownCapture, { capture: true });
       mobileNavigationController.cleanup();
     },
     recoveryDialogController,
