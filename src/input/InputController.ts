@@ -326,7 +326,11 @@ export class InputController {
       this.stateManager,
       this.commandManager,
       this.canvas,
-      () => this.viewportManager
+      () => this.viewportManager,
+      () => this._smartGuidesEnabled,
+      (guides) => {
+        this.activeGuides = guides;
+      }
     );
 
     this.onMouseDownHandler = (e: MouseEvent) => this.handleMouseDown(e);

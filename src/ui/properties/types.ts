@@ -110,6 +110,9 @@ export interface PropertiesPanelElements {
 
   readonly groupActiveArtboard?: HTMLElement | null;
   readonly selectActiveArtboard?: HTMLSelectElement | null;
+  readonly inputArtboardName?: HTMLInputElement | null;
+  readonly inputArtboardX?: HTMLInputElement | null;
+  readonly inputArtboardY?: HTMLInputElement | null;
   readonly selectArtboardPreset: HTMLSelectElement | null;
   readonly inputArtboardWidth: HTMLInputElement | null;
   readonly inputArtboardHeight: HTMLInputElement | null;

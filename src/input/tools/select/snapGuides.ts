@@ -38,6 +38,18 @@ export function calculateAABBSnap(
     });
   }
 
+  const artboards = stateManager.getArtboards();
+  for (const ab of artboards) {
+    targetAABBs.push({
+      minX: ab.x,
+      minY: ab.y,
+      maxX: ab.x + ab.width,
+      maxY: ab.y + ab.height,
+      width: ab.width,
+      height: ab.height,
+    });
+  }
+
   const visit = (nodes: readonly LayerChildNode[]): void => {
     for (const node of nodes) {
       if (!stateManager.isEffectivelyVisible(node.id)) continue;

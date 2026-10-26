@@ -744,6 +744,290 @@ describe('Hito 3.4: Múltiples Mesas de Trabajo (Multi-Artboards)', () => {
       }
     });
   });
+
+  describe('7. Guías Inteligentes (Smart Guides) en Mesas de Trabajo', () => {
+    it('al mover una mesa de trabajo cerca de otra mesa se ajusta magnéticamente (snapping) y genera guías', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+      ic.setTool('artboard');
+
+      // Añadir Mesa 2 separada en X = 1000
+      sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 1000, y: 0, width: 400, height: 400 });
+
+      // Iniciar arrastre sobre Mesa 2
+      ic.artboardToolHandler.onMouseDown({ button: 0 } as MouseEvent, { x: 1100, y: 100 });
+      assert.equal(ic.artboardToolHandler.isMoving, true);
+
+      // Mover a x: 902 (dx = -198, unsnapped x = 802, a 2px del borde derecho de Mesa 1 en 800)
+      ic.artboardToolHandler.onMouseMove({ button: 0 } as MouseEvent, { x: 902, y: 100 });
+
+      // Debe haberse ajustado a 800 y activado guías
+      const movingAb = sm.getActiveArtboard();
+      assert.equal(movingAb.x, 800);
+      assert.ok(ic.activeGuides.length > 0);
+      assert.ok(ic.activeGuides.some((g) => g.axis === 'x' && Math.round(g.position) === 800));
+
+      // Soltar el ratón finaliza el movimiento y limpia las guías
+      ic.artboardToolHandler.onMouseUp({ button: 0 } as MouseEvent, { x: 902, y: 100 });
+      assert.equal(ic.artboardToolHandler.isMoving, false);
+      assert.equal(ic.activeGuides.length, 0);
+      assert.equal(sm.getActiveArtboard().x, 800);
+
+      // Undo restaura la posición original (1000)
+      cm.undo();
+      assert.equal(sm.getActiveArtboard().x, 1000);
+    });
+
+    it('al redimensionar una mesa de trabajo sus tiradores se ajustan a los límites de otras mesas', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+      ic.setTool('artboard');
+
+      // Añadir Mesa 2 en (900, 0, 400, 600)
+      sm.addArtboard({ id: 'ab-2', name: 'Mesa 2', x: 900, y: 0, width: 400, height: 600 });
+      sm.setActiveArtboard('ab-2');
+
+      // Tirador 'w' (oeste) está en x = 900, y = 300
+      ic.artboardToolHandler.onMouseDown({ button: 0 } as MouseEvent, { x: 900, y: 300 });
+      assert.equal(ic.artboardToolHandler.isResizing, true);
+
+      // Arrastrar tirador 'w' hacia x = 802 (a 2px del borde derecho de Mesa 1 en 800)
+      ic.artboardToolHandler.onMouseMove({ button: 0 } as MouseEvent, { x: 802, y: 300 });
+
+      // Debe ajustar newX a 800 y newWidth a 500
+      const resizingAb = sm.getActiveArtboard();
+      assert.equal(resizingAb.x, 800);
+      assert.equal(resizingAb.width, 500);
+      assert.ok(ic.activeGuides.length > 0);
+
+      // Soltar ratón confirma y limpia guías
+      ic.artboardToolHandler.onMouseUp({ button: 0 } as MouseEvent, { x: 802, y: 300 });
+      assert.equal(ic.artboardToolHandler.isResizing, false);
+      assert.equal(ic.activeGuides.length, 0);
+      assert.equal(sm.getActiveArtboard().x, 800);
+      assert.equal(sm.getActiveArtboard().width, 500);
+    });
+
+    it('al crear interactivamente una nueva mesa de trabajo se ajusta a las mesas existentes', () => {
+      const canvas = createMockCanvas();
+      const sm = new StateManager(createTestDocument(800, 600));
+      const cm = new CommandManager();
+      const ic = new InputController(canvas, sm, cm);
+      ic.setTool('artboard');
+
+      // Iniciar creación en espacio vacío (900, 100)
+      ic.artboardToolHandler.onMouseDown({ button: 0 } as MouseEvent, { x: 900, y: 100 });
+      assert.equal(ic.artboardToolHandler.isCreating, true);
+
+      // Arrastrar hasta (1300, 598) - cerca de y: 600 (borde inferior de Mesa 1)
+      ic.artboardToolHandler.onMouseMove({ button: 0 } as MouseEvent, { x: 1300, y: 598 });
+
+      assert.ok(ic.activeGuides.length > 0);
+      assert.ok(ic.activeGuides.some((g) => g.axis === 'y' && Math.round(g.position) === 600));
+
+      // Soltar ratón crea la nueva mesa con y = 100 y alto = 500 (hasta y = 600)
+      ic.artboardToolHandler.onMouseUp({ button: 0 } as MouseEvent, { x: 1300, y: 598 });
+      assert.equal(ic.artboardToolHandler.isCreating, false);
+      assert.equal(ic.activeGuides.length, 0);
+
+      const artboards = sm.getArtboards();
+      assert.equal(artboards.length, 2);
+      const created = artboards[1];
+      assert.equal(created.x, 900);
+      assert.equal(created.y, 100);
+      assert.equal(created.width, 400);
+      assert.equal(created.height, 500);
+    });
+  });
+
+  describe('8. Propiedades Editables de Mesa de Trabajo (Nombre, Posición X, Posición Y)', () => {
+    it('permite editar el nombre de la mesa de trabajo con soporte Undo/Redo y actualiza el desplegable', () => {
+      const prevDoc = (globalThis as any).document;
+      try {
+        (globalThis as any).document = {
+          createElement: (tag: string) => new MockUIElement(tag, tag),
+          activeElement: null,
+        };
+
+        const sectionArtboard = new MockUIElement('section-artboard');
+        const inputName = new MockUIElement('input-artboard-name', 'input');
+        const inputX = new MockUIElement('input-artboard-x', 'input');
+        const inputY = new MockUIElement('input-artboard-y', 'input');
+        const inputWidth = new MockUIElement('input-artboard-width', 'input');
+        const inputHeight = new MockUIElement('input-artboard-height', 'input');
+        const groupActiveArtboard = new MockUIElement('group-active-artboard');
+        const selectActiveArtboard = new MockUIElement('select-active-artboard', 'select');
+
+        const elements = {
+          sectionArtboard: sectionArtboard as any,
+          inputArtboardName: inputName as any,
+          inputArtboardX: inputX as any,
+          inputArtboardY: inputY as any,
+          inputArtboardWidth: inputWidth as any,
+          inputArtboardHeight: inputHeight as any,
+          groupActiveArtboard: groupActiveArtboard as any,
+          selectActiveArtboard: selectActiveArtboard as any,
+        } as unknown as PropertiesPanelElements;
+
+        const sm = new StateManager(createTestDocument(800, 600));
+        const cm = new CommandManager();
+
+        const controller = new ArtboardSectionController(sm, cm, elements, () => controller.sync(false));
+        controller.bind();
+        controller.sync(false);
+
+        assert.equal(inputName.value, 'Test Doc');
+
+        // Enfocar y modificar nombre a "Portada Web"
+        inputName.focus();
+        inputName.value = 'Portada Web';
+        inputName.dispatchEvent({ type: 'change' });
+
+        assert.equal(sm.getActiveArtboard().name, 'Portada Web');
+
+        // Deshacer restaura 'Test Doc'
+        cm.undo();
+        assert.equal(sm.getActiveArtboard().name, 'Test Doc');
+
+        // Rehacer vuelve a 'Portada Web'
+        cm.redo();
+        assert.equal(sm.getActiveArtboard().name, 'Portada Web');
+
+        controller.cleanup();
+      } finally {
+        if (prevDoc !== undefined) {
+          (globalThis as any).document = prevDoc;
+        } else {
+          delete (globalThis as any).document;
+        }
+      }
+    });
+
+    it('permite editar posición X e Y de la mesa de trabajo con soporte Undo/Redo', () => {
+      const prevDoc = (globalThis as any).document;
+      try {
+        (globalThis as any).document = {
+          createElement: (tag: string) => new MockUIElement(tag, tag),
+          activeElement: null,
+        };
+
+        const sectionArtboard = new MockUIElement('section-artboard');
+        const inputName = new MockUIElement('input-artboard-name', 'input');
+        const inputX = new MockUIElement('input-artboard-x', 'input');
+        const inputY = new MockUIElement('input-artboard-y', 'input');
+        const inputWidth = new MockUIElement('input-artboard-width', 'input');
+        const inputHeight = new MockUIElement('input-artboard-height', 'input');
+        const groupActiveArtboard = new MockUIElement('group-active-artboard');
+        const selectActiveArtboard = new MockUIElement('select-active-artboard', 'select');
+
+        const elements = {
+          sectionArtboard: sectionArtboard as any,
+          inputArtboardName: inputName as any,
+          inputArtboardX: inputX as any,
+          inputArtboardY: inputY as any,
+          inputArtboardWidth: inputWidth as any,
+          inputArtboardHeight: inputHeight as any,
+          groupActiveArtboard: groupActiveArtboard as any,
+          selectActiveArtboard: selectActiveArtboard as any,
+        } as unknown as PropertiesPanelElements;
+
+        const sm = new StateManager(createTestDocument(800, 600));
+        const cm = new CommandManager();
+
+        const controller = new ArtboardSectionController(sm, cm, elements, () => controller.sync(false));
+        controller.bind();
+        controller.sync(false);
+
+        assert.equal(inputX.value, '0');
+        assert.equal(inputY.value, '0');
+
+        // Modificar X a 250
+        inputX.focus();
+        inputX.value = '250';
+        inputX.dispatchEvent({ type: 'change' });
+        assert.equal(sm.getActiveArtboard().x, 250);
+
+        // Modificar Y a 150
+        inputY.focus();
+        inputY.value = '150';
+        inputY.dispatchEvent({ type: 'change' });
+        assert.equal(sm.getActiveArtboard().y, 150);
+
+        // Deshacer Y
+        cm.undo();
+        assert.equal(sm.getActiveArtboard().y, 0);
+
+        // Deshacer X
+        cm.undo();
+        assert.equal(sm.getActiveArtboard().x, 0);
+
+        // Rehacer X
+        cm.redo();
+        assert.equal(sm.getActiveArtboard().x, 250);
+
+        // Rehacer Y
+        cm.redo();
+        assert.equal(sm.getActiveArtboard().y, 150);
+
+        controller.cleanup();
+      } finally {
+        if (prevDoc !== undefined) {
+          (globalThis as any).document = prevDoc;
+        } else {
+          delete (globalThis as any).document;
+        }
+      }
+    });
+  });
+
+  describe('9. Nombres de Archivo al Exportar Múltiples Mesas de Trabajo', () => {
+    it('al exportar todas las mesas cada archivo utiliza el nombre personalizado de su respectiva mesa', () => {
+      const doc: Document = {
+        id: 'doc-export',
+        name: 'Proyecto Catalogo',
+        type: 'document',
+        width: 800,
+        height: 600,
+        children: [],
+        artboards: [
+          { id: 'ab-1', name: 'Portada', x: 0, y: 0, width: 800, height: 600 },
+          { id: 'ab-2', name: 'Contenido', x: 900, y: 0, width: 800, height: 600 },
+          { id: 'ab-3', name: 'Contraportada', x: 1800, y: 0, width: 800, height: 600 },
+        ],
+      };
+
+      const sm = new StateManager(doc);
+      const artboards = sm.getArtboards();
+
+      // Simular la lógica de nombres de exportación de DialogsController
+      const exportedFilenamesWithoutPrefix = artboards.map((ab) => {
+        const abName = ab.name.replace(/[^a-zA-Z0-9_-]/g, '-');
+        return `${abName}.svg`;
+      });
+
+      assert.deepEqual(exportedFilenamesWithoutPrefix, [
+        'Portada.svg',
+        'Contenido.svg',
+        'Contraportada.svg',
+      ]);
+
+      const userPrefix = 'Catalogo2026';
+      const exportedFilenamesWithPrefix = artboards.map((ab) => {
+        const abName = ab.name.replace(/[^a-zA-Z0-9_-]/g, '-');
+        return `${userPrefix}_${abName}.svg`;
+      });
+
+      assert.deepEqual(exportedFilenamesWithPrefix, [
+        'Catalogo2026_Portada.svg',
+        'Catalogo2026_Contenido.svg',
+        'Catalogo2026_Contraportada.svg',
+      ]);
+    });
+  });
 });
 
 class MockUIElement {

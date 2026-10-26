@@ -242,7 +242,8 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
       const baseName = userFilename || defaultBaseName;
 
       if (isAllArtboards) {
-        exportSummaryFilename.textContent = `Archivos: ${baseName}_[mesa]${scaleSuffix}.${format} (${artboards.length} archivos)`;
+        const prefix = userFilename ? `${userFilename}_` : '';
+        exportSummaryFilename.textContent = `Archivos: ${prefix}[mesa]${scaleSuffix}.${format} (${artboards.length} archivos)`;
       } else {
         exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
       }
@@ -357,7 +358,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
         const scaleSuffix = scale > 1 ? `@${scale}x` : '';
         for (const ab of artboards) {
           const abName = sanitizeFilename(ab.name) || `mesa-${ab.id}`;
-          const itemBaseName = `${baseName}_${abName}`;
+          const itemBaseName = userFilename ? `${userFilename}_${abName}` : abName;
 
           if (format === 'svg') {
             const svgContent = exportDocumentToSvg(doc, {

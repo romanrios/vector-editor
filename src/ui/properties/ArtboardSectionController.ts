@@ -1,10 +1,14 @@
 import type { StateManager } from '../../state/StateManager.ts';
 import type { CommandManager } from '../../commands/CommandManager.ts';
 import { ResizeArtboardCommand } from '../../commands/ResizeArtboardCommand.ts';
+import { UpdateArtboardCommand } from '../../commands/UpdateArtboardCommand.ts';
 import { getPresetById, findPresetForSize } from '../../utils/artboardPresets.ts';
 import type { PropertiesPanelElements } from './types.ts';
 
 export class ArtboardSectionController {
+  private initialArtboardName: string;
+  private initialArtboardX: number;
+  private initialArtboardY: number;
   private initialArtboardWidth: number;
   private initialArtboardHeight: number;
   private currentActiveArtboardId: string;
@@ -27,6 +31,9 @@ export class ArtboardSectionController {
 
     const activeArtboard = this.stateManager.getActiveArtboard();
     this.currentActiveArtboardId = activeArtboard.id;
+    this.initialArtboardName = activeArtboard.name || 'Mesa 1';
+    this.initialArtboardX = activeArtboard.x;
+    this.initialArtboardY = activeArtboard.y;
     this.initialArtboardWidth = activeArtboard.width;
     this.initialArtboardHeight = activeArtboard.height;
     this.artboardAspectRatio =
@@ -40,8 +47,170 @@ export class ArtboardSectionController {
       this.stateManager.setActiveArtboard(select.value);
       const activeArtboard = this.stateManager.getActiveArtboard();
       this.currentActiveArtboardId = activeArtboard.id;
+      this.initialArtboardName = activeArtboard.name || '';
+      this.initialArtboardX = activeArtboard.x;
+      this.initialArtboardY = activeArtboard.y;
       this.initialArtboardWidth = activeArtboard.width;
       this.initialArtboardHeight = activeArtboard.height;
+      this.syncPropertiesPanel();
+    }
+  };
+
+  private readonly onArtboardNameFocus = (): void => {
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    this.initialArtboardName = activeArtboard.name || '';
+  };
+
+  private readonly onArtboardNameChange = (): void => {
+    const input = this.elements.inputArtboardName;
+    if (!input) return;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    const newName = input.value.trim();
+    if (!newName) {
+      input.value = this.initialArtboardName;
+      return;
+    }
+    if (newName === this.initialArtboardName) {
+      return;
+    }
+
+    const cmd = new UpdateArtboardCommand(
+      this.stateManager,
+      activeArtboard.id,
+      { name: this.initialArtboardName },
+      { name: newName }
+    );
+    this.commandManager.executeCommand(cmd);
+    this.initialArtboardName = newName;
+    this.syncPropertiesPanel();
+  };
+
+  private readonly onArtboardNameKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      this.elements.inputArtboardName?.blur();
+    } else if (e.key === 'Escape') {
+      if (this.elements.inputArtboardName) {
+        this.elements.inputArtboardName.value = this.initialArtboardName;
+      }
+      this.elements.inputArtboardName?.blur();
+      this.syncPropertiesPanel();
+    }
+  };
+
+  private readonly onArtboardXFocus = (): void => {
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    this.initialArtboardX = activeArtboard.x;
+  };
+
+  private readonly onArtboardXInput = (): void => {
+    const input = this.elements.inputArtboardX;
+    if (!input) return;
+    const parsed = parseFloat(input.value);
+    if (Number.isFinite(parsed)) {
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      this.stateManager.updateArtboard(activeArtboard.id, { x: parsed });
+    }
+  };
+
+  private readonly onArtboardXChange = (): void => {
+    const input = this.elements.inputArtboardX;
+    if (!input) return;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    const parsed = parseFloat(input.value);
+    if (!Number.isFinite(parsed)) {
+      input.value = String(activeArtboard.x);
+      this.stateManager.updateArtboard(activeArtboard.id, { x: this.initialArtboardX });
+      this.syncPropertiesPanel();
+      return;
+    }
+    const targetX = parsed;
+    input.value = String(targetX);
+    if (targetX === this.initialArtboardX) {
+      this.syncPropertiesPanel();
+      return;
+    }
+
+    this.stateManager.updateArtboard(activeArtboard.id, { x: this.initialArtboardX });
+    const cmd = new UpdateArtboardCommand(
+      this.stateManager,
+      activeArtboard.id,
+      { x: this.initialArtboardX },
+      { x: targetX }
+    );
+    this.commandManager.executeCommand(cmd);
+    this.initialArtboardX = targetX;
+    this.syncPropertiesPanel();
+  };
+
+  private readonly onArtboardXKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      this.elements.inputArtboardX?.blur();
+    } else if (e.key === 'Escape') {
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      if (this.elements.inputArtboardX) {
+        this.elements.inputArtboardX.value = String(this.initialArtboardX);
+      }
+      this.stateManager.updateArtboard(activeArtboard.id, { x: this.initialArtboardX });
+      this.elements.inputArtboardX?.blur();
+      this.syncPropertiesPanel();
+    }
+  };
+
+  private readonly onArtboardYFocus = (): void => {
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    this.initialArtboardY = activeArtboard.y;
+  };
+
+  private readonly onArtboardYInput = (): void => {
+    const input = this.elements.inputArtboardY;
+    if (!input) return;
+    const parsed = parseFloat(input.value);
+    if (Number.isFinite(parsed)) {
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      this.stateManager.updateArtboard(activeArtboard.id, { y: parsed });
+    }
+  };
+
+  private readonly onArtboardYChange = (): void => {
+    const input = this.elements.inputArtboardY;
+    if (!input) return;
+    const activeArtboard = this.stateManager.getActiveArtboard();
+    const parsed = parseFloat(input.value);
+    if (!Number.isFinite(parsed)) {
+      input.value = String(activeArtboard.y);
+      this.stateManager.updateArtboard(activeArtboard.id, { y: this.initialArtboardY });
+      this.syncPropertiesPanel();
+      return;
+    }
+    const targetY = parsed;
+    input.value = String(targetY);
+    if (targetY === this.initialArtboardY) {
+      this.syncPropertiesPanel();
+      return;
+    }
+
+    this.stateManager.updateArtboard(activeArtboard.id, { y: this.initialArtboardY });
+    const cmd = new UpdateArtboardCommand(
+      this.stateManager,
+      activeArtboard.id,
+      { y: this.initialArtboardY },
+      { y: targetY }
+    );
+    this.commandManager.executeCommand(cmd);
+    this.initialArtboardY = targetY;
+    this.syncPropertiesPanel();
+  };
+
+  private readonly onArtboardYKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      this.elements.inputArtboardY?.blur();
+    } else if (e.key === 'Escape') {
+      const activeArtboard = this.stateManager.getActiveArtboard();
+      if (this.elements.inputArtboardY) {
+        this.elements.inputArtboardY.value = String(this.initialArtboardY);
+      }
+      this.stateManager.updateArtboard(activeArtboard.id, { y: this.initialArtboardY });
+      this.elements.inputArtboardY?.blur();
       this.syncPropertiesPanel();
     }
   };
@@ -281,6 +450,9 @@ export class ArtboardSectionController {
 
     if (this.currentActiveArtboardId !== activeArtboard.id) {
       this.currentActiveArtboardId = activeArtboard.id;
+      this.initialArtboardName = activeArtboard.name || '';
+      this.initialArtboardX = activeArtboard.x;
+      this.initialArtboardY = activeArtboard.y;
       this.initialArtboardWidth = activeArtboard.width;
       this.initialArtboardHeight = activeArtboard.height;
     }
@@ -317,6 +489,24 @@ export class ArtboardSectionController {
     }
 
     if (
+      this.elements.inputArtboardName &&
+      (typeof document === 'undefined' || document.activeElement !== this.elements.inputArtboardName)
+    ) {
+      this.elements.inputArtboardName.value = activeArtboard.name || '';
+    }
+    if (
+      this.elements.inputArtboardX &&
+      (typeof document === 'undefined' || document.activeElement !== this.elements.inputArtboardX)
+    ) {
+      this.elements.inputArtboardX.value = String(activeArtboard.x);
+    }
+    if (
+      this.elements.inputArtboardY &&
+      (typeof document === 'undefined' || document.activeElement !== this.elements.inputArtboardY)
+    ) {
+      this.elements.inputArtboardY.value = String(activeArtboard.y);
+    }
+    if (
       this.elements.selectArtboardPreset &&
       (typeof document === 'undefined' || document.activeElement !== this.elements.selectArtboardPreset)
     ) {
@@ -348,6 +538,17 @@ export class ArtboardSectionController {
 
   public bind(): void {
     this.elements.selectActiveArtboard?.addEventListener('change', this.onActiveArtboardChange);
+    this.elements.inputArtboardName?.addEventListener('focus', this.onArtboardNameFocus);
+    this.elements.inputArtboardName?.addEventListener('change', this.onArtboardNameChange);
+    this.elements.inputArtboardName?.addEventListener('keydown', this.onArtboardNameKeyDown as EventListener);
+    this.elements.inputArtboardX?.addEventListener('focus', this.onArtboardXFocus);
+    this.elements.inputArtboardX?.addEventListener('input', this.onArtboardXInput);
+    this.elements.inputArtboardX?.addEventListener('change', this.onArtboardXChange);
+    this.elements.inputArtboardX?.addEventListener('keydown', this.onArtboardXKeyDown as EventListener);
+    this.elements.inputArtboardY?.addEventListener('focus', this.onArtboardYFocus);
+    this.elements.inputArtboardY?.addEventListener('input', this.onArtboardYInput);
+    this.elements.inputArtboardY?.addEventListener('change', this.onArtboardYChange);
+    this.elements.inputArtboardY?.addEventListener('keydown', this.onArtboardYKeyDown as EventListener);
     this.elements.selectArtboardPreset?.addEventListener('change', this.onArtboardPresetChange);
     this.elements.checkArtboardRatio?.addEventListener('change', this.onArtboardRatioChange);
     this.elements.inputArtboardWidth?.addEventListener('focus', this.onArtboardFocus);
@@ -362,6 +563,17 @@ export class ArtboardSectionController {
 
   public cleanup(): void {
     this.elements.selectActiveArtboard?.removeEventListener('change', this.onActiveArtboardChange);
+    this.elements.inputArtboardName?.removeEventListener('focus', this.onArtboardNameFocus);
+    this.elements.inputArtboardName?.removeEventListener('change', this.onArtboardNameChange);
+    this.elements.inputArtboardName?.removeEventListener('keydown', this.onArtboardNameKeyDown as EventListener);
+    this.elements.inputArtboardX?.removeEventListener('focus', this.onArtboardXFocus);
+    this.elements.inputArtboardX?.removeEventListener('input', this.onArtboardXInput);
+    this.elements.inputArtboardX?.removeEventListener('change', this.onArtboardXChange);
+    this.elements.inputArtboardX?.removeEventListener('keydown', this.onArtboardWidthKeyDown as EventListener);
+    this.elements.inputArtboardY?.removeEventListener('focus', this.onArtboardYFocus);
+    this.elements.inputArtboardY?.removeEventListener('input', this.onArtboardYInput);
+    this.elements.inputArtboardY?.removeEventListener('change', this.onArtboardYChange);
+    this.elements.inputArtboardY?.removeEventListener('keydown', this.onArtboardYKeyDown as EventListener);
     this.elements.selectArtboardPreset?.removeEventListener('change', this.onArtboardPresetChange);
     this.elements.checkArtboardRatio?.removeEventListener('change', this.onArtboardRatioChange);
     this.elements.inputArtboardWidth?.removeEventListener('focus', this.onArtboardFocus);

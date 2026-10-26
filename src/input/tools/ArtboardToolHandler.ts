@@ -4,7 +4,9 @@ import { AddArtboardCommand } from '../../commands/AddArtboardCommand.ts';
 import { DeleteArtboardCommand } from '../../commands/DeleteArtboardCommand.ts';
 import { UpdateArtboardCommand } from '../../commands/UpdateArtboardCommand.ts';
 import type { ViewportManager } from '../../utils/viewport.ts';
-import type { Artboard, Vector2D } from '../../types/scene-graph.ts';
+import type { Artboard, Vector2D, AABB } from '../../types/scene-graph.ts';
+import type { SnapGuide } from '../../types/engine.ts';
+import { calculateSnapping, calculateAnchoredSnapping } from '../../utils/geometry.ts';
 import type { ToolHandler } from './ToolHandler.ts';
 import type { ToolMode } from '../InputController.ts';
 
@@ -19,13 +21,16 @@ export interface ArtboardBounds {
 
 /**
  * Estrategia de herramienta para gestión interactiva de Mesas de Trabajo (Artboards).
- * Permite seleccionar, mover, redimensionar con tiradores y crear nuevas mesas interactivamente.
+ * Permite seleccionar, mover, redimensionar con tiradores y crear nuevas mesas interactivamente,
+ * con soporte para guías inteligentes (Smart Guides / Snapping).
  */
 export class ArtboardToolHandler implements ToolHandler {
   private readonly stateManager: StateManager;
   private readonly commandManager: CommandManager;
   private readonly canvas: HTMLCanvasElement;
   private readonly getViewportManager: () => ViewportManager;
+  private readonly isSmartGuidesEnabled?: () => boolean;
+  private readonly setActiveGuides?: (guides: SnapGuide[]) => void;
 
   // Estados de interacción
   private _isCreating: boolean = false;
@@ -47,12 +52,16 @@ export class ArtboardToolHandler implements ToolHandler {
     stateManager: StateManager,
     commandManager: CommandManager,
     canvas: HTMLCanvasElement,
-    getViewportManager: () => ViewportManager
+    getViewportManager: () => ViewportManager,
+    isSmartGuidesEnabled?: () => boolean,
+    setActiveGuides?: (guides: SnapGuide[]) => void
   ) {
     this.stateManager = stateManager;
     this.commandManager = commandManager;
     this.canvas = canvas;
     this.getViewportManager = getViewportManager;
+    this.isSmartGuidesEnabled = isSmartGuidesEnabled;
+    this.setActiveGuides = setActiveGuides;
   }
 
   public get isCreating(): boolean {
@@ -84,10 +93,12 @@ export class ArtboardToolHandler implements ToolHandler {
   }
 
   public onDeactivate(_nextTool: ToolMode): void {
+    this.setActiveGuides?.([]);
     this.resetState();
   }
 
   public resetState(): void {
+    this.setActiveGuides?.([]);
     this._isCreating = false;
     this._createStart = null;
     this._createCurrent = null;
@@ -101,6 +112,48 @@ export class ArtboardToolHandler implements ToolHandler {
     this._resizeArtboardId = null;
     this._resizeInitialBounds = null;
     this.stateManager.markDirty();
+  }
+
+  private getArtboardSnapTargets(excludedArtboardId: string | null): AABB[] {
+    const targets: AABB[] = [];
+    const artboards = this.stateManager.getArtboards();
+    for (const ab of artboards) {
+      if (excludedArtboardId && ab.id === excludedArtboardId) continue;
+      targets.push({
+        minX: ab.x,
+        minY: ab.y,
+        maxX: ab.x + ab.width,
+        maxY: ab.y + ab.height,
+        width: ab.width,
+        height: ab.height,
+      });
+    }
+
+    if (this.stateManager.isGuidesVisible() && this.stateManager.isGuideSnappingEnabled()) {
+      const userGuides = this.stateManager.getGuides();
+      for (const g of userGuides) {
+        if (g.axis === 'x') {
+          targets.push({
+            minX: g.position,
+            maxX: g.position,
+            minY: -100000,
+            maxY: 100000,
+            width: 0,
+            height: 200000,
+          });
+        } else {
+          targets.push({
+            minX: -100000,
+            maxX: 100000,
+            minY: g.position,
+            maxY: g.position,
+            width: 200000,
+            height: 0,
+          });
+        }
+      }
+    }
+    return targets;
   }
 
   public onMouseDown(event: MouseEvent, coords: Vector2D): void {
@@ -159,7 +212,7 @@ export class ArtboardToolHandler implements ToolHandler {
   public onMouseMove(_event: MouseEvent, coords: Vector2D): void {
     const zoom = this.getViewportManager().zoom || 1;
 
-    // A. Redimensionado en curso
+    // A. Redimensionado en curso con guías inteligentes
     if (this._isResizing && this._resizeInitialBounds && this._resizeStart && this._resizeArtboardId && this._resizeHandle) {
       const dx = coords.x - this._resizeStart.x;
       const dy = coords.y - this._resizeStart.y;
@@ -170,41 +223,85 @@ export class ArtboardToolHandler implements ToolHandler {
       let newWidth = initial.width;
       let newHeight = initial.height;
 
+      let fixedXFeature: 0 | 2 | 'all' = 'all';
+      let fixedYFeature: 0 | 2 | 'all' = 'all';
+
       switch (this._resizeHandle) {
         case 'nw':
           newX = initial.x + dx;
           newY = initial.y + dy;
           newWidth = initial.width - dx;
           newHeight = initial.height - dy;
+          fixedXFeature = 2;
+          fixedYFeature = 2;
           break;
         case 'n':
           newY = initial.y + dy;
           newHeight = initial.height - dy;
+          fixedYFeature = 2;
           break;
         case 'ne':
           newY = initial.y + dy;
           newWidth = initial.width + dx;
           newHeight = initial.height - dy;
+          fixedXFeature = 0;
+          fixedYFeature = 2;
           break;
         case 'e':
           newWidth = initial.width + dx;
+          fixedXFeature = 0;
           break;
         case 'se':
           newWidth = initial.width + dx;
           newHeight = initial.height + dy;
+          fixedXFeature = 0;
+          fixedYFeature = 0;
           break;
         case 's':
           newHeight = initial.height + dy;
+          fixedYFeature = 0;
           break;
         case 'sw':
           newX = initial.x + dx;
           newWidth = initial.width - dx;
           newHeight = initial.height + dy;
+          fixedXFeature = 2;
+          fixedYFeature = 0;
           break;
         case 'w':
           newX = initial.x + dx;
           newWidth = initial.width - dx;
+          fixedXFeature = 2;
           break;
+      }
+
+      if (this.isSmartGuidesEnabled?.()) {
+        const rawAABB: AABB = {
+          minX: newX,
+          minY: newY,
+          maxX: newX + newWidth,
+          maxY: newY + newHeight,
+          width: newWidth,
+          height: newHeight,
+        };
+        const targets = this.getArtboardSnapTargets(this._resizeArtboardId);
+        const tolerance = 6 / zoom;
+        const snap = calculateAnchoredSnapping(rawAABB, targets, fixedXFeature, fixedYFeature, tolerance);
+        if (fixedXFeature === 0) {
+          newWidth += snap.dx;
+        } else if (fixedXFeature === 2) {
+          newX += snap.dx;
+          newWidth -= snap.dx;
+        }
+        if (fixedYFeature === 0) {
+          newHeight += snap.dy;
+        } else if (fixedYFeature === 2) {
+          newY += snap.dy;
+          newHeight -= snap.dy;
+        }
+        this.setActiveGuides?.(snap.guides);
+      } else {
+        this.setActiveGuides?.([]);
       }
 
       if (newWidth < 20) {
@@ -229,25 +326,78 @@ export class ArtboardToolHandler implements ToolHandler {
       return;
     }
 
-    // B. Desplazamiento en curso
+    // B. Desplazamiento en curso con guías inteligentes
     if (this._isMoving && this._moveInitialBounds && this._moveStart && this._moveArtboardId) {
       const dx = coords.x - this._moveStart.x;
       const dy = coords.y - this._moveStart.y;
+      let finalX = this._moveInitialBounds.x + dx;
+      let finalY = this._moveInitialBounds.y + dy;
+
+      if (this.isSmartGuidesEnabled?.()) {
+        const movingAABB: AABB = {
+          minX: finalX,
+          minY: finalY,
+          maxX: finalX + this._moveInitialBounds.width,
+          maxY: finalY + this._moveInitialBounds.height,
+          width: this._moveInitialBounds.width,
+          height: this._moveInitialBounds.height,
+        };
+        const targets = this.getArtboardSnapTargets(this._moveArtboardId);
+        const tolerance = 6 / zoom;
+        const snap = calculateSnapping(movingAABB, targets, tolerance);
+        finalX += snap.dx;
+        finalY += snap.dy;
+        this.setActiveGuides?.(snap.guides);
+      } else {
+        this.setActiveGuides?.([]);
+      }
+
       this.stateManager.updateArtboard(this._moveArtboardId, {
-        x: Math.round(this._moveInitialBounds.x + dx),
-        y: Math.round(this._moveInitialBounds.y + dy),
+        x: Math.round(finalX),
+        y: Math.round(finalY),
       });
       return;
     }
 
-    // C. Creación en curso
+    // C. Creación en curso con guías inteligentes
     if (this._isCreating && this._createStart) {
-      this._createCurrent = { ...coords };
+      let currentX = coords.x;
+      let currentY = coords.y;
+
+      if (this.isSmartGuidesEnabled?.()) {
+        const minX = Math.min(this._createStart.x, coords.x);
+        const minY = Math.min(this._createStart.y, coords.y);
+        const width = Math.abs(coords.x - this._createStart.x);
+        const height = Math.abs(coords.y - this._createStart.y);
+
+        const fixedXFeature: 0 | 2 = coords.x >= this._createStart.x ? 0 : 2;
+        const fixedYFeature: 0 | 2 = coords.y >= this._createStart.y ? 0 : 2;
+
+        const candidateAABB: AABB = {
+          minX,
+          minY,
+          maxX: minX + width,
+          maxY: minY + height,
+          width,
+          height,
+        };
+        const targets = this.getArtboardSnapTargets(null);
+        const tolerance = 6 / zoom;
+        const snap = calculateAnchoredSnapping(candidateAABB, targets, fixedXFeature, fixedYFeature, tolerance);
+        currentX += snap.dx;
+        currentY += snap.dy;
+        this.setActiveGuides?.(snap.guides);
+      } else {
+        this.setActiveGuides?.([]);
+      }
+
+      this._createCurrent = { x: currentX, y: currentY };
       this.stateManager.markDirty();
       return;
     }
 
     // D. Cursor dinámico según hover
+    this.setActiveGuides?.([]);
     const activeArtboard = this.stateManager.getActiveArtboard();
     if (activeArtboard) {
       const handle = this.getHandleUnderCursor(coords.x, coords.y, activeArtboard, zoom);
@@ -314,7 +464,7 @@ export class ArtboardToolHandler implements ToolHandler {
 
     // 3. Finalizar creación
     if (this._isCreating && this._createStart) {
-      const current = coords;
+      const current = this._createCurrent ?? coords;
       const width = Math.abs(current.x - this._createStart.x);
       const height = Math.abs(current.y - this._createStart.y);
       const minX = Math.min(this._createStart.x, current.x);
