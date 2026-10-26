@@ -14,6 +14,7 @@ import { calculateExportBounds } from '../src/utils/exportRaster.ts';
 import { InputController } from '../src/input/InputController.ts';
 import type { Artboard, Document } from '../src/types/scene-graph.ts';
 import { isArtboard } from '../src/types/scene-graph.ts';
+import { renderArtboard } from '../src/render/overlays/GuidesOverlayRenderer.ts';
 
 function createMockCanvas(): HTMLCanvasElement {
   return {
@@ -1026,6 +1027,84 @@ describe('Hito 3.4: Múltiples Mesas de Trabajo (Multi-Artboards)', () => {
         'Catalogo2026_Contenido.svg',
         'Catalogo2026_Contraportada.svg',
       ]);
+    });
+  });
+
+  describe('10. Separación de Sombras y Fondos de Mesas de Trabajo (Sin Superposición de Sombras)', () => {
+    it('las sombras de todas las mesas se dibujan primero en una capa base, y todos los fondos limpios se dibujan después', () => {
+      const doc: Document = {
+        id: 'doc-shadows',
+        name: 'Test Sombras',
+        type: 'document',
+        width: 800,
+        height: 600,
+        children: [],
+        artboards: [
+          { id: 'ab-1', name: 'Mesa 1', x: 0, y: 0, width: 800, height: 600 },
+          { id: 'ab-2', name: 'Mesa 2', x: 800, y: 0, width: 400, height: 600 },
+        ],
+      };
+
+      const sm = new StateManager(doc);
+
+      const fillCalls: { x: number; y: number; w: number; h: number; shadowColor: string; shadowBlur: number }[] = [];
+      let curShadowColor = 'transparent';
+      let curShadowBlur = 0;
+
+      const mockCtx = {
+        save: () => {},
+        restore: () => {
+          curShadowColor = 'transparent';
+          curShadowBlur = 0;
+        },
+        fillRect: (x: number, y: number, w: number, h: number) => {
+          fillCalls.push({ x, y, w, h, shadowColor: curShadowColor, shadowBlur: curShadowBlur });
+        },
+        strokeRect: () => {},
+        fillText: () => {},
+        get shadowColor() {
+          return curShadowColor;
+        },
+        set shadowColor(v: string) {
+          curShadowColor = v;
+        },
+        get shadowBlur() {
+          return curShadowBlur;
+        },
+        set shadowBlur(v: number) {
+          curShadowBlur = v;
+        },
+        set shadowOffsetX(_v: number) {},
+        set shadowOffsetY(_v: number) {},
+        set fillStyle(_v: string) {},
+        set strokeStyle(_v: string) {},
+        set lineWidth(_v: number) {},
+      } as unknown as CanvasRenderingContext2D;
+
+      renderArtboard(mockCtx, sm, {}, 1);
+
+      // Debe haber exactamente 4 llamadas a fillRect (2 sombras en Paso 1 + 2 fondos limpios en Paso 2)
+      assert.equal(fillCalls.length, 4);
+
+      // Paso 1: Sombras con shadowBlur > 0
+      assert.equal(fillCalls[0].x, 0);
+      assert.equal(fillCalls[0].w, 800);
+      assert.ok(fillCalls[0].shadowBlur > 0, 'Sombra de Mesa 1 debe tener blur > 0');
+      assert.equal(fillCalls[0].shadowColor, 'rgba(0, 0, 0, 0.45)');
+
+      assert.equal(fillCalls[1].x, 800);
+      assert.equal(fillCalls[1].w, 400);
+      assert.ok(fillCalls[1].shadowBlur > 0, 'Sombra de Mesa 2 debe tener blur > 0');
+      assert.equal(fillCalls[1].shadowColor, 'rgba(0, 0, 0, 0.45)');
+
+      // Paso 2: Fondos limpios sin sombra (shadowBlur = 0) dibujados DESPUÉS de todas las sombras
+      assert.equal(fillCalls[2].x, 0);
+      assert.equal(fillCalls[2].w, 800);
+      assert.equal(fillCalls[2].shadowBlur, 0, 'Fondo de Mesa 1 debe dibujarse limpio sin sombra activa');
+
+      assert.equal(fillCalls[3].x, 800);
+      assert.equal(fillCalls[3].w, 400);
+      assert.equal(fillCalls[3].shadowBlur, 0, 'Fondo de Mesa 2 debe dibujarse limpio sin sombra activa');
     });
   });
 });

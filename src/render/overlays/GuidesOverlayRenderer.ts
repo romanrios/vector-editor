@@ -71,27 +71,52 @@ export function renderArtboard(
 
   const activeArtboardId = stateManager.getActiveArtboardId();
 
-  for (const ab of artboards) {
-    const { x, y, width, height, backgroundColor, name, id } = ab;
-    if (!width || !height || width <= 0 || height <= 0) {
-      continue;
-    }
+  const validArtboards = artboards.filter(
+    (ab) => ab.width && ab.height && ab.width > 0 && ab.height > 0
+  );
+  if (validArtboards.length === 0) {
+    return;
+  }
 
-    ctx.save();
+  // PASO 1: Sombras perimetrales (drop-shadow) de todas las mesas de trabajo
+  // Se renderizan primero todas juntas como capa base para que ninguna sombra
+  // de una mesa se dibuje por encima de la superficie o borde de otra mesa vecina.
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  ctx.shadowBlur = 24 / zoom;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 4 / zoom;
+  ctx.fillStyle = '#ffffff';
 
-    // Sombra perimetral visual (drop-shadow) escalada por zoom
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-    ctx.shadowBlur = 24 / zoom;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 4 / zoom;
+  for (const ab of validArtboards) {
+    ctx.fillRect(ab.x, ab.y, ab.width, ab.height);
+  }
+  ctx.restore();
 
-    // Fondo de la mesa de trabajo (blanco por defecto)
-    ctx.fillStyle = backgroundColor || '#ffffff';
-    ctx.fillRect(x, y, width, height);
+  // PASO 2: Fondos limpios y opacos de todas las mesas de trabajo
+  // Al dibujarse después de todas las sombras y sin sombra activa, se garantiza
+  // matemáticamente que ninguna sombra vecina manche la superficie de otra mesa.
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
 
-    ctx.restore();
+  for (const ab of validArtboards) {
+    const bg =
+      !ab.backgroundColor || ab.backgroundColor === 'none' || ab.backgroundColor === 'transparent'
+        ? '#ffffff'
+        : ab.backgroundColor;
+    ctx.fillStyle = bg;
+    ctx.fillRect(ab.x, ab.y, ab.width, ab.height);
+  }
+  ctx.restore();
 
-    // Borde delimitador sutil de 1 px en pantalla para definir contornos nítidos
+  // PASO 3: Bordes delimitadores, títulos y tiradores de interacción
+  // Se renderizan nítidamente sobre los fondos limpios sin sombras superpuestas
+  for (const ab of validArtboards) {
+    const { x, y, width, height, name, id } = ab;
+
     ctx.save();
     const isActive = id === activeArtboardId;
     const isToolActive = options.artboardOverlayProvider?.()?.isArtboardToolActive === true;
