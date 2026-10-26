@@ -42,8 +42,8 @@ export class KeyboardShortcutsHandler {
     }
 
     if (this.controller.textEditManager.isEditingText) {
-      this.controller.textEditManager.handleKeyDown(event);
-      return;
+      const handled = this.controller.textEditManager.handleKeyDown(event);
+      if (handled) return;
     }
 
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;

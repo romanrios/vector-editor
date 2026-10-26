@@ -15,6 +15,7 @@ import type {
   Ellipse,
 } from '../src/types/scene-graph.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
+import type { TextEditRenderState } from '../src/render/types.ts';
 
 // Helper para crear un mock de Canvas y Context2D con soporte de drawImage e inspección
 function createMockCanvasWithDrawImage(): {
@@ -463,6 +464,46 @@ describe('RenderEngine - Integración de LayerCacheManager', () => {
     assert.equal(drawImages.length, 2, 'Debe haber bliteado la capa actualizada');
     // Debe haber registrado 1 miss por invalidación estructural
     assert.equal(engine.layerCacheManager?.getStats().misses, 1);
+  });
+
+  it('invalida y omite la caché cuando una capa pre-cacheadada pasa a tener una figura seleccionada o en edición de texto', () => {
+    const { canvas, drawImages } = createMockCanvasWithDrawImage();
+
+    const rect1 = makeRect('r1', 50, 50, 100, 80, '#ff0000');
+    const rect2 = makeRect('r2', 200, 50, 100, 80, '#00ff00');
+    const doc = makeDoc([makeLayer('layer-preload', 'Capa Inicial', [rect1, rect2])]);
+
+    const stateManager = new StateManager(doc);
+    let activeTextEditing: TextEditRenderState | null = null;
+    const engine = new RenderEngine(canvas, stateManager, {
+      highDpi: false,
+      enableLayerCache: true,
+      textEditProvider: () => activeTextEditing,
+      layerCacheOptions: {
+        canvasFactory: (w, h) => createMockOffscreenCanvas(w, h),
+      },
+    });
+
+    // 1. Primer render al abrir la app: la capa es estática y se cachea
+    engine.render();
+    assert.equal(drawImages.length, 1, 'Primer render debe cachear y blitear');
+    assert.equal(engine.layerCacheManager?.getStats().entriesCount, 1);
+
+    // 2. Usuario selecciona r1 sin moverlo (el documento permanece idéntico en memoria)
+    stateManager.setSelection(['r1']);
+    engine.render();
+
+    // No debe reutilizar la caché stale, sino omitirla e invalidarla
+    assert.equal(drawImages.length, 1, 'No debe volver a blitear la caché estática');
+    assert.equal(engine.layerCacheManager?.getStats().entriesCount, 0, 'La entrada debe haber sido desalojada');
+
+    // 3. Usuario entra a edición de texto sobre r2
+    stateManager.setSelection([]);
+    activeTextEditing = { textId: 'r2', text: 'Editando' };
+    engine.render();
+
+    assert.equal(drawImages.length, 1, 'No debe blitear la capa mientras haya edición de texto activa');
+    assert.equal(engine.layerCacheManager?.getStats().entriesCount, 0);
   });
 
   it('soporta caché en grupos estáticos', () => {

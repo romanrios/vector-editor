@@ -157,6 +157,7 @@ export class InputController {
   private onMouseMoveHandler: (e: MouseEvent) => void;
   private onMouseUpHandler: (e: MouseEvent) => void;
   private onWheelHandler: (e: WheelEvent) => void;
+  private onWindowWheelHandler: ((e: WheelEvent) => void) | null = null;
   private onContextMenuHandler: (e: MouseEvent) => void;
   private onKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
   private onKeyUpHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -231,9 +232,17 @@ export class InputController {
           }
         },
         worldToScreen: (point) => this.viewportManager.worldToScreen(point),
+        screenToWorld: (point) => this.viewportManager.screenToWorld(point),
         getZoom: () => this.viewportManager.zoom,
+        onWheel: (event) => this.handleWheel(event),
       }
     );
+
+    this.viewportManager.subscribe(() => {
+      if (this.textEditManager.isEditingText) {
+        this.textEditManager.updateMobileInputProxyPosition();
+      }
+    });
 
     // 2. Inicializar SelectToolHandler
     this.selectToolHandler = new SelectToolHandler(
@@ -782,6 +791,20 @@ export class InputController {
 
     if (typeof window !== 'undefined') {
       window.addEventListener('mouseup', this.onMouseUpHandler);
+      this.onWindowWheelHandler = (e: WheelEvent) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const target = e.target as HTMLElement | null;
+          if (
+            target === this.canvas ||
+            target?.id === 'mobile-text-proxy' ||
+            (target && this.canvas.contains(target))
+          ) {
+            this.handleWheel(e);
+          }
+        }
+      };
+      window.addEventListener('wheel', this.onWindowWheelHandler, { passive: false });
     } else {
       this.canvas.addEventListener('mouseup', this.onMouseUpHandler);
     }
@@ -819,6 +842,10 @@ export class InputController {
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('mouseup', this.onMouseUpHandler);
+      if (this.onWindowWheelHandler) {
+        window.removeEventListener('wheel', this.onWindowWheelHandler);
+        this.onWindowWheelHandler = null;
+      }
       if (this.onKeyDownHandler) {
         window.removeEventListener('keydown', this.onKeyDownHandler);
         this.onKeyDownHandler = null;
@@ -864,7 +891,7 @@ export class InputController {
     const screenX = event.clientX - rect.left;
     const screenY = event.clientY - rect.top;
 
-    if (event.ctrlKey || event.metaKey) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
       const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
       this.viewportManager.zoomAt({ x: screenX, y: screenY }, zoomFactor);
     } else {
@@ -1077,7 +1104,11 @@ export class InputController {
       const ctx = this.textEditManager.getMeasureContext();
       const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
       this.startEditingText(hitShape.id, charIndex);
-      this.textEditManager.selectWordAt(charIndex);
+      if (event.detail >= 3) {
+        this.textEditManager.selectLineAt(charIndex);
+      } else {
+        this.textEditManager.selectWordAt(charIndex);
+      }
       this.canvas.style.cursor = 'text';
       return;
     }
@@ -1139,7 +1170,7 @@ export class InputController {
       const hitShape = this.hitTest(x, y);
       if (hitShape && hitShape.id === this.textEditManager.textEditingState?.textId) {
         event.preventDefault?.();
-        this.textEditManager.handleMouseDown(hitShape, x, y);
+        this.textEditManager.handleMouseDown(hitShape, x, y, event.detail);
         return;
       }
       this.commitTextEdit();
@@ -1400,8 +1431,10 @@ export class InputController {
       return;
     }
 
-    if (this.textEditManager.isMouseSelectingText) {
-      this.textEditManager.handleMouseUp();
+    if (this.textEditManager.isEditingText) {
+      if (this.textEditManager.isMouseSelectingText) {
+        this.textEditManager.handleMouseUp();
+      }
       return;
     }
 

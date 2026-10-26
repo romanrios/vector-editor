@@ -341,32 +341,11 @@ export class RenderEngine {
     dpr?: number
   ): void {
     if (this.layerCacheManager && this.options.enableLayerCache && activeIds && typeof dpr === 'number') {
-      const cached = this.layerCacheManager.get(layer, zoom, dpr);
-      if (cached) {
-        this.ctx.save();
-        if (typeof layer.opacity === 'number') {
-          this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
-        }
-        if (layer.blendMode && layer.blendMode !== 'normal') {
-          this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
-        }
-        if (layer.dropShadow) {
-          applyDropShadow(this.ctx, layer.dropShadow);
-        }
-        this.ctx.drawImage(
-          cached.canvas as any,
-          cached.bounds.minX,
-          cached.bounds.minY,
-          cached.bounds.width,
-          cached.bounds.height
-        );
-        this.ctx.restore();
-        return;
-      }
-
-      if (this.layerCacheManager.isEligible(layer, activeIds)) {
-        const entry = this.rasterizeNodeToCache(layer, zoom, dpr);
-        if (entry) {
+      if (this.layerCacheManager.hasActiveDescendant(layer, activeIds)) {
+        this.layerCacheManager.invalidate(layer.id);
+      } else {
+        const cached = this.layerCacheManager.get(layer, zoom, dpr);
+        if (cached) {
           this.ctx.save();
           if (typeof layer.opacity === 'number') {
             this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
@@ -378,14 +357,39 @@ export class RenderEngine {
             applyDropShadow(this.ctx, layer.dropShadow);
           }
           this.ctx.drawImage(
-            entry.canvas as any,
-            entry.bounds.minX,
-            entry.bounds.minY,
-            entry.bounds.width,
-            entry.bounds.height
+            cached.canvas as any,
+            cached.bounds.minX,
+            cached.bounds.minY,
+            cached.bounds.width,
+            cached.bounds.height
           );
           this.ctx.restore();
           return;
+        }
+
+        if (this.layerCacheManager.isEligible(layer, activeIds)) {
+          const entry = this.rasterizeNodeToCache(layer, zoom, dpr);
+          if (entry) {
+            this.ctx.save();
+            if (typeof layer.opacity === 'number') {
+              this.ctx.globalAlpha *= Math.max(0, Math.min(1, layer.opacity));
+            }
+            if (layer.blendMode && layer.blendMode !== 'normal') {
+              this.ctx.globalCompositeOperation = blendModeToCompositeOperation(layer.blendMode);
+            }
+            if (layer.dropShadow) {
+              applyDropShadow(this.ctx, layer.dropShadow);
+            }
+            this.ctx.drawImage(
+              entry.canvas as any,
+              entry.bounds.minX,
+              entry.bounds.minY,
+              entry.bounds.width,
+              entry.bounds.height
+            );
+            this.ctx.restore();
+            return;
+          }
         }
       }
     }
@@ -503,32 +507,11 @@ export class RenderEngine {
       activeIds &&
       typeof dpr === 'number'
     ) {
-      const cached = this.layerCacheManager.get(group, zoom, dpr);
-      if (cached) {
-        this.ctx.save();
-        if (typeof group.opacity === 'number') {
-          this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
-        }
-        if (group.blendMode && group.blendMode !== 'normal') {
-          this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
-        }
-        if (group.dropShadow) {
-          applyDropShadow(this.ctx, group.dropShadow);
-        }
-        this.ctx.drawImage(
-          cached.canvas as any,
-          cached.bounds.minX,
-          cached.bounds.minY,
-          cached.bounds.width,
-          cached.bounds.height
-        );
-        this.ctx.restore();
-        return;
-      }
-
-      if (this.layerCacheManager.isEligible(group, activeIds)) {
-        const entry = this.rasterizeNodeToCache(group, zoom, dpr);
-        if (entry) {
+      if (this.layerCacheManager.hasActiveDescendant(group, activeIds)) {
+        this.layerCacheManager.invalidate(group.id);
+      } else {
+        const cached = this.layerCacheManager.get(group, zoom, dpr);
+        if (cached) {
           this.ctx.save();
           if (typeof group.opacity === 'number') {
             this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
@@ -540,14 +523,39 @@ export class RenderEngine {
             applyDropShadow(this.ctx, group.dropShadow);
           }
           this.ctx.drawImage(
-            entry.canvas as any,
-            entry.bounds.minX,
-            entry.bounds.minY,
-            entry.bounds.width,
-            entry.bounds.height
+            cached.canvas as any,
+            cached.bounds.minX,
+            cached.bounds.minY,
+            cached.bounds.width,
+            cached.bounds.height
           );
           this.ctx.restore();
           return;
+        }
+
+        if (this.layerCacheManager.isEligible(group, activeIds)) {
+          const entry = this.rasterizeNodeToCache(group, zoom, dpr);
+          if (entry) {
+            this.ctx.save();
+            if (typeof group.opacity === 'number') {
+              this.ctx.globalAlpha *= Math.max(0, Math.min(1, group.opacity));
+            }
+            if (group.blendMode && group.blendMode !== 'normal') {
+              this.ctx.globalCompositeOperation = blendModeToCompositeOperation(group.blendMode);
+            }
+            if (group.dropShadow) {
+              applyDropShadow(this.ctx, group.dropShadow);
+            }
+            this.ctx.drawImage(
+              entry.canvas as any,
+              entry.bounds.minX,
+              entry.bounds.minY,
+              entry.bounds.width,
+              entry.bounds.height
+            );
+            this.ctx.restore();
+            return;
+          }
         }
       }
     }

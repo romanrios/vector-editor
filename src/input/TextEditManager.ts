@@ -10,7 +10,7 @@ import {
 import {
   getTextIndexAtPosition,
   measureSingleLineTextWidth,
-  getTextBaseAABB,
+  getTextAABB,
 } from '../utils/geometry.ts';
 
 export interface TextEditingState {
@@ -35,7 +35,9 @@ export interface TextEditStateView {
 export interface TextEditManagerHooks {
   onStartEditing?: () => void;
   worldToScreen?: (point: Vector2D) => Vector2D;
+  screenToWorld?: (point: Vector2D) => Vector2D;
   getZoom?: () => number;
+  onWheel?: (event: WheelEvent) => void;
 }
 
 /**
@@ -54,6 +56,11 @@ export class TextEditManager {
   private _isMouseSelectingText: boolean = false;
   private _textDragAnchorIndex: number = 0;
   private _mobileInputProxy: HTMLTextAreaElement | null = null;
+  private _windowCleanupCallbacks: Array<() => void> = [];
+  private _isProgrammaticProxySync: boolean = false;
+  private _lastClickTime: number = 0;
+  private _lastClickPos: { x: number; y: number } = { x: 0, y: 0 };
+  private _clickCount: number = 0;
 
   constructor(
     stateManager: StateManager,
@@ -65,6 +72,18 @@ export class TextEditManager {
     this.commandManager = commandManager;
     this.canvas = canvas;
     this.hooks = hooks;
+  }
+
+  public screenToWorldCoords(clientX: number, clientY: number): Vector2D {
+    const rect = typeof this.canvas.getBoundingClientRect === 'function'
+      ? this.canvas.getBoundingClientRect()
+      : { left: 0, top: 0 };
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
+    if (this.hooks?.screenToWorld) {
+      return this.hooks.screenToWorld({ x: screenX, y: screenY });
+    }
+    return { x: screenX, y: screenY };
   }
 
   public get isEditingText(): boolean {
@@ -312,11 +331,30 @@ export class TextEditManager {
     this.stateManager.markDirty();
   }
 
+  public registerClick(x: number, y: number, eventDetail?: number): number {
+    const now = Date.now();
+    const dt = now - this._lastClickTime;
+    const dist = Math.hypot(x - this._lastClickPos.x, y - this._lastClickPos.y);
+    if (dt < 400 && dist < 15) {
+      this._clickCount++;
+    } else {
+      this._clickCount = 1;
+    }
+    this._lastClickTime = now;
+    this._lastClickPos = { x, y };
+
+    if (typeof eventDetail === 'number' && eventDetail > 0) {
+      return Math.max(eventDetail, this._clickCount);
+    }
+    return this._clickCount;
+  }
+
   /**
    * Maneja el clic en mousedown cuando la edición de texto está activa.
+   * Soporta selección de palabra en doble clic y selección de línea en triple clic.
    * Retorna true si el evento fue consumido por el texto en edición.
    */
-  public handleMouseDown(hitShape: Shape | null, x: number, y: number): boolean {
+  public handleMouseDown(hitShape: Shape | null, x: number, y: number, clickCount?: number): boolean {
     if (!this._textEditingState) {
       return false;
     }
@@ -329,11 +367,29 @@ export class TextEditManager {
         y,
         this.getMeasureContext()
       );
+
+      const effectiveClicks = this.registerClick(x, y, clickCount);
+
+      if (effectiveClicks >= 3) {
+        this.selectLineAt(charIndex);
+        this._isMouseSelectingText = false;
+        this.setupMobileInputProxy(false);
+        return true;
+      }
+
+      if (effectiveClicks === 2) {
+        this.selectWordAt(charIndex);
+        this._isMouseSelectingText = false;
+        this.setupMobileInputProxy(false);
+        return true;
+      }
+
       this._textEditingState.cursorIndex = charIndex;
       this._textEditingState.selectionStart = charIndex;
       this._textEditingState.selectionEnd = charIndex;
       this._isMouseSelectingText = true;
       this._textDragAnchorIndex = charIndex;
+      this.syncProxySelection();
       this.resetCursorBlink();
       this.stateManager.markDirty();
       this.setupMobileInputProxy(false);
@@ -364,6 +420,7 @@ export class TextEditManager {
         this._textEditingState.cursorIndex = charIndex;
         this._textEditingState.selectionStart = this._textDragAnchorIndex;
         this._textEditingState.selectionEnd = charIndex;
+        this.syncProxySelection();
         this.resetCursorBlink();
         this.stateManager.markDirty();
         return true;
@@ -379,6 +436,7 @@ export class TextEditManager {
   public handleMouseUp(): boolean {
     if (this._isMouseSelectingText) {
       this._isMouseSelectingText = false;
+      this.syncProxySelection();
       this.stateManager.markDirty();
       return true;
     }
@@ -784,11 +842,20 @@ export class TextEditManager {
     if (this._mobileInputProxy.value !== this._textEditingState.currentText) {
       this._mobileInputProxy.value = this._textEditingState.currentText;
     }
-    const pos = this._textEditingState.cursorIndex;
-    try {
-      this._mobileInputProxy.setSelectionRange(pos, pos);
-    } catch {
-      // Ignorar si el entorno mock no implementa setSelectionRange
+    if (this._textEditingState.hasSelection) {
+      this.syncProxySelection();
+    } else {
+      const pos = this._textEditingState.cursorIndex;
+      try {
+        this._isProgrammaticProxySync = true;
+        this._mobileInputProxy.setSelectionRange(pos, pos);
+      } catch {
+        // Ignorar si el entorno mock no implementa setSelectionRange
+      } finally {
+        setTimeout(() => {
+          this._isProgrammaticProxySync = false;
+        }, 0);
+      }
     }
   }
 
@@ -804,12 +871,13 @@ export class TextEditManager {
     if (node && isText(node) && this.hooks?.worldToScreen) {
       const zoom = this.hooks.getZoom?.() ?? 1;
       const ctx = this.getMeasureContext();
-      const baseAABB = getTextBaseAABB(node, ctx);
-      const screenPos = this.hooks.worldToScreen({ x: baseAABB.minX, y: baseAABB.minY });
+      const effectiveNode = { ...node, text: this._textEditingState.currentText };
+      const aabb = getTextAABB(effectiveNode, ctx);
+      const screenPos = this.hooks.worldToScreen({ x: aabb.minX, y: aabb.minY });
       screenX = canvasRect.left + screenPos.x;
       screenY = canvasRect.top + screenPos.y;
-      textWidth = Math.max(60, baseAABB.width * zoom);
-      textHeight = Math.max(36, baseAABB.height * zoom);
+      textWidth = Math.max(60, aabb.width * zoom);
+      textHeight = Math.max(36, aabb.height * zoom);
     }
 
     const winW = typeof window !== 'undefined' ? window.innerWidth : 400;
@@ -872,30 +940,169 @@ export class TextEditManager {
         this.stateManager.markDirty();
       });
 
-      const onSelectionSync = () => {
-        if (!this._mobileInputProxy || !this._textEditingState) return;
-        const start = this._mobileInputProxy.selectionStart ?? 0;
-        const end = this._mobileInputProxy.selectionEnd ?? 0;
-        if (
-          this._textEditingState.selectionStart !== start ||
-          this._textEditingState.selectionEnd !== end ||
-          this._textEditingState.cursorIndex !== end
-        ) {
-          this._textEditingState.selectionStart = start;
-          this._textEditingState.selectionEnd = end;
-          this._textEditingState.cursorIndex = end;
-          this.resetCursorBlink();
+      // Delegación de la rueda del ratón (Ctrl+Wheel / Pan) al ViewportManager
+      this._mobileInputProxy.addEventListener('wheel', (e: WheelEvent) => {
+        e.preventDefault();
+        this.hooks?.onWheel?.(e);
+      }, { passive: false });
+
+      const handleProxyPointerDown = (e: MouseEvent | PointerEvent) => {
+        if (e.button !== 0 && e.button !== undefined) return;
+        e.preventDefault();
+        this.ensureProxyFocused();
+        this.resetCursorBlink();
+        if (!this._textEditingState) return;
+        const textNode = this.stateManager.findNode(this._textEditingState.textId);
+        if (textNode && isText(textNode)) {
+          const coords = this.screenToWorldCoords(e.clientX, e.clientY);
+          const effectiveClicks = this.registerClick(coords.x, coords.y, (e as MouseEvent).detail);
+          const charIndex = getTextIndexAtPosition(
+            { ...textNode, text: this._textEditingState.currentText },
+            coords.x,
+            coords.y,
+            this.getMeasureContext()
+          );
+
+          if (effectiveClicks >= 3) {
+            this.selectLineAt(charIndex);
+            this._isMouseSelectingText = false;
+            return;
+          }
+
+          if (effectiveClicks === 2) {
+            this.selectWordAt(charIndex);
+            this._isMouseSelectingText = false;
+            return;
+          }
+
+          this._textEditingState.cursorIndex = charIndex;
+          this._textEditingState.selectionStart = charIndex;
+          this._textEditingState.selectionEnd = charIndex;
+          this._isMouseSelectingText = true;
+          this._textDragAnchorIndex = charIndex;
+          this.syncProxySelection();
           this.stateManager.markDirty();
         }
       };
+
+      this._mobileInputProxy.addEventListener('pointerdown', handleProxyPointerDown);
+      this._mobileInputProxy.addEventListener('mousedown', handleProxyPointerDown);
+
+      const handleProxyPointerMove = (e: MouseEvent | PointerEvent) => {
+        if (!this._isMouseSelectingText || !this._textEditingState) return;
+        const textNode = this.stateManager.findNode(this._textEditingState.textId);
+        if (textNode && isText(textNode)) {
+          const coords = this.screenToWorldCoords(e.clientX, e.clientY);
+          const charIndex = getTextIndexAtPosition(
+            { ...textNode, text: this._textEditingState.currentText },
+            coords.x,
+            coords.y,
+            this.getMeasureContext()
+          );
+          this._textEditingState.cursorIndex = charIndex;
+          this._textEditingState.selectionStart = this._textDragAnchorIndex;
+          this._textEditingState.selectionEnd = charIndex;
+          this.syncProxySelection();
+          this.stateManager.markDirty();
+        }
+      };
+
+      this._mobileInputProxy.addEventListener('pointermove', handleProxyPointerMove);
+      this._mobileInputProxy.addEventListener('mousemove', handleProxyPointerMove);
+
+      const handleProxyPointerUp = (e?: MouseEvent | PointerEvent) => {
+        e?.preventDefault?.();
+        if (this._isMouseSelectingText) {
+          this._isMouseSelectingText = false;
+          this.syncProxySelection();
+          this.stateManager.markDirty();
+        }
+      };
+
+      this._mobileInputProxy.addEventListener('pointerup', handleProxyPointerUp);
+      this._mobileInputProxy.addEventListener('mouseup', handleProxyPointerUp);
+
+      this._mobileInputProxy.addEventListener('dblclick', (e: MouseEvent) => {
+        if (!this._textEditingState) return;
+        const textNode = this.stateManager.findNode(this._textEditingState.textId);
+        if (textNode && isText(textNode)) {
+          const coords = this.screenToWorldCoords(e.clientX, e.clientY);
+          const charIndex = getTextIndexAtPosition(
+            { ...textNode, text: this._textEditingState.currentText },
+            coords.x,
+            coords.y,
+            this.getMeasureContext()
+          );
+          this.selectWordAt(charIndex);
+        }
+      });
+
+      this._mobileInputProxy.addEventListener('click', (e: MouseEvent) => {
+        if (!this._textEditingState) return;
+        const textNode = this.stateManager.findNode(this._textEditingState.textId);
+        if (!textNode || !isText(textNode)) return;
+        const coords = this.screenToWorldCoords(e.clientX, e.clientY);
+        const effectiveClicks = (e.detail && e.detail >= 3) ? e.detail : this._clickCount;
+        if (effectiveClicks >= 3) {
+          const charIndex = getTextIndexAtPosition(
+            { ...textNode, text: this._textEditingState.currentText },
+            coords.x,
+            coords.y,
+            this.getMeasureContext()
+          );
+          this.selectLineAt(charIndex);
+        }
+      });
+
+      if (typeof window !== 'undefined') {
+        const onWinMouseMove = (e: MouseEvent) => {
+          if (this._isMouseSelectingText) {
+            handleProxyPointerMove(e);
+          }
+        };
+        const onWinMouseUp = () => {
+          if (this._isMouseSelectingText) {
+            handleProxyPointerUp();
+          }
+        };
+        window.addEventListener('mousemove', onWinMouseMove);
+        window.addEventListener('mouseup', onWinMouseUp);
+        this._windowCleanupCallbacks.push(() => {
+          window.removeEventListener('mousemove', onWinMouseMove);
+          window.removeEventListener('mouseup', onWinMouseUp);
+        });
+      }
+
+      const onSelectionSync = () => {
+        if (
+          !this._mobileInputProxy ||
+          !this._textEditingState ||
+          this._isMouseSelectingText ||
+          this._isProgrammaticProxySync
+        ) {
+          return;
+        }
+        const proxyStart = this._mobileInputProxy.selectionStart ?? 0;
+        const proxyEnd = this._mobileInputProxy.selectionEnd ?? 0;
+        const isBackward = this._mobileInputProxy.selectionDirection === 'backward';
+        const currentMin = Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+        const currentMax = Math.max(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+
+        if (currentMin === proxyStart && currentMax === proxyEnd) {
+          return;
+        }
+
+        const expectedStart = isBackward ? proxyEnd : proxyStart;
+        const expectedEnd = isBackward ? proxyStart : proxyEnd;
+        const expectedCursor = isBackward ? proxyStart : proxyEnd;
+        this._textEditingState.selectionStart = expectedStart;
+        this._textEditingState.selectionEnd = expectedEnd;
+        this._textEditingState.cursorIndex = expectedCursor;
+        this.resetCursorBlink();
+        this.stateManager.markDirty();
+      };
       this._mobileInputProxy.addEventListener('select', onSelectionSync);
       this._mobileInputProxy.addEventListener('keyup', onSelectionSync);
-      this._mobileInputProxy.addEventListener('click', onSelectionSync);
-      this._mobileInputProxy.addEventListener('pointerup', onSelectionSync);
-      this._mobileInputProxy.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        this.resetCursorBlink();
-      });
 
       this._mobileInputProxy.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -1014,6 +1221,7 @@ export class TextEditManager {
     this._textEditingState.selectionStart = start;
     this._textEditingState.selectionEnd = end;
     this._textEditingState.cursorIndex = end;
+    this.syncProxySelection();
     this.resetCursorBlink();
     this.stateManager.markDirty();
   }
@@ -1033,11 +1241,33 @@ export class TextEditManager {
     this._textEditingState.selectionStart = start;
     this._textEditingState.selectionEnd = end;
     this._textEditingState.cursorIndex = end;
+    this.syncProxySelection();
     this.resetCursorBlink();
     this.stateManager.markDirty();
   }
 
+  private syncProxySelection(): void {
+    if (!this._mobileInputProxy || !this._textEditingState) return;
+    try {
+      this._isProgrammaticProxySync = true;
+      const min = Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+      const max = Math.max(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+      const dir = this._textEditingState.selectionEnd < this._textEditingState.selectionStart ? 'backward' : 'forward';
+      this._mobileInputProxy.setSelectionRange(min, max, dir);
+    } catch {
+      // Ignorar entornos mock donde setSelectionRange no esté implementado
+    } finally {
+      setTimeout(() => {
+        this._isProgrammaticProxySync = false;
+      }, 0);
+    }
+  }
+
   public destroy(): void {
+    for (const cleanup of this._windowCleanupCallbacks) {
+      try { cleanup(); } catch {}
+    }
+    this._windowCleanupCallbacks = [];
     this.teardownMobileInputProxy();
     if (this._mobileInputProxy) {
       this._mobileInputProxy.remove();

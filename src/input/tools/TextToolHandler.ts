@@ -53,7 +53,7 @@ export class TextToolHandler implements ToolHandler {
     if (this.textEditManager.isEditingText) {
       if (hitShape && hitShape.id === this.textEditManager.textEditingState?.textId) {
         _event.preventDefault?.();
-        this.textEditManager.handleMouseDown(hitShape, coords.x, coords.y);
+        this.textEditManager.handleMouseDown(hitShape, coords.x, coords.y, _event.detail);
         return;
       } else {
         this.textEditManager.commitTextEdit();
@@ -70,7 +70,7 @@ export class TextToolHandler implements ToolHandler {
         this.textEditManager.getMeasureContext()
       );
       this.textEditManager.startEditingText(textNode.id, charIndex, false);
-      this.textEditManager.handleMouseDown(textNode, coords.x, coords.y);
+      this.textEditManager.handleMouseDown(textNode, coords.x, coords.y, _event.detail);
       return;
     }
 
@@ -101,6 +101,10 @@ export class TextToolHandler implements ToolHandler {
       return;
     }
 
+    if (this.textEditManager.isEditingText) {
+      return;
+    }
+
     if (this._textCreation) {
       this._textCreation = null;
       this.stateManager.markDirty();
@@ -119,7 +123,11 @@ export class TextToolHandler implements ToolHandler {
         this.textEditManager.getMeasureContext()
       );
       this.textEditManager.startEditingText(textNode.id, charIndex, false);
-      this.textEditManager.selectWordAt(charIndex);
+      if (_event.detail >= 3) {
+        this.textEditManager.selectLineAt(charIndex);
+      } else {
+        this.textEditManager.selectWordAt(charIndex);
+      }
     }
   }
 

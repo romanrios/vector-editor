@@ -449,5 +449,130 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(range.end, 27);
     assert.equal(controller.textEditingState!.currentText.slice(range.start, range.end), 'Segunda linea');
   });
+
+  it('19. zoom con Ctrl+rueda dentro de edición de texto aplica preventDefault y actualiza zoom del canvas', () => {
+    const { controller, textNode } = setupTestEnvironment('Texto Zoom');
+    controller.startEditingText(textNode!.id);
+    assert.equal(controller.isEditingText, true);
+
+    let prevented = false;
+    const wheelEvent = {
+      clientX: 120,
+      clientY: 110,
+      deltaX: 0,
+      deltaY: -100,
+      ctrlKey: true,
+      metaKey: false,
+      preventDefault: () => {
+        prevented = true;
+      },
+    } as unknown as WheelEvent;
+
+    controller.handleWheel(wheelEvent);
+    assert.equal(prevented, true, 'Debe prevenir zoom nativo del navegador');
+    assert.ok(controller.viewportManager.zoom > 1, 'Debe aplicar zoom al viewport');
+    assert.equal(controller.isEditingText, true, 'Debe permanecer en edición de texto');
+  });
+
+  it('20. interacción y selección de texto con mouse mediante screenToWorldCoords', () => {
+    const { controller, textNode } = setupTestEnvironment('0123456789');
+    controller.startEditingText(textNode!.id);
+
+    // textNode está en (100, 100), cada char 10px en mock context
+    // Simular mousedown en x=120 (índice 2)
+    const worldPoint = controller.textEditManager.screenToWorldCoords(120, 105);
+    assert.equal(worldPoint.x, 120);
+
+    controller.textEditManager.handleMouseDown(textNode, 120, 105);
+    assert.equal(controller.textEditingState?.cursorIndex, 2);
+
+    // Simular arrastre a x=170 (índice 7)
+    controller.textEditManager.handleMouseMove(170, 105);
+    const range = controller.textSelectionRange!;
+    assert.equal(range.start, 2);
+    assert.equal(range.end, 7);
+
+    // Soltar arrastre
+    controller.textEditManager.handleMouseUp();
+    assert.equal(controller.textEditManager.isMouseSelectingText, false);
+  });
+
+  it('21. arrastre de derecha a izquierda preserva la selección al soltar el clic (no se deselecciona)', () => {
+    const { controller, textNode } = setupTestEnvironment('0123456789');
+    controller.startEditingText(textNode!.id);
+
+    // Mousedown en x=170 (índice 7, derecha)
+    controller.textEditManager.handleMouseDown(textNode, 170, 105);
+    assert.equal(controller.textEditingState?.cursorIndex, 7);
+    assert.equal(controller.textEditingState?.selectionStart, 7);
+    assert.equal(controller.textEditingState?.selectionEnd, 7);
+
+    // Arrastre a la izquierda hasta x=120 (índice 2)
+    controller.textEditManager.handleMouseMove(120, 105);
+    assert.equal(controller.textEditingState?.selectionStart, 7);
+    assert.equal(controller.textEditingState?.selectionEnd, 2);
+    assert.equal(controller.textEditingState?.cursorIndex, 2);
+
+    const rangeBeforeUp = controller.textSelectionRange!;
+    assert.equal(rangeBeforeUp.start, 2);
+    assert.equal(rangeBeforeUp.end, 7);
+
+    // Soltar el clic con handleMouseUp
+    controller.textEditManager.handleMouseUp();
+    assert.equal(controller.textEditManager.isMouseSelectingText, false);
+
+    // La selección DEBE preservarse intacta (no deseleccionarse ni colapsar)
+    const rangeAfterUp = controller.textSelectionRange!;
+    assert.equal(rangeAfterUp.start, 2);
+    assert.equal(rangeAfterUp.end, 7);
+    assert.equal(controller.textEditingState?.selectionStart, 7);
+    assert.equal(controller.textEditingState?.selectionEnd, 2);
+
+    // Invocar handleMouseUp de InputController tampoco debe deseleccionar ni salir de modo edición
+    const mouseUpEvent = {
+      button: 0,
+      clientX: 120,
+      clientY: 105,
+      preventDefault: () => {},
+    } as unknown as MouseEvent;
+    controller.handleMouseUp(mouseUpEvent);
+    assert.equal(controller.isEditingText, true);
+    assert.equal(controller.textSelectionRange?.start, 2);
+    assert.equal(controller.textSelectionRange?.end, 7);
+  });
+
+  it('22. triple clic selecciona la línea completa de texto', () => {
+    const { controller, textNode } = setupTestEnvironment('Primera linea\nSegunda linea completa\nTercera');
+    controller.startEditingText(textNode!.id);
+
+    // Mousedown en la segunda línea ("Segunda linea completa") con detail = 3 (triple clic)
+    const textNodeModel = controller.stateManager.findNode(textNode!.id) as Text;
+    controller.textEditManager.handleMouseDown(textNodeModel, 160, 125, 3);
+
+    const range = controller.textSelectionRange!;
+    assert.ok(range, 'Debe haber un rango de selección activo');
+    assert.equal(range.start, 14);
+    assert.equal(range.end, 36);
+    assert.equal(
+      controller.textEditingState?.currentText.slice(range.start, range.end),
+      'Segunda linea completa'
+    );
+
+    // Prueba también con clics consecutivos rápidos
+    const controller2 = setupTestEnvironment('Linea Unica').controller;
+    const text2 = controller2.stateManager.findNode(textNode!.id) as Text;
+    controller2.startEditingText(text2.id);
+
+    // Simular 3 clics rápidos en x=120, y=105
+    controller2.textEditManager.handleMouseDown(text2, 120, 105);
+    controller2.textEditManager.handleMouseDown(text2, 120, 105);
+    controller2.textEditManager.handleMouseDown(text2, 120, 105);
+
+    const range2 = controller2.textSelectionRange!;
+    assert.equal(range2.start, 0);
+    assert.equal(range2.end, 11);
+    assert.equal(controller2.textEditingState?.currentText.slice(range2.start, range2.end), 'Linea Unica');
+  });
 });
+
 
