@@ -65,8 +65,11 @@ export function measureSingleLineTextWidth(
     if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
       fontParts.push(String(text.fontWeight));
     }
+    const safeFontFamily = fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
+      ? `"${fontFamily}"`
+      : fontFamily;
     fontParts.push(`${fontSize}px`);
-    fontParts.push(fontFamily);
+    fontParts.push(safeFontFamily);
     activeCtx.font = fontParts.join(' ');
 
     if ('letterSpacing' in activeCtx) {

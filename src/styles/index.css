@@ -1,4 +1,5 @@
 /* Punto de entrada central de estilos - Vectedit */
+@import './base/fonts.css';
 @import './base/variables.css';
 @import './base/reset.css';
 @import './layout/app-layout.css';

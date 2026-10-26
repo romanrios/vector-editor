@@ -450,8 +450,11 @@ function renderShapeToContext(ctx: CanvasRenderingContext2D, shape: LayerChildNo
       }
       const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
       const fontFamily = text.fontFamily ?? 'sans-serif';
+      const safeFontFamily = fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
+        ? `"${fontFamily}"`
+        : fontFamily;
       fontParts.push(`${fontSize}px`);
-      fontParts.push(fontFamily);
+      fontParts.push(safeFontFamily);
       ctx.font = fontParts.join(' ');
 
       ctx.textAlign = text.textAlign ?? 'left';
