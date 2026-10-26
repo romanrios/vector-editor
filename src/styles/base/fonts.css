@@ -135,3 +135,52 @@
 @font-face { font-family: 'Poppins'; font-style: italic; font-weight: 800; src: url('/fonts/poppins/poppins-latin-800-italic.woff') format('woff'); font-display: swap; }
 @font-face { font-family: 'Poppins'; font-style: normal; font-weight: 900; src: url('/fonts/poppins/poppins-latin-900-normal.woff') format('woff'); font-display: swap; }
 @font-face { font-family: 'Poppins'; font-style: italic; font-weight: 900; src: url('/fonts/poppins/poppins-latin-900-italic.woff') format('woff'); font-display: swap; }
+
+/* --- Lora (Variable Serif: 100 a 900) --- */
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/lora/lora-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/lora/lora-latin-wght-italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- Merriweather (Variable Serif: 100 a 900) --- */
+@font-face {
+  font-family: 'Merriweather';
+  src: url('/fonts/merriweather/merriweather-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Merriweather';
+  src: url('/fonts/merriweather/merriweather-latin-wght-italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- Playfair Display (Variable Serif: 100 a 900) --- */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair/playfair-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair/playfair-latin-wght-italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
