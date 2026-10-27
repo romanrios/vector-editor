@@ -98,11 +98,6 @@ export class TextToolHandler implements ToolHandler {
   public onMouseUp(_event: MouseEvent, _coords: Vector2D): void {
     if (this.textEditManager.isMouseSelectingText) {
       this.textEditManager.handleMouseUp();
-      return;
-    }
-
-    if (this.textEditManager.isEditingText) {
-      return;
     }
 
     if (this._textCreation) {

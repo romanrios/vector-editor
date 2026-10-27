@@ -271,6 +271,53 @@ describe('Herramienta Texto (Text Tool)', () => {
     assert.equal((stateManager.findNode(layerId) as any).children[0].boxWidth, 120);
   });
 
+  it('soltar el clic tras crear un texto nuevo no deja pegado el escalado horizontal al mover el ratón', () => {
+    const canvas = createMockCanvas();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+    controller.setTool('text');
+
+    // Clic simple: mousedown y mouseup inmediatos en (100, 100)
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 100, clientY: 100, button: 0 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 100, clientY: 100, button: 0 });
+
+    assert.equal(controller.textToolHandler.textCreation, null, 'textCreation debe ser null tras mouseup');
+
+    // Mover el ratón después de soltar el clic
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 300, clientY: 100 });
+
+    const layer = stateManager.findNode(layerId) as any;
+    const createdText = layer.children[0] as Text;
+    assert.equal(createdText.boxWidth, undefined, 'El ancho de caja debe seguir undefined sin arrastre');
+    assert.equal(createdText.x, 100, 'La posición x no debe desplazarse tras mover el ratón');
+  });
+
+  it('soltar el clic tras arrastrar el ancho de caja finaliza la creación y mousemove posterior no altera boxWidth', () => {
+    const canvas = createMockCanvas();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const controller = new InputController(canvas, stateManager, commandManager);
+    const layerId = stateManager.getState().children[0].id;
+    controller.setTool('text');
+
+    // Arrastre inicial para definir boxWidth
+    canvas.dispatchSimulatedEvent('mousedown', { clientX: 150, clientY: 150, button: 0 });
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 250, clientY: 150 });
+    canvas.dispatchSimulatedEvent('mouseup', { clientX: 250, clientY: 150, button: 0 });
+
+    assert.equal(controller.textToolHandler.textCreation, null, 'textCreation debe finalizar tras mouseup');
+
+    const layer = stateManager.findNode(layerId) as any;
+    const createdText = layer.children[0] as Text;
+    assert.equal(createdText.boxWidth, 100, 'El ancho debe haberse fijado a 100');
+
+    // Movimiento posterior del ratón no debe alterar el boxWidth fijado
+    canvas.dispatchSimulatedEvent('mousemove', { clientX: 450, clientY: 150 });
+    assert.equal((stateManager.findNode(layerId) as any).children[0].boxWidth, 100, 'boxWidth debe permanecer en 100');
+  });
+
   it('6. setupUIBindings sincroniza el botón #tool-text y la etiqueta "Modo: Texto"', () => {
     const btnSelect = new MockElement('tool-select');
     const btnText = new MockElement('tool-text');

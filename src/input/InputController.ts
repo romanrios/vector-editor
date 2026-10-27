@@ -407,6 +407,7 @@ export class InputController {
     this.creationToolHandler?.cancelCreation();
     this.pencilToolHandler?.cancelDrawing();
     this.lineToolHandler?.cancelCreation();
+    this.textToolHandler?.cancelCreation();
     this.selectToolHandler?.cancelMarquee();
     this.selectToolHandler?.resetDrag();
     this.selectToolHandler?.resetResize();
