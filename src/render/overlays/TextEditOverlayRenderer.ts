@@ -18,7 +18,11 @@ export function renderTextEditOverlay(
   zoom: number
 ): void {
   const currentText = textEdit.text;
-  const tempNode: Text = { ...text, text: currentText };
+  const tempNode: Text = {
+    ...text,
+    text: currentText,
+    spans: textEdit.spans !== undefined ? textEdit.spans : text.spans,
+  };
   const baseAABB = getTextBaseAABB(tempNode, ctx);
   const lineHeight = getTextLineHeight(tempNode);
 
@@ -87,7 +91,7 @@ export function renderTextEditOverlay(
     const currentLine = lines[lineIdx]?.text ?? '';
     const lineStart = lines[lineIdx]?.start ?? 0;
     const col = Math.max(0, Math.min(currentLine.length, cursorIndex - lineStart));
-    const lineWidth = measureSingleLineTextWidth(tempNode, currentLine, ctx);
+    const lineWidth = measureSingleLineTextWidth(tempNode, currentLine, ctx, lineStart);
 
     const hasBoxWidth = typeof tempNode.boxWidth === 'number' && tempNode.boxWidth > 0;
     let lineStartX = text.x;
@@ -105,7 +109,7 @@ export function renderTextEditOverlay(
       }
     }
 
-    const cursorOffset = measureSingleLineTextWidth(tempNode, currentLine.slice(0, col), ctx);
+    const cursorOffset = measureSingleLineTextWidth(tempNode, currentLine.slice(0, col), ctx, lineStart);
     const caretX = lineStartX + cursorOffset;
     const caretY = text.y + lineIdx * lineHeight;
 

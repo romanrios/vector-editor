@@ -1,5 +1,10 @@
 import type { AABB, Text } from '../../types/scene-graph.ts';
 import { isNonePaint } from '../color.ts';
+import {
+  splitTextIntoRuns,
+  getBaseTextStyle,
+  type ResolvedTextStyle,
+} from '../textSpans.ts';
 
 let sharedMeasureContext: CanvasRenderingContext2D | null = null;
 
@@ -29,45 +34,54 @@ export function setSharedMeasureContext(ctx: CanvasRenderingContext2D | null): v
 
 /**
  * Obtiene el lineHeight efectivo de un nodo Text.
- * Si no está definido o no es válido, retorna por defecto fontSize * 1.2.
+ * Si no está definido o no es válido, retorna por defecto el tamaño máximo de fuente * 1.2.
  */
 export function getTextLineHeight(text: Text): number {
-  const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
   if (typeof text.lineHeight === 'number' && text.lineHeight > 0) {
     return text.lineHeight;
   }
-  return fontSize * 1.2;
+  let maxFontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
+  if (text.spans && text.spans.length > 0) {
+    for (let i = 0; i < text.spans.length; i++) {
+      const s = text.spans[i];
+      if (typeof s.fontSize === 'number' && s.fontSize > maxFontSize) {
+        maxFontSize = s.fontSize;
+      }
+    }
+  }
+  return maxFontSize * 1.2;
 }
 
 /**
- * Mide el ancho de una única línea de texto usando CanvasRenderingContext2D.measureText cuando está disponible.
+ * Mide el ancho de un tramo de texto homogéneo con un estilo resuelto específico
  */
-export function measureSingleLineTextWidth(
-  text: Text,
-  line: string,
+export function measureStyledRun(
+  runText: string,
+  style: ResolvedTextStyle,
   ctx?: CanvasRenderingContext2D | null
 ): number {
-  if (!line) {
+  if (!runText) {
     return 0;
   }
 
   const activeCtx = ctx ?? getTextMeasureContext();
-  const fontSize = typeof text.fontSize === 'number' && text.fontSize > 0 ? text.fontSize : 16;
-  const fontFamily = text.fontFamily ?? 'sans-serif';
-  const letterSpacing = typeof text.letterSpacing === 'number' && Number.isFinite(text.letterSpacing) ? text.letterSpacing : 0;
-  const spacingCount = Math.max(0, line.length - 1);
+  const fontSize = style.fontSize;
+  const fontFamily = style.fontFamily;
+  const letterSpacing = style.letterSpacing;
+  const spacingCount = Math.max(0, runText.length - 1);
 
   if (activeCtx && typeof activeCtx.measureText === 'function') {
     const fontParts: string[] = [];
-    if (text.fontStyle && text.fontStyle !== 'normal') {
-      fontParts.push(text.fontStyle);
+    if (style.fontStyle && style.fontStyle !== 'normal') {
+      fontParts.push(style.fontStyle);
     }
-    if (text.fontWeight && text.fontWeight !== 'normal' && text.fontWeight !== 400) {
-      fontParts.push(String(text.fontWeight));
+    if (style.fontWeight && style.fontWeight !== 'normal' && style.fontWeight !== 400) {
+      fontParts.push(String(style.fontWeight));
     }
-    const safeFontFamily = fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
-      ? `"${fontFamily}"`
-      : fontFamily;
+    const safeFontFamily =
+      fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
+        ? `"${fontFamily}"`
+        : fontFamily;
     fontParts.push(`${fontSize}px`);
     fontParts.push(safeFontFamily);
     activeCtx.font = fontParts.join(' ');
@@ -78,7 +92,7 @@ export function measureSingleLineTextWidth(
       } catch (_) {}
     }
 
-    const metrics = activeCtx.measureText(line);
+    const metrics = activeCtx.measureText(runText);
     if (metrics && typeof metrics.width === 'number' && metrics.width > 0) {
       const isNativeBrowserCanvas =
         typeof (globalThis as any).CanvasRenderingContext2D !== 'undefined' &&
@@ -92,9 +106,59 @@ export function measureSingleLineTextWidth(
   }
 
   // Fallback heurístico determinista para entornos sin motor tipográfico nativo
-  const baseWidth = line.length * (fontSize * 0.6);
+  const baseWidth = runText.length * (fontSize * 0.6);
   const extraSpacing = letterSpacing !== 0 ? spacingCount * letterSpacing : 0;
   return Math.max(0, baseWidth + extraSpacing);
+}
+
+/**
+ * Mide el ancho de un rango de caracteres dentro de un nodo Text,
+ * sumando el ancho de cada tramo estilizado (Rich Text / Spans)
+ */
+export function measureTextRangeWidth(
+  text: Text,
+  rangeStart: number,
+  rangeEnd: number,
+  ctx?: CanvasRenderingContext2D | null
+): number {
+  if (rangeStart >= rangeEnd) {
+    return 0;
+  }
+  const runs = splitTextIntoRuns(text, rangeStart, rangeEnd);
+  let total = 0;
+  for (let i = 0; i < runs.length; i++) {
+    total += measureStyledRun(runs[i].text, runs[i].style, ctx);
+  }
+  return total;
+}
+
+/**
+ * Mide el ancho de una única línea de texto usando CanvasRenderingContext2D.measureText cuando está disponible,
+ * soportando estilos mixtos mediante Spans.
+ */
+export function measureSingleLineTextWidth(
+  text: Text,
+  line: string,
+  ctx?: CanvasRenderingContext2D | null,
+  charStart?: number
+): number {
+  if (!line) {
+    return 0;
+  }
+
+  if (text.spans && text.spans.length > 0) {
+    let start = charStart;
+    if (start === undefined) {
+      const content = text.text ?? '';
+      start = content.indexOf(line);
+    }
+    if (start !== undefined && start !== -1) {
+      return measureTextRangeWidth(text, start, start + line.length, ctx);
+    }
+  }
+
+  const base = getBaseTextStyle(text);
+  return measureStyledRun(line, base, ctx);
 }
 
 /**
@@ -135,7 +199,7 @@ export function getTextLineRanges(
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
       const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const width = measureSingleLineTextWidth(text, testLine, ctx);
+      const width = measureSingleLineTextWidth(text, testLine, ctx, currentStart);
 
       if (width <= text.boxWidth || !currentLine) {
         if (!currentLine) {
@@ -253,7 +317,7 @@ export function getTextIndexAtPosition(
 
   // 4. Determinar la posición horizontal de inicio de la línea seleccionada según textAlign
   const { text: currentLine, start: lineStart, end: lineEnd } = lines[lineIndex];
-  const lineWidth = measureSingleLineTextWidth(text, currentLine, ctx);
+  const lineWidth = measureSingleLineTextWidth(text, currentLine, ctx, lineStart);
   const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
   let startX = text.x;
   if (hasBoxWidth) {
@@ -283,7 +347,7 @@ export function getTextIndexAtPosition(
   let closestCol = 0;
   let minDiff = Infinity;
   for (let i = 0; i <= currentLine.length; i++) {
-    const w = measureSingleLineTextWidth(text, currentLine.slice(0, i), ctx);
+    const w = measureSingleLineTextWidth(text, currentLine.slice(0, i), ctx, lineStart);
     const diff = Math.abs(w - offsetX);
     if (diff < minDiff) {
       minDiff = diff;

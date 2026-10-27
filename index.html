@@ -246,6 +246,170 @@
           </div>
         </div>
 
+        <!-- Menú Texto -->
+        <div class="menu-container">
+          <button id="menu-btn-type" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
+            tabindex="-1" disabled>
+            Texto
+          </button>
+          <div id="menu-dropdown-type" class="menu-dropdown" role="menu" aria-labelledby="menu-btn-type" hidden>
+            <!-- Submenú Fuente -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-type-font" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Fuente</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-type-font" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-type-font" hidden>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Inter" tabindex="-1">
+                  <span class="menu-item-label">Inter</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Roboto" tabindex="-1">
+                  <span class="menu-item-label">Roboto</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Montserrat" tabindex="-1">
+                  <span class="menu-item-label">Montserrat</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Open Sans" tabindex="-1">
+                  <span class="menu-item-label">Open Sans</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Arial" tabindex="-1">
+                  <span class="menu-item-label">Arial</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Times New Roman" tabindex="-1">
+                  <span class="menu-item-label">Times New Roman</span>
+                </button>
+                <button class="menu-dropdown-item menu-item-type-font-opt" role="menuitem" data-font="Courier New" tabindex="-1">
+                  <span class="menu-item-label">Courier New</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Submenú Tamaño -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-type-size" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Tamaño</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-type-size" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-type-size" hidden>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="9" tabindex="-1"><span class="menu-item-label">9 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="10" tabindex="-1"><span class="menu-item-label">10 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="12" tabindex="-1"><span class="menu-item-label">12 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="14" tabindex="-1"><span class="menu-item-label">14 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="18" tabindex="-1"><span class="menu-item-label">18 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="24" tabindex="-1"><span class="menu-item-label">24 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="32" tabindex="-1"><span class="menu-item-label">32 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="48" tabindex="-1"><span class="menu-item-label">48 pt</span></button>
+                <button class="menu-dropdown-item menu-item-type-size-opt" role="menuitem" data-size="72" tabindex="-1"><span class="menu-item-label">72 pt</span></button>
+              </div>
+            </div>
+
+            <!-- Submenú Estilo -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-type-style" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Estilo</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-type-style" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-type-style" hidden>
+                <button id="menu-item-type-style-regular" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Normal</span>
+                </button>
+                <button id="menu-item-type-style-bold" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Negrita</span>
+                  <span class="menu-shortcut">Ctrl+B</span>
+                </button>
+                <button id="menu-item-type-style-italic" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Cursiva</span>
+                  <span class="menu-shortcut">Ctrl+I</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Submenú Alineación -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-type-align" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Alineación</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-type-align" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-type-align" hidden>
+                <button id="menu-item-type-align-left" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Alinear a la izquierda</span>
+                </button>
+                <button id="menu-item-type-align-center" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Centrar</span>
+                </button>
+                <button id="menu-item-type-align-right" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Alinear a la derecha</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+
+            <!-- Conversión Punto / Área -->
+            <button id="menu-item-type-toggle-kind" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Convertir a texto de área</span>
+            </button>
+
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+
+            <!-- Submenú Mayúsculas / Minúsculas -->
+            <div class="menu-submenu-container">
+              <button id="menu-item-type-casing" class="menu-dropdown-item menu-submenu-trigger" role="menuitem"
+                aria-haspopup="true" aria-expanded="false" tabindex="-1">
+                <span class="menu-item-label">Cambiar mayúsculas y minúsculas</span>
+                <svg class="menu-submenu-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <div id="menu-dropdown-type-casing" class="menu-dropdown menu-submenu" role="menu"
+                aria-labelledby="menu-item-type-casing" hidden>
+                <button id="menu-item-type-uppercase" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">MAYÚSCULAS</span>
+                </button>
+                <button id="menu-item-type-lowercase" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">minúsculas</span>
+                </button>
+                <button id="menu-item-type-titlecase" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+                  <span class="menu-item-label">Tipo Título</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="menu-divider" role="separator" aria-hidden="true"></div>
+
+            <!-- Llenar con texto falso -->
+            <button id="menu-item-type-lorem" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Llenar con texto falso</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Menú Vista -->
         <div class="menu-container">
           <button id="menu-btn-view" class="menu-trigger" role="menuitem" aria-haspopup="true" aria-expanded="false"
@@ -2097,6 +2261,13 @@
     <button id="ctx-item-outline-stroke" class="menu-dropdown-item" role="menuitem" tabindex="-1">
       <span class="menu-item-label">Contornear trazado</span>
       <span class="menu-shortcut">Ctrl+Shift+O</span>
+    </button>
+    <div id="ctx-divider-text" class="menu-divider" role="separator" aria-hidden="true" hidden></div>
+    <button id="ctx-item-convert-to-area-text" class="menu-dropdown-item" role="menuitem" tabindex="-1" hidden>
+      <span class="menu-item-label">Convertir a texto de área</span>
+    </button>
+    <button id="ctx-item-convert-to-point-text" class="menu-dropdown-item" role="menuitem" tabindex="-1" hidden>
+      <span class="menu-item-label">Convertir a texto de punto</span>
     </button>
     <div class="menu-divider" role="separator" aria-hidden="true"></div>
     <div class="menu-submenu-container" id="ctx-submenu-align-container">

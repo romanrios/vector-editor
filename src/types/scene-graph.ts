@@ -212,10 +212,30 @@ export type FontStyle = 'normal' | 'italic';
 export type FontWeight = 'normal' | 'bold' | string | number;
 
 /**
- * Propiedades geométricas, tipográficas y visuales para nodos de tipo Text (texto de punto)
+ * Modo o tipo de texto: 'point' (texto de punto) o 'area' (texto de párrafo con caja)
+ */
+export type TextKind = 'point' | 'area';
+
+/**
+ * Tramo de estilo tipográfico para soporte de múltiples estilos dentro de la misma caja de texto
+ */
+export interface TextSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly fontFamily?: string;
+  readonly fontSize?: number;
+  readonly fontWeight?: FontWeight;
+  readonly fontStyle?: FontStyle;
+  readonly fill?: FillType;
+  readonly letterSpacing?: number;
+}
+
+/**
+ * Propiedades geométricas, tipográficas y visuales para nodos de tipo Text (texto de punto o de área)
  */
 export interface Text extends BaseNode {
   readonly type: 'text';
+  readonly textKind?: TextKind;
   readonly x: number;
   readonly y: number;
   readonly text: string;
@@ -232,6 +252,8 @@ export interface Text extends BaseNode {
   readonly rotation?: number;
   readonly opacity?: number;
   readonly boxWidth?: number;
+  readonly boxHeight?: number;
+  readonly spans?: readonly TextSpan[];
 }
 
 /**

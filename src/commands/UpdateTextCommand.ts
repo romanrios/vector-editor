@@ -1,10 +1,10 @@
 import type { Command } from './Command.ts';
 import type { StateManager } from '../state/StateManager.ts';
-import type { Text } from '../types/scene-graph.ts';
+import type { Text, TextSpan } from '../types/scene-graph.ts';
 
 /**
  * Comando que encapsula la edición del contenido de un nodo Text en el Scene Graph,
- * almacenando su contenido previo y posterior para permitir deshacer (undo) y rehacer (redo).
+ * almacenando su contenido y spans previos y posteriores para permitir deshacer (undo) y rehacer (redo).
  */
 export class UpdateTextCommand implements Command {
   public readonly name: string = 'UpdateTextCommand';
@@ -12,38 +12,56 @@ export class UpdateTextCommand implements Command {
   public readonly textId: string;
   public readonly previousText: string;
   public readonly newText: string;
+  public readonly previousSpans?: readonly TextSpan[];
+  public readonly newSpans?: readonly TextSpan[];
 
   public get shapeId(): string {
     return this.textId;
   }
 
   public get isAlreadyAtTarget(): boolean {
-    return this.previousText === this.newText;
+    const textSame = this.previousText === this.newText;
+    const spansSame =
+      this.previousSpans === this.newSpans ||
+      JSON.stringify(this.previousSpans ?? []) === JSON.stringify(this.newSpans ?? []);
+    return textSame && spansSame;
   }
 
   constructor(
     stateManager: StateManager,
     textId: string,
     previousText: string,
-    newText: string
+    newText: string,
+    previousSpans?: readonly TextSpan[],
+    newSpans?: readonly TextSpan[]
   ) {
     this.stateManager = stateManager;
     this.textId = textId;
     this.previousText = previousText;
     this.newText = newText;
+    this.previousSpans = previousSpans;
+    this.newSpans = newSpans;
   }
 
   /**
-   * Aplica el nuevo contenido de texto al nodo Text (rehacer/redo).
+   * Aplica el nuevo contenido de texto y spans al nodo Text (rehacer/redo).
    */
   public execute(): void {
-    this.stateManager.updateShape<Text>(this.textId, { text: this.newText });
+    const patch: Partial<Text> = { text: this.newText };
+    if (this.newSpans !== undefined) {
+      patch.spans = this.newSpans;
+    }
+    this.stateManager.updateShape<Text>(this.textId, patch);
   }
 
   /**
-   * Restaura el contenido de texto previo al nodo Text (deshacer/undo).
+   * Restaura el contenido de texto y spans previos al nodo Text (deshacer/undo).
    */
   public undo(): void {
-    this.stateManager.updateShape<Text>(this.textId, { text: this.previousText });
+    const patch: Partial<Text> = { text: this.previousText };
+    if (this.previousSpans !== undefined) {
+      patch.spans = this.previousSpans;
+    }
+    this.stateManager.updateShape<Text>(this.textId, patch);
   }
 }

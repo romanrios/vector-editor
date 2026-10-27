@@ -315,6 +315,123 @@ export class MenuItemActionsController {
     this.options.openAboutDialog?.(this.elements.btnAboutBrand);
   };
 
+  private onTypeFontClick = (e: MouseEvent): void => {
+    const target = (e.target as HTMLElement).closest<HTMLButtonElement>('.menu-item-type-font-opt');
+    const font = target?.getAttribute('data-font');
+    if (font) {
+      this.navigation.closeAllMenus();
+      this.inputController.applyTextTypography({ fontFamily: font });
+      this.options.onAction?.();
+      this.options.onSyncPropertiesPanel?.();
+      this.elements.canvas?.focus?.();
+    }
+  };
+
+  private onTypeSizeClick = (e: MouseEvent): void => {
+    const target = (e.target as HTMLElement).closest<HTMLButtonElement>('.menu-item-type-size-opt');
+    const size = parseFloat(target?.getAttribute('data-size') || '');
+    if (!isNaN(size) && size > 0) {
+      this.navigation.closeAllMenus();
+      this.inputController.applyTextTypography({ fontSize: size });
+      this.options.onAction?.();
+      this.options.onSyncPropertiesPanel?.();
+      this.elements.canvas?.focus?.();
+    }
+  };
+
+  private onTypeStyleRegularClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ fontWeight: 400, fontStyle: 'normal' });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeStyleBoldClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ fontWeight: 700 });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeStyleItalicClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ fontStyle: 'italic' });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeAlignLeftClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ textAlign: 'left' });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeAlignCenterClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ textAlign: 'center' });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeAlignRightClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.applyTextTypography({ textAlign: 'right' });
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeToggleKindClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.toggleTextKind();
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeUppercaseClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.changeTextCase('uppercase');
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeLowercaseClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.changeTextCase('lowercase');
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeTitlecaseClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.changeTextCase('titlecase');
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
+  private onTypeLoremClick = (): void => {
+    this.navigation.closeAllMenus();
+    this.inputController.fillLoremIpsum();
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
   constructor(
     elements: MenuBarElements,
     inputController: InputController,
@@ -377,6 +494,24 @@ export class MenuItemActionsController {
     el.menuItemPathfinderIntersect?.addEventListener('click', this.onPathfinderIntersect);
     el.menuItemPathfinderExclude?.addEventListener('click', this.onPathfinderExclude);
 
+    for (const opt of el.menuItemTypeFontOptions) {
+      opt.addEventListener('click', this.onTypeFontClick);
+    }
+    for (const opt of el.menuItemTypeSizeOptions) {
+      opt.addEventListener('click', this.onTypeSizeClick);
+    }
+    el.menuItemTypeStyleRegular?.addEventListener('click', this.onTypeStyleRegularClick);
+    el.menuItemTypeStyleBold?.addEventListener('click', this.onTypeStyleBoldClick);
+    el.menuItemTypeStyleItalic?.addEventListener('click', this.onTypeStyleItalicClick);
+    el.menuItemTypeAlignLeft?.addEventListener('click', this.onTypeAlignLeftClick);
+    el.menuItemTypeAlignCenter?.addEventListener('click', this.onTypeAlignCenterClick);
+    el.menuItemTypeAlignRight?.addEventListener('click', this.onTypeAlignRightClick);
+    el.menuItemTypeToggleKind?.addEventListener('click', this.onTypeToggleKindClick);
+    el.menuItemTypeUppercase?.addEventListener('click', this.onTypeUppercaseClick);
+    el.menuItemTypeLowercase?.addEventListener('click', this.onTypeLowercaseClick);
+    el.menuItemTypeTitlecase?.addEventListener('click', this.onTypeTitlecaseClick);
+    el.menuItemTypeLorem?.addEventListener('click', this.onTypeLoremClick);
+
     el.menuItemZoomIn?.addEventListener('click', this.onMenuZoomInClick);
     el.menuItemZoomOut?.addEventListener('click', this.onMenuZoomOutClick);
     el.menuItemZoomFit?.addEventListener('click', this.onMenuZoomFitClick);
@@ -429,6 +564,24 @@ export class MenuItemActionsController {
     el.menuItemPathfinderSubtract?.removeEventListener('click', this.onPathfinderSubtract);
     el.menuItemPathfinderIntersect?.removeEventListener('click', this.onPathfinderIntersect);
     el.menuItemPathfinderExclude?.removeEventListener('click', this.onPathfinderExclude);
+
+    for (const opt of el.menuItemTypeFontOptions) {
+      opt.removeEventListener('click', this.onTypeFontClick);
+    }
+    for (const opt of el.menuItemTypeSizeOptions) {
+      opt.removeEventListener('click', this.onTypeSizeClick);
+    }
+    el.menuItemTypeStyleRegular?.removeEventListener('click', this.onTypeStyleRegularClick);
+    el.menuItemTypeStyleBold?.removeEventListener('click', this.onTypeStyleBoldClick);
+    el.menuItemTypeStyleItalic?.removeEventListener('click', this.onTypeStyleItalicClick);
+    el.menuItemTypeAlignLeft?.removeEventListener('click', this.onTypeAlignLeftClick);
+    el.menuItemTypeAlignCenter?.removeEventListener('click', this.onTypeAlignCenterClick);
+    el.menuItemTypeAlignRight?.removeEventListener('click', this.onTypeAlignRightClick);
+    el.menuItemTypeToggleKind?.removeEventListener('click', this.onTypeToggleKindClick);
+    el.menuItemTypeUppercase?.removeEventListener('click', this.onTypeUppercaseClick);
+    el.menuItemTypeLowercase?.removeEventListener('click', this.onTypeLowercaseClick);
+    el.menuItemTypeTitlecase?.removeEventListener('click', this.onTypeTitlecaseClick);
+    el.menuItemTypeLorem?.removeEventListener('click', this.onTypeLoremClick);
 
     el.menuItemZoomIn?.removeEventListener('click', this.onMenuZoomInClick);
     el.menuItemZoomOut?.removeEventListener('click', this.onMenuZoomOutClick);

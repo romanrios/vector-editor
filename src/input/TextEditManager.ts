@@ -5,6 +5,7 @@ import {
   isText,
   type Shape,
   type Text,
+  type TextSpan,
   type Vector2D,
 } from '../types/scene-graph.ts';
 import {
@@ -12,11 +13,20 @@ import {
   measureSingleLineTextWidth,
   getTextAABB,
 } from '../utils/geometry.ts';
+import {
+  adjustSpansOnTextChange,
+  applySpanToRange,
+  getBaseTextStyle,
+  resolveCharacterStyle,
+  type ResolvedTextStyle,
+} from '../utils/textSpans.ts';
 
 export interface TextEditingState {
   readonly textId: string;
   readonly originalText: string;
+  readonly originalSpans?: readonly TextSpan[];
   currentText: string;
+  currentSpans?: readonly TextSpan[];
   cursorIndex: number;
   selectionStart: number;
   selectionEnd: number;
@@ -26,6 +36,7 @@ export interface TextEditingState {
 export interface TextEditStateView {
   readonly textId: string;
   readonly text: string;
+  readonly spans?: readonly TextSpan[];
   readonly cursorIndex: number;
   readonly selectionStart: number;
   readonly selectionEnd: number;
@@ -115,6 +126,7 @@ export class TextEditManager {
     return {
       textId: this._textEditingState.textId,
       text: this._textEditingState.currentText,
+      spans: this._textEditingState.currentSpans,
       cursorIndex: this._textEditingState.cursorIndex,
       selectionStart: Math.min(
         this._textEditingState.selectionStart,
@@ -267,7 +279,9 @@ export class TextEditManager {
     this._textEditingState = {
       textId: node.id,
       originalText: initialStr,
+      originalSpans: node.spans ? [...node.spans] : undefined,
       currentText: initialStr,
+      currentSpans: node.spans ? [...node.spans] : undefined,
       cursorIndex: cursor,
       selectionStart: start,
       selectionEnd: end,
@@ -286,7 +300,7 @@ export class TextEditManager {
 
   /**
    * Confirma la edición de texto actual, persistiendo el cambio mediante StateManager
-   * y registrando un UpdateTextCommand en CommandManager si el contenido fue modificado.
+   * y registrando un UpdateTextCommand en CommandManager si el contenido o los estilos fueron modificados.
    */
   public commitTextEdit(): boolean {
     if (!this._textEditingState) {
@@ -296,7 +310,7 @@ export class TextEditManager {
     this.teardownMobileInputProxy();
     this.stopCursorBlink();
     this._isMouseSelectingText = false;
-    const { textId, originalText, currentText } = this._textEditingState;
+    const { textId, originalText, currentText, originalSpans, currentSpans } = this._textEditingState;
     this._textEditingState = null;
 
     const node = this.stateManager.findNode(textId);
@@ -305,8 +319,18 @@ export class TextEditManager {
       return false;
     }
 
-    if (currentText !== originalText) {
-      const command = new UpdateTextCommand(this.stateManager, textId, originalText, currentText);
+    const textChanged = currentText !== originalText;
+    const spansChanged = JSON.stringify(originalSpans ?? null) !== JSON.stringify(currentSpans ?? null);
+
+    if (textChanged || spansChanged) {
+      const command = new UpdateTextCommand(
+        this.stateManager,
+        textId,
+        originalText,
+        currentText,
+        originalSpans,
+        currentSpans
+      );
       this.commandManager.executeCommand(command);
     } else {
       this.stateManager.markDirty();
@@ -324,10 +348,20 @@ export class TextEditManager {
       return;
     }
 
+    const { textId, originalSpans } = this._textEditingState;
     this.teardownMobileInputProxy();
     this.stopCursorBlink();
     this._isMouseSelectingText = false;
     this._textEditingState = null;
+
+    const node = this.stateManager.findNode(textId);
+    if (node && isText(node)) {
+      this.stateManager.updateShape(textId, {
+        text: node.text,
+        spans: originalSpans,
+      });
+    }
+
     this.stateManager.markDirty();
   }
 
@@ -533,22 +567,21 @@ export class TextEditManager {
 
     if (keyLower === 'enter') {
       event.preventDefault?.();
-      if (hasSelection) {
-        this._textEditingState.currentText = text.slice(0, selMin) + '\n' + text.slice(selMax);
-        const newCursor = selMin + 1;
-        this._textEditingState.cursorIndex = newCursor;
-        this._textEditingState.selectionStart = newCursor;
-        this._textEditingState.selectionEnd = newCursor;
-      } else {
-        this._textEditingState.currentText = text.slice(0, cursor) + '\n' + text.slice(cursor);
-        const newCursor = cursor + 1;
-        this._textEditingState.cursorIndex = newCursor;
-        this._textEditingState.selectionStart = newCursor;
-        this._textEditingState.selectionEnd = newCursor;
-      }
-      this.syncProxyValue();
-      this.resetCursorBlink();
-      this.stateManager.markDirty();
+      this.replaceTextRange(hasSelection ? selMin : cursor, hasSelection ? selMax : cursor, '\n');
+      return true;
+    }
+
+    // Ctrl/Cmd + B: alternar negrita en la selección de texto
+    if ((event.ctrlKey || event.metaKey) && keyLower === 'b') {
+      event.preventDefault?.();
+      this.applySpanToSelection({ fontWeight: 'bold' });
+      return true;
+    }
+
+    // Ctrl/Cmd + I: alternar cursiva en la selección de texto
+    if ((event.ctrlKey || event.metaKey) && keyLower === 'i') {
+      event.preventDefault?.();
+      this.applySpanToSelection({ fontStyle: 'italic' });
       return true;
     }
 
@@ -679,20 +712,9 @@ export class TextEditManager {
     if (keyLower === 'backspace') {
       event.preventDefault?.();
       if (hasSelection) {
-        this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
-        this._textEditingState.cursorIndex = selMin;
-        this._textEditingState.selectionStart = selMin;
-        this._textEditingState.selectionEnd = selMin;
-        this.resetCursorBlink();
-        this.stateManager.markDirty();
+        this.replaceTextRange(selMin, selMax, '');
       } else if (cursor > 0) {
-        this._textEditingState.currentText = text.slice(0, cursor - 1) + text.slice(cursor);
-        const newCursor = cursor - 1;
-        this._textEditingState.cursorIndex = newCursor;
-        this._textEditingState.selectionStart = newCursor;
-        this._textEditingState.selectionEnd = newCursor;
-        this.resetCursorBlink();
-        this.stateManager.markDirty();
+        this.replaceTextRange(cursor - 1, cursor, '');
       }
       return true;
     }
@@ -701,19 +723,9 @@ export class TextEditManager {
     if (keyLower === 'delete') {
       event.preventDefault?.();
       if (hasSelection) {
-        this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
-        this._textEditingState.cursorIndex = selMin;
-        this._textEditingState.selectionStart = selMin;
-        this._textEditingState.selectionEnd = selMin;
-        this.resetCursorBlink();
-        this.stateManager.markDirty();
+        this.replaceTextRange(selMin, selMax, '');
       } else if (cursor < text.length) {
-        this._textEditingState.currentText = text.slice(0, cursor) + text.slice(cursor + 1);
-        this._textEditingState.cursorIndex = cursor;
-        this._textEditingState.selectionStart = cursor;
-        this._textEditingState.selectionEnd = cursor;
-        this.resetCursorBlink();
-        this.stateManager.markDirty();
+        this.replaceTextRange(cursor, cursor + 1, '');
       }
       return true;
     }
@@ -728,12 +740,7 @@ export class TextEditManager {
             // Silenciar errores de permisos de portapapeles
           });
         }
-        this._textEditingState.currentText = text.slice(0, selMin) + text.slice(selMax);
-        this._textEditingState.cursorIndex = selMin;
-        this._textEditingState.selectionStart = selMin;
-        this._textEditingState.selectionEnd = selMin;
-        this.resetCursorBlink();
-        this.stateManager.markDirty();
+        this.replaceTextRange(selMin, selMax, '');
       }
       return true;
     }
@@ -756,30 +763,18 @@ export class TextEditManager {
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         navigator.clipboard.readText().then((pasted) => {
           if (!this._textEditingState || !pasted) return;
-          const curText = this._textEditingState.currentText;
-          const curCursor = this._textEditingState.cursorIndex;
-          const curSelStart = this._textEditingState.selectionStart;
-          const curSelEnd = this._textEditingState.selectionEnd;
-          const hasTextSelection = curSelStart !== curSelEnd;
-          const curSelMin = Math.min(curSelStart, curSelEnd);
-          const curSelMax = Math.max(curSelStart, curSelEnd);
-          // Normalizar saltos de línea del portapapeles
+          const curAnchor = this._textEditingState.selectionStart;
+          const curFocus = this._textEditingState.selectionEnd;
+          const hasTextSel = curAnchor !== curFocus;
+          const curMin = Math.min(curAnchor, curFocus);
+          const curMax = Math.max(curAnchor, curFocus);
+          const curCur = this._textEditingState.cursorIndex;
           const normalized = pasted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-          let newText: string;
-          let newCursor: number;
-          if (hasTextSelection) {
-            newText = curText.slice(0, curSelMin) + normalized + curText.slice(curSelMax);
-            newCursor = curSelMin + normalized.length;
+          if (hasTextSel) {
+            this.replaceTextRange(curMin, curMax, normalized);
           } else {
-            newText = curText.slice(0, curCursor) + normalized + curText.slice(curCursor);
-            newCursor = curCursor + normalized.length;
+            this.replaceTextRange(curCur, curCur, normalized);
           }
-          this._textEditingState.currentText = newText;
-          this._textEditingState.cursorIndex = newCursor;
-          this._textEditingState.selectionStart = newCursor;
-          this._textEditingState.selectionEnd = newCursor;
-          this.resetCursorBlink();
-          this.stateManager.markDirty();
         }).catch(() => {
           // Silenciar errores de permisos de portapapeles
         });
@@ -790,52 +785,133 @@ export class TextEditManager {
     // Escribir carácter imprimible (reemplaza selección o inserta en cursor)
     if (event.key && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault?.();
-      if (hasSelection) {
-        this._textEditingState.currentText = text.slice(0, selMin) + event.key + text.slice(selMax);
-        const newCursor = selMin + 1;
-        this._textEditingState.cursorIndex = newCursor;
-        this._textEditingState.selectionStart = newCursor;
-        this._textEditingState.selectionEnd = newCursor;
-      } else {
-        this._textEditingState.currentText = text.slice(0, cursor) + event.key + text.slice(cursor);
-        const newCursor = cursor + 1;
-        this._textEditingState.cursorIndex = newCursor;
-        this._textEditingState.selectionStart = newCursor;
-        this._textEditingState.selectionEnd = newCursor;
-      }
-      this.resetCursorBlink();
-      this.stateManager.markDirty();
+      this.replaceTextRange(hasSelection ? selMin : cursor, hasSelection ? selMax : cursor, event.key);
       return true;
     }
 
     return true;
   }
 
-  public insertText(insertedText: string): void {
+  /**
+   * Reemplaza el rango de caracteres [start, end) por insertedText, ajustando
+   * proporcionalmente los límites de los spans ricos existentes.
+   */
+  public replaceTextRange(start: number, end: number, insertedText: string): void {
     if (!this._textEditingState) return;
-    const text = this._textEditingState.currentText;
-    const cursor = this._textEditingState.cursorIndex;
-    const selAnchor = this._textEditingState.selectionStart;
-    const selFocus = this._textEditingState.selectionEnd;
-    const hasSelection = selAnchor !== selFocus;
-    const selMin = Math.min(selAnchor, selFocus);
-    const selMax = Math.max(selAnchor, selFocus);
+    const current = this._textEditingState.currentText;
+    const min = Math.max(0, Math.min(start, end, current.length));
+    const max = Math.max(0, Math.min(Math.max(start, end), current.length));
 
-    if (hasSelection) {
-      this._textEditingState.currentText = text.slice(0, selMin) + insertedText + text.slice(selMax);
-      const newCursor = selMin + insertedText.length;
-      this._textEditingState.cursorIndex = newCursor;
-      this._textEditingState.selectionStart = newCursor;
-      this._textEditingState.selectionEnd = newCursor;
-    } else {
-      this._textEditingState.currentText = text.slice(0, cursor) + insertedText + text.slice(cursor);
-      const newCursor = cursor + insertedText.length;
-      this._textEditingState.cursorIndex = newCursor;
-      this._textEditingState.selectionStart = newCursor;
-      this._textEditingState.selectionEnd = newCursor;
+    const newText = current.slice(0, min) + insertedText + current.slice(max);
+    const newCursor = min + insertedText.length;
+
+    if (this._textEditingState.currentSpans && this._textEditingState.currentSpans.length > 0) {
+      this._textEditingState.currentSpans = adjustSpansOnTextChange(
+        this._textEditingState.currentSpans,
+        min,
+        max - min,
+        insertedText.length
+      );
     }
+
+    this._textEditingState.currentText = newText;
+    this._textEditingState.cursorIndex = newCursor;
+    this._textEditingState.selectionStart = newCursor;
+    this._textEditingState.selectionEnd = newCursor;
+    this.syncProxyValue();
     this.resetCursorBlink();
     this.stateManager.markDirty();
+  }
+
+  /**
+   * Aplica un parche de estilo (negrita, cursiva, tamaño, color, etc.) a la selección activa de caracteres.
+   * Si todos los caracteres de la selección ya tienen el estilo (ej. negrita), lo alterna a 'normal'.
+   */
+  public applySpanToSelection(patch: Partial<TextSpan>): boolean {
+    if (!this._textEditingState || !this.hasTextSelection) {
+      return false;
+    }
+
+    const selMin = Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    const selMax = Math.max(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    if (selMin >= selMax) return false;
+
+    const node = this.stateManager.findNode(this._textEditingState.textId);
+    if (!node || !isText(node)) return false;
+
+    const resolvedPatch: Partial<TextSpan> = { ...patch };
+
+    // Si se aplica negrita o cursiva, comprobar si todos los caracteres ya lo tienen para alternar
+    if (patch.fontWeight !== undefined || patch.fontStyle !== undefined) {
+      const baseStyle = getBaseTextStyle(node);
+      const spans = this._textEditingState.currentSpans;
+
+      if (patch.fontWeight === 'bold' || patch.fontWeight === 700) {
+        let allBold = true;
+        for (let i = selMin; i < selMax; i++) {
+          const charStyle = resolveCharacterStyle(spans, i, baseStyle);
+          if (charStyle.fontWeight !== 'bold' && charStyle.fontWeight !== 700) {
+            allBold = false;
+            break;
+          }
+        }
+        if (allBold) {
+          resolvedPatch.fontWeight = 'normal';
+        }
+      }
+
+      if (patch.fontStyle === 'italic') {
+        let allItalic = true;
+        for (let i = selMin; i < selMax; i++) {
+          const charStyle = resolveCharacterStyle(spans, i, baseStyle);
+          if (charStyle.fontStyle !== 'italic') {
+            allItalic = false;
+            break;
+          }
+        }
+        if (allItalic) {
+          resolvedPatch.fontStyle = 'normal';
+        }
+      }
+    }
+
+    this._textEditingState.currentSpans = applySpanToRange(
+      this._textEditingState.currentSpans,
+      selMin,
+      selMax,
+      resolvedPatch,
+      node
+    );
+
+    this.resetCursorBlink();
+    this.stateManager.markDirty();
+    return true;
+  }
+
+  /**
+   * Obtiene el estilo tipográfico resuelto en la selección actual (o en el carácter anterior al cursor).
+   */
+  public getActiveSelectionStyle(): ResolvedTextStyle | null {
+    if (!this._textEditingState) return null;
+    const node = this.stateManager.findNode(this._textEditingState.textId);
+    if (!node || !isText(node)) return null;
+
+    const charIndex = this.hasTextSelection
+      ? Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd)
+      : Math.max(0, this._textEditingState.cursorIndex - 1);
+
+    const baseStyle = getBaseTextStyle(node);
+    return resolveCharacterStyle(this._textEditingState.currentSpans, charIndex, baseStyle);
+  }
+
+  public insertText(insertedText: string): void {
+    if (!this._textEditingState) return;
+    const hasSelection = this._textEditingState.hasSelection;
+    const selMin = Math.min(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    const selMax = Math.max(this._textEditingState.selectionStart, this._textEditingState.selectionEnd);
+    const cursor = this._textEditingState.cursorIndex;
+
+    this.replaceTextRange(hasSelection ? selMin : cursor, hasSelection ? selMax : cursor, insertedText);
   }
 
   private syncProxyValue(): void {

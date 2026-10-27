@@ -49,7 +49,8 @@ export function setupPropertiesPanelBindings(options: PropertiesPanelControllerO
     stateManager,
     commandManager,
     elements,
-    () => syncPropertiesPanel()
+    () => syncPropertiesPanel(),
+    inputController
   );
 
   const parametricController = new ParametricSectionController(

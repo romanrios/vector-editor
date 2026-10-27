@@ -1,4 +1,4 @@
-import type { StateManager } from '../state/StateManager.ts';
+import { type StateManager, getLeafShapes } from '../state/StateManager.ts';
 import type { SnapGuide } from '../types/engine.ts';
 import {
   isDocument,
@@ -17,7 +17,18 @@ import {
   type StrokeLineCap,
   type StrokeLineJoin,
   type Guide,
+  type Text,
+  type TextKind,
+  type TextSpan,
 } from '../types/scene-graph.ts';
+import { ConvertTextTypeCommand } from '../commands/ConvertTextTypeCommand.ts';
+import { ChangeTextCaseCommand, type TextCaseMode } from '../commands/ChangeTextCaseCommand.ts';
+import { UpdateTextCommand } from '../commands/UpdateTextCommand.ts';
+import {
+  UpdateTextTypographyCommand,
+  type TextPropertyUpdate,
+} from '../commands/UpdateTextTypographyCommand.ts';
+import { BatchCommand } from '../commands/BatchCommand.ts';
 import {
   getShapeAABB,
   getTextIndexAtPosition,
@@ -1589,6 +1600,133 @@ export class InputController {
 
   public applyBooleanOperation(op: BooleanOp): boolean {
     return this._selectionOperations.applyBooleanOperation(op);
+  }
+
+  public toggleTextKind(nodeId?: string): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const target = nodeId
+      ? (this.stateManager.findNode(nodeId) as Text | null)
+      : selectedNodes.length === 1 && isText(selectedNodes[0])
+      ? (selectedNodes[0] as Text)
+      : null;
+    if (!target || !isText(target)) {
+      return false;
+    }
+    const isArea =
+      target.textKind === 'area' || (target.boxWidth !== undefined && target.textKind !== 'point');
+    const nextKind: TextKind = isArea ? 'point' : 'area';
+    const cmd = new ConvertTextTypeCommand(
+      this.stateManager,
+      target.id,
+      nextKind,
+      this.textEditManager.getMeasureContext()
+    );
+    this.commandManager.executeCommand(cmd);
+    return true;
+  }
+
+  public changeTextCase(mode: TextCaseMode, nodeId?: string): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const textNodes: Text[] = nodeId
+      ? (() => {
+          const n = this.stateManager.findNode(nodeId);
+          return n && isText(n) ? [n as Text] : [];
+        })()
+      : getLeafShapes(selectedNodes).filter(isText);
+    if (textNodes.length === 0) {
+      return false;
+    }
+    if (textNodes.length === 1) {
+      const cmd = new ChangeTextCaseCommand(this.stateManager, textNodes[0].id, mode);
+      this.commandManager.executeCommand(cmd);
+      return true;
+    }
+    const cmds = textNodes.map(
+      (t) => new ChangeTextCaseCommand(this.stateManager, t.id, mode)
+    );
+    this.commandManager.executeCommand(new BatchCommand(cmds, 'Change Text Case'));
+    return true;
+  }
+
+  public fillLoremIpsum(nodeId?: string): boolean {
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const textNodes: Text[] = nodeId
+      ? (() => {
+          const n = this.stateManager.findNode(nodeId);
+          return n && isText(n) ? [n as Text] : [];
+        })()
+      : getLeafShapes(selectedNodes).filter(isText);
+    if (textNodes.length === 0) {
+      return false;
+    }
+    const lorem =
+      'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+    if (textNodes.length === 1) {
+      const target = textNodes[0];
+      const cmd = new UpdateTextCommand(this.stateManager, target.id, target.text ?? '', lorem);
+      this.commandManager.executeCommand(cmd);
+      return true;
+    }
+    const cmds = textNodes.map(
+      (t) => new UpdateTextCommand(this.stateManager, t.id, t.text ?? '', lorem)
+    );
+    this.commandManager.executeCommand(new BatchCommand(cmds, 'Fill Lorem Ipsum'));
+    return true;
+  }
+
+  public applyTextTypography(patch: TextPropertyUpdate, nodeId?: string): boolean {
+    if (this.textEditManager.isEditingText && this.textEditManager.hasTextSelection) {
+      const spanPatch: Partial<TextSpan> = {};
+      if (patch.fontFamily !== undefined) spanPatch.fontFamily = patch.fontFamily;
+      if (patch.fontSize !== undefined) spanPatch.fontSize = patch.fontSize;
+      if (patch.fontWeight !== undefined) spanPatch.fontWeight = patch.fontWeight;
+      if (patch.fontStyle !== undefined) spanPatch.fontStyle = patch.fontStyle;
+      if (patch.fill !== undefined) spanPatch.fill = patch.fill;
+      if (patch.textDecoration !== undefined) spanPatch.textDecoration = patch.textDecoration;
+      if (Object.keys(spanPatch).length > 0) {
+        return this.textEditManager.applySpanToSelection(spanPatch);
+      }
+    }
+
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const textNodes: Text[] = nodeId
+      ? (() => {
+          const n = this.stateManager.findNode(nodeId);
+          return n && isText(n) ? [n as Text] : [];
+        })()
+      : getLeafShapes(selectedNodes).filter(isText);
+    if (textNodes.length === 0) {
+      return false;
+    }
+
+    if (textNodes.length === 1) {
+      const t = textNodes[0];
+      const before: TextPropertyUpdate = {};
+      for (const k of Object.keys(patch) as (keyof TextPropertyUpdate)[]) {
+        (before as any)[k] = t[k];
+      }
+      const cmd = new UpdateTextTypographyCommand(this.stateManager, t.id, before, patch);
+      if (!cmd.isAlreadyAtTarget) {
+        this.commandManager.executeCommand(cmd);
+      }
+      return true;
+    }
+
+    const cmds: UpdateTextTypographyCommand[] = [];
+    for (const t of textNodes) {
+      const before: TextPropertyUpdate = {};
+      for (const k of Object.keys(patch) as (keyof TextPropertyUpdate)[]) {
+        (before as any)[k] = t[k];
+      }
+      const cmd = new UpdateTextTypographyCommand(this.stateManager, t.id, before, patch);
+      if (!cmd.isAlreadyAtTarget) {
+        cmds.push(cmd);
+      }
+    }
+    if (cmds.length > 0) {
+      this.commandManager.executeCommand(new BatchCommand(cmds, 'Apply Typography'));
+    }
+    return true;
   }
 
   public cancelCreation(): void {

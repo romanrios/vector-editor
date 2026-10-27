@@ -139,6 +139,7 @@ export class TextToolHandler implements ToolHandler {
       id: `text-${Date.now()}-${this.textCounter}`,
       type: 'text',
       name: `Texto ${this.textCounter}`,
+      textKind: 'point',
       x,
       y,
       text: 'Texto',

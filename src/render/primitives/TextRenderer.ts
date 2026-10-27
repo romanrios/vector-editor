@@ -7,10 +7,12 @@ import {
   getTextLineHeight,
   getTextLineRanges,
   measureSingleLineTextWidth,
+  measureStyledRun,
 } from '../../utils/geometry.ts';
 import { isNonePaint } from '../../utils/color.ts';
 import { createCanvasGradient } from '../../utils/gradient.ts';
 import { clearDropShadow } from '../utils/shadow.ts';
+import { splitTextIntoRuns } from '../../utils/textSpans.ts';
 import type { TextEditRenderState } from '../types.ts';
 
 /**
@@ -47,7 +49,7 @@ export function renderTextSelectionHighlight(
       continue;
     }
 
-    const lineWidth = measureSingleLineTextWidth(text, lineText, ctx);
+    const lineWidth = measureSingleLineTextWidth(text, lineText, ctx, lineStart);
     const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
     let lineStartX = text.x;
     if (hasBoxWidth) {
@@ -67,9 +69,9 @@ export function renderTextSelectionHighlight(
     const charStart = Math.max(0, selStartInLine - lineStart);
     const charEnd = Math.max(charStart, selEndInLine - lineStart);
 
-    const wBefore = measureSingleLineTextWidth(text, lineText.slice(0, charStart), ctx);
+    const wBefore = measureSingleLineTextWidth(text, lineText.slice(0, charStart), ctx, lineStart);
     let wSelected = charEnd > charStart
-      ? measureSingleLineTextWidth(text, lineText.slice(0, charEnd), ctx) - wBefore
+      ? measureSingleLineTextWidth(text, lineText.slice(0, charEnd), ctx, lineStart) - wBefore
       : 0;
 
     if (isLineBreakSelected && wSelected === 0) {
@@ -168,9 +170,14 @@ export function renderText(
 
   // 5. Dibujo del texto (soporta multilínea y word-wrapping con boxWidth)
   const displayText = isEditingThis ? textEdit.text : (text.text ?? '');
-  const lineHeight = getTextLineHeight(text);
+  const textWithContent: Text = {
+    ...text,
+    text: displayText,
+    spans: isEditingThis && textEdit.spans !== undefined ? textEdit.spans : text.spans,
+  };
+  const lineHeight = getTextLineHeight(textWithContent);
 
-  const lines = getTextLineRanges({ ...text, text: displayText }, ctx);
+  const lines = getTextLineRanges(textWithContent, ctx);
 
   // 6. Si está en edición y existe selección de caracteres, renderizar el resaltado DETRÁS del texto
   if (
@@ -181,7 +188,7 @@ export function renderText(
   ) {
     renderTextSelectionHighlight(
       ctx,
-      text,
+      textWithContent,
       lines,
       displayText.length,
       textEdit.selectionStart,
@@ -193,25 +200,87 @@ export function renderText(
 
   // 7. Dibujo de cada línea de texto
   const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
-  let textAnchorX = text.x;
-  if (hasBoxWidth) {
-    if (text.textAlign === 'center') {
-      textAnchorX = text.x + text.boxWidth! / 2;
-    } else if (text.textAlign === 'right') {
-      textAnchorX = text.x + text.boxWidth!;
-    }
-  }
+  const hasSpans = textWithContent.spans && textWithContent.spans.length > 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const lineY = text.y + i * lineHeight;
-    if (hasFill || isEditingThis) {
-      ctx.fillText(lines[i].text, textAnchorX, lineY);
-      if (hasStroke) {
-        clearDropShadow(ctx);
+  if (hasSpans) {
+    ctx.textAlign = 'left';
+    for (let i = 0; i < lines.length; i++) {
+      const { text: lineText, start: lineStart, end: lineEnd } = lines[i];
+      const lineY = text.y + i * lineHeight;
+      const lineWidth = measureSingleLineTextWidth(textWithContent, lineText, ctx, lineStart);
+
+      let lineStartX = text.x;
+      if (hasBoxWidth) {
+        if (text.textAlign === 'center') {
+          lineStartX = text.x + (text.boxWidth! - lineWidth) / 2;
+        } else if (text.textAlign === 'right') {
+          lineStartX = text.x + text.boxWidth! - lineWidth;
+        }
+      } else {
+        if (text.textAlign === 'center') {
+          lineStartX = text.x - lineWidth / 2;
+        } else if (text.textAlign === 'right') {
+          lineStartX = text.x - lineWidth;
+        }
+      }
+
+      const runs = splitTextIntoRuns(textWithContent, lineStart, lineEnd);
+      let runX = lineStartX;
+
+      for (let r = 0; r < runs.length; r++) {
+        const run = runs[r];
+        const rFontParts: string[] = [];
+        if (run.style.fontStyle && run.style.fontStyle !== 'normal') {
+          rFontParts.push(run.style.fontStyle);
+        }
+        if (run.style.fontWeight && run.style.fontWeight !== 'normal' && run.style.fontWeight !== 400) {
+          rFontParts.push(String(run.style.fontWeight));
+        }
+        const rFontFamily = run.style.fontFamily;
+        const rSafeFamily =
+          rFontFamily.includes(' ') && !rFontFamily.startsWith('"') && !rFontFamily.startsWith("'")
+            ? `"${rFontFamily}"`
+            : rFontFamily;
+        rFontParts.push(`${run.style.fontSize}px`);
+        rFontParts.push(rSafeFamily);
+        ctx.font = rFontParts.join(' ');
+
+        if (hasFill || isEditingThis) {
+          ctx.fillStyle = run.style.fill as string;
+          ctx.fillText(run.text, runX, lineY);
+          if (hasStroke) {
+            clearDropShadow(ctx);
+          }
+        }
+        if (hasStroke) {
+          ctx.strokeText(run.text, runX, lineY);
+        }
+
+        const runW = measureStyledRun(run.text, run.style, ctx);
+        runX += runW;
       }
     }
-    if (hasStroke) {
-      ctx.strokeText(lines[i].text, textAnchorX, lineY);
+  } else {
+    let textAnchorX = text.x;
+    if (hasBoxWidth) {
+      if (text.textAlign === 'center') {
+        textAnchorX = text.x + text.boxWidth! / 2;
+      } else if (text.textAlign === 'right') {
+        textAnchorX = text.x + text.boxWidth!;
+      }
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineY = text.y + i * lineHeight;
+      if (hasFill || isEditingThis) {
+        ctx.fillText(lines[i].text, textAnchorX, lineY);
+        if (hasStroke) {
+          clearDropShadow(ctx);
+        }
+      }
+      if (hasStroke) {
+        ctx.strokeText(lines[i].text, textAnchorX, lineY);
+      }
     }
   }
 

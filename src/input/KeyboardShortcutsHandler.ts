@@ -1,5 +1,6 @@
 import type { InputController } from './InputController.ts';
 import { isText } from '../types/scene-graph.ts';
+import { getLeafShapes } from '../state/StateManager.ts';
 
 export class KeyboardShortcutsHandler {
   private readonly controller: InputController;
@@ -98,6 +99,30 @@ export class KeyboardShortcutsHandler {
         event.preventDefault?.();
         this.controller.stateManager.selectAll();
         return;
+      }
+
+      if (keyLower === 'b') {
+        const selected = this.controller.stateManager.getSelectedNodes();
+        const leafTexts = getLeafShapes(selected).filter(isText);
+        if (leafTexts.length > 0) {
+          event.preventDefault?.();
+          const firstText = leafTexts[0];
+          const isBold = firstText.fontWeight === 'bold' || firstText.fontWeight === 700;
+          this.controller.applyTextTypography({ fontWeight: isBold ? 400 : 700 });
+          return;
+        }
+      }
+
+      if (keyLower === 'i') {
+        const selected = this.controller.stateManager.getSelectedNodes();
+        const leafTexts = getLeafShapes(selected).filter(isText);
+        if (leafTexts.length > 0) {
+          event.preventDefault?.();
+          const firstText = leafTexts[0];
+          const isItalic = firstText.fontStyle === 'italic';
+          this.controller.applyTextTypography({ fontStyle: isItalic ? 'normal' : 'italic' });
+          return;
+        }
       }
 
       if (keyLower === 'e') {

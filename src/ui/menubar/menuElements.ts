@@ -9,18 +9,25 @@ export function queryMenuBarElements(options: MenuBarControllerOptions): MenuBar
   const q = <T extends HTMLElement>(selector: string): T | null =>
     typeof document !== 'undefined' ? document.querySelector<T>(selector) : null;
 
+  const qa = <T extends HTMLElement>(selector: string): T[] =>
+    typeof document !== 'undefined' && typeof document.querySelectorAll === 'function'
+      ? Array.from(document.querySelectorAll<T>(selector))
+      : [];
+
   return {
     canvas,
     menuBar,
     menuBtnFile: q<HTMLButtonElement>('#menu-btn-file'),
     menuBtnEdit: q<HTMLButtonElement>('#menu-btn-edit'),
     menuBtnObject: q<HTMLButtonElement>('#menu-btn-object'),
+    menuBtnType: q<HTMLButtonElement>('#menu-btn-type'),
     menuBtnView: q<HTMLButtonElement>('#menu-btn-view'),
     menuBtnHelp: q<HTMLButtonElement>('#menu-btn-help'),
 
     menuDropdownFile: q<HTMLElement>('#menu-dropdown-file'),
     menuDropdownEdit: q<HTMLElement>('#menu-dropdown-edit'),
     menuDropdownObject: q<HTMLElement>('#menu-dropdown-object'),
+    menuDropdownType: q<HTMLElement>('#menu-dropdown-type'),
     menuDropdownView: q<HTMLElement>('#menu-dropdown-view'),
     menuDropdownHelp: q<HTMLElement>('#menu-dropdown-help'),
 
@@ -68,6 +75,36 @@ export function queryMenuBarElements(options: MenuBarControllerOptions): MenuBar
     menuItemPathfinderSubtract: q<HTMLButtonElement>('#menu-item-pathfinder-subtract'),
     menuItemPathfinderIntersect: q<HTMLButtonElement>('#menu-item-pathfinder-intersect'),
     menuItemPathfinderExclude: q<HTMLButtonElement>('#menu-item-pathfinder-exclude'),
+
+    menuItemTypeFont: q<HTMLButtonElement>('#menu-item-type-font'),
+    menuDropdownTypeFont: q<HTMLElement>('#menu-dropdown-type-font'),
+    menuItemTypeFontOptions: qa<HTMLButtonElement>('.menu-item-type-font-opt'),
+
+    menuItemTypeSize: q<HTMLButtonElement>('#menu-item-type-size'),
+    menuDropdownTypeSize: q<HTMLElement>('#menu-dropdown-type-size'),
+    menuItemTypeSizeOptions: qa<HTMLButtonElement>('.menu-item-type-size-opt'),
+
+    menuItemTypeStyle: q<HTMLButtonElement>('#menu-item-type-style'),
+    menuDropdownTypeStyle: q<HTMLElement>('#menu-dropdown-type-style'),
+    menuItemTypeStyleRegular: q<HTMLButtonElement>('#menu-item-type-style-regular'),
+    menuItemTypeStyleBold: q<HTMLButtonElement>('#menu-item-type-style-bold'),
+    menuItemTypeStyleItalic: q<HTMLButtonElement>('#menu-item-type-style-italic'),
+
+    menuItemTypeAlign: q<HTMLButtonElement>('#menu-item-type-align'),
+    menuDropdownTypeAlign: q<HTMLElement>('#menu-dropdown-type-align'),
+    menuItemTypeAlignLeft: q<HTMLButtonElement>('#menu-item-type-align-left'),
+    menuItemTypeAlignCenter: q<HTMLButtonElement>('#menu-item-type-align-center'),
+    menuItemTypeAlignRight: q<HTMLButtonElement>('#menu-item-type-align-right'),
+
+    menuItemTypeToggleKind: q<HTMLButtonElement>('#menu-item-type-toggle-kind'),
+
+    menuItemTypeCasing: q<HTMLButtonElement>('#menu-item-type-casing'),
+    menuDropdownTypeCasing: q<HTMLElement>('#menu-dropdown-type-casing'),
+    menuItemTypeUppercase: q<HTMLButtonElement>('#menu-item-type-uppercase'),
+    menuItemTypeLowercase: q<HTMLButtonElement>('#menu-item-type-lowercase'),
+    menuItemTypeTitlecase: q<HTMLButtonElement>('#menu-item-type-titlecase'),
+
+    menuItemTypeLorem: q<HTMLButtonElement>('#menu-item-type-lorem'),
 
     menuItemRulers: q<HTMLButtonElement>('#menu-item-rulers'),
     menuItemGuides: q<HTMLButtonElement>('#menu-item-guides'),
@@ -130,6 +167,19 @@ export function createMenuEntries(el: MenuBarElements): MenuEntry[] {
       ],
     },
     {
+      trigger: el.menuBtnType,
+      dropdown: el.menuDropdownType,
+      items: [
+        el.menuItemTypeFont,
+        el.menuItemTypeSize,
+        el.menuItemTypeStyle,
+        el.menuItemTypeAlign,
+        el.menuItemTypeToggleKind,
+        el.menuItemTypeCasing,
+        el.menuItemTypeLorem,
+      ],
+    },
+    {
       trigger: el.menuBtnView,
       dropdown: el.menuDropdownView,
       items: [
@@ -177,6 +227,43 @@ export function createSubmenuEntries(el: MenuBarElements): SubmenuEntry[] {
         el.menuItemPathfinderSubtract,
         el.menuItemPathfinderIntersect,
         el.menuItemPathfinderExclude,
+      ],
+    },
+    {
+      trigger: el.menuItemTypeFont,
+      dropdown: el.menuDropdownTypeFont,
+      items: el.menuItemTypeFontOptions,
+    },
+    {
+      trigger: el.menuItemTypeSize,
+      dropdown: el.menuDropdownTypeSize,
+      items: el.menuItemTypeSizeOptions,
+    },
+    {
+      trigger: el.menuItemTypeStyle,
+      dropdown: el.menuDropdownTypeStyle,
+      items: [
+        el.menuItemTypeStyleRegular,
+        el.menuItemTypeStyleBold,
+        el.menuItemTypeStyleItalic,
+      ],
+    },
+    {
+      trigger: el.menuItemTypeAlign,
+      dropdown: el.menuDropdownTypeAlign,
+      items: [
+        el.menuItemTypeAlignLeft,
+        el.menuItemTypeAlignCenter,
+        el.menuItemTypeAlignRight,
+      ],
+    },
+    {
+      trigger: el.menuItemTypeCasing,
+      dropdown: el.menuDropdownTypeCasing,
+      items: [
+        el.menuItemTypeUppercase,
+        el.menuItemTypeLowercase,
+        el.menuItemTypeTitlecase,
       ],
     },
     {

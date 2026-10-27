@@ -36,6 +36,7 @@ export class CreateTextCommand implements Command {
     this.shape = {
       ...shapeWithoutWidth,
       x,
+      textKind: boxWidth === undefined ? 'point' : 'area',
       ...(boxWidth === undefined ? {} : { boxWidth }),
     };
     if (!this.stateManager.updateShape<Text>(this.shape.id, () => this.shape)) {

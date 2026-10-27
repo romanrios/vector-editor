@@ -1,6 +1,7 @@
 import type { StateManager } from '../../state/StateManager.ts';
 import type { CommandManager } from '../../commands/CommandManager.ts';
 import { UpdateTextTypographyCommand } from '../../commands/UpdateTextTypographyCommand.ts';
+import type { InputController } from '../../input/InputController.ts';
 import {
   isText,
   type Text,
@@ -27,17 +28,20 @@ export class TypographySectionController {
   private readonly commandManager: CommandManager;
   private readonly elements: PropertiesPanelElements;
   private readonly syncPropertiesPanel: () => void;
+  private readonly inputController?: InputController;
 
   constructor(
     stateManager: StateManager,
     commandManager: CommandManager,
     elements: PropertiesPanelElements,
-    syncPropertiesPanel: () => void
+    syncPropertiesPanel: () => void,
+    inputController?: InputController
   ) {
     this.stateManager = stateManager;
     this.commandManager = commandManager;
     this.elements = elements;
     this.syncPropertiesPanel = syncPropertiesPanel;
+    this.inputController = inputController;
   }
 
 
@@ -95,6 +99,14 @@ export class TypographySectionController {
 
 
   public commitTextColor(color: string, targetEl?: EventTarget | null): void {
+    if (this.inputController?.isEditingText && this.inputController?.hasTextSelection) {
+      this.inputController.applyTextTypography({ fill: color });
+      if (targetEl) clearInputTarget(targetEl);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
+
     const textNode = this.getTargetTextNode(targetEl);
     if (textNode) {
       const beforeColor = this.initialTextTypographySnapshot?.fill ?? textNode.fill ?? '#000000';
@@ -170,10 +182,17 @@ export class TypographySectionController {
 
   private onFontFamilyChange = (e?: Event) => {
     if (!this.elements.selectFontFamily) return;
+    const after = this.elements.selectFontFamily.value;
+    if (this.inputController?.isEditingText && this.inputController?.hasTextSelection) {
+      this.inputController.applyTextTypography({ fontFamily: after });
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontFamily ?? textNode.fontFamily ?? 'Inter';
-      const after = this.elements.selectFontFamily.value;
       this.stateManager.updateShape<Text>(textNode.id, { fontFamily: after });
       if (before !== after) {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontFamily: before }, { fontFamily: after });
@@ -205,11 +224,18 @@ export class TypographySectionController {
 
   private onFontSizeChange = (e?: Event) => {
     if (!this.elements.inputFontSize) return;
+    const parsed = parseFloat(this.elements.inputFontSize.value);
+    const after = isNaN(parsed) || parsed <= 0 ? 32 : parsed;
+    this.elements.inputFontSize.value = String(after);
+    if (this.inputController?.isEditingText && this.inputController?.hasTextSelection) {
+      this.inputController.applyTextTypography({ fontSize: after });
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
-      const parsed = parseFloat(this.elements.inputFontSize.value);
-      const after = isNaN(parsed) || parsed <= 0 ? 32 : parsed;
-      this.elements.inputFontSize.value = String(after);
       const before = this.initialTextTypographySnapshot?.fontSize ?? textNode.fontSize ?? 32;
       this.stateManager.updateShape<Text>(textNode.id, { fontSize: after });
       if (before !== after) {
@@ -302,11 +328,18 @@ export class TypographySectionController {
 
   private onFontWeightChange = (e?: Event) => {
     if (!this.elements.selectFontWeight) return;
+    const parsed = parseInt(this.elements.selectFontWeight.value, 10);
+    const after: FontWeight = isNaN(parsed) ? (this.elements.selectFontWeight.value as FontWeight) : parsed;
+    if (this.inputController?.isEditingText && this.inputController?.hasTextSelection) {
+      this.inputController.applyTextTypography({ fontWeight: after });
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontWeight ?? textNode.fontWeight ?? 400;
-      const parsed = parseInt(this.elements.selectFontWeight.value, 10);
-      const after: FontWeight = isNaN(parsed) ? this.elements.selectFontWeight.value : parsed;
       this.stateManager.updateShape<Text>(textNode.id, { fontWeight: after });
       if (String(before) !== String(after)) {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontWeight: before }, { fontWeight: after });
@@ -319,10 +352,17 @@ export class TypographySectionController {
 
   private onFontStyleChange = (e?: Event) => {
     if (!this.elements.selectFontStyle) return;
+    const after = this.elements.selectFontStyle.value as FontStyle;
+    if (this.inputController?.isEditingText && this.inputController?.hasTextSelection) {
+      this.inputController.applyTextTypography({ fontStyle: after });
+      if (e?.currentTarget) clearInputTarget(e.currentTarget);
+      this.clearSnapshot();
+      this.syncPropertiesPanel();
+      return;
+    }
     const textNode = this.getTargetTextNode(e?.currentTarget);
     if (textNode) {
       const before = this.initialTextTypographySnapshot?.fontStyle ?? textNode.fontStyle ?? 'normal';
-      const after = this.elements.selectFontStyle.value as FontStyle;
       this.stateManager.updateShape<Text>(textNode.id, { fontStyle: after });
       if (before !== after) {
         const cmd = new UpdateTextTypographyCommand(this.stateManager, textNode.id, { fontStyle: before }, { fontStyle: after });
@@ -481,17 +521,21 @@ export class TypographySectionController {
     }
 
     const isTypoEditing = this.initialTextTypographySnapshot !== null;
+    const activeStyle = this.inputController?.isEditingText
+      ? this.inputController.textEditManager.getActiveSelectionStyle()
+      : null;
 
     if (this.elements.inputTextContent && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.inputTextContent))) {
       this.elements.inputTextContent.value = singleTextNode.text ?? '';
     }
 
     if (this.elements.selectFontFamily && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.selectFontFamily))) {
-      this.elements.selectFontFamily.value = singleTextNode.fontFamily ?? 'Inter';
+      this.elements.selectFontFamily.value = activeStyle?.fontFamily ?? singleTextNode.fontFamily ?? 'Inter';
     }
 
     if (this.elements.inputFontSize && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.inputFontSize))) {
-      this.elements.inputFontSize.value = String(this.roundToFourDecimals(singleTextNode.fontSize ?? 32));
+      const currentFontSize = activeStyle?.fontSize ?? singleTextNode.fontSize ?? 32;
+      this.elements.inputFontSize.value = String(this.roundToFourDecimals(currentFontSize));
     }
 
     if (this.elements.inputLineHeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.inputLineHeight))) {
@@ -509,13 +553,13 @@ export class TypographySectionController {
     }
 
     if (this.elements.selectFontWeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.selectFontWeight))) {
-      const fw = singleTextNode.fontWeight ?? 400;
+      const fw = activeStyle?.fontWeight ?? singleTextNode.fontWeight ?? 400;
       const fwStr = fw === 'normal' ? '400' : fw === 'bold' ? '700' : String(fw);
       this.elements.selectFontWeight.value = fwStr;
     }
 
     if (this.elements.selectFontStyle && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.selectFontStyle))) {
-      this.elements.selectFontStyle.value = singleTextNode.fontStyle ?? 'normal';
+      this.elements.selectFontStyle.value = activeStyle?.fontStyle ?? singleTextNode.fontStyle ?? 'normal';
     }
 
     const align = singleTextNode.textAlign ?? 'left';
@@ -526,7 +570,7 @@ export class TypographySectionController {
     if (this.elements.btnTextAlignCenter) this.elements.btnTextAlignCenter.classList.toggle('active', align === 'center');
     if (this.elements.btnTextAlignRight) this.elements.btnTextAlignRight.classList.toggle('active', align === 'right');
 
-    const textColor = singleTextNode.fill ?? '#000000';
+    const textColor = activeStyle?.fill ?? singleTextNode.fill ?? '#000000';
     const isNone = isNonePaint(textColor);
     const validHex = toValidHexColor(textColor, '#000000');
     if (!isNone) {

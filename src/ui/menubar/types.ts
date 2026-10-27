@@ -44,12 +44,14 @@ export interface MenuBarElements {
   menuBtnFile: HTMLButtonElement | null;
   menuBtnEdit: HTMLButtonElement | null;
   menuBtnObject: HTMLButtonElement | null;
+  menuBtnType: HTMLButtonElement | null;
   menuBtnView: HTMLButtonElement | null;
   menuBtnHelp: HTMLButtonElement | null;
 
   menuDropdownFile: HTMLElement | null;
   menuDropdownEdit: HTMLElement | null;
   menuDropdownObject: HTMLElement | null;
+  menuDropdownType: HTMLElement | null;
   menuDropdownView: HTMLElement | null;
   menuDropdownHelp: HTMLElement | null;
 
@@ -93,6 +95,36 @@ export interface MenuBarElements {
   menuItemPathfinderSubtract: HTMLButtonElement | null;
   menuItemPathfinderIntersect: HTMLButtonElement | null;
   menuItemPathfinderExclude: HTMLButtonElement | null;
+
+  menuItemTypeFont: HTMLButtonElement | null;
+  menuDropdownTypeFont: HTMLElement | null;
+  menuItemTypeFontOptions: HTMLButtonElement[];
+
+  menuItemTypeSize: HTMLButtonElement | null;
+  menuDropdownTypeSize: HTMLElement | null;
+  menuItemTypeSizeOptions: HTMLButtonElement[];
+
+  menuItemTypeStyle: HTMLButtonElement | null;
+  menuDropdownTypeStyle: HTMLElement | null;
+  menuItemTypeStyleRegular: HTMLButtonElement | null;
+  menuItemTypeStyleBold: HTMLButtonElement | null;
+  menuItemTypeStyleItalic: HTMLButtonElement | null;
+
+  menuItemTypeAlign: HTMLButtonElement | null;
+  menuDropdownTypeAlign: HTMLElement | null;
+  menuItemTypeAlignLeft: HTMLButtonElement | null;
+  menuItemTypeAlignCenter: HTMLButtonElement | null;
+  menuItemTypeAlignRight: HTMLButtonElement | null;
+
+  menuItemTypeToggleKind: HTMLButtonElement | null;
+
+  menuItemTypeCasing: HTMLButtonElement | null;
+  menuDropdownTypeCasing: HTMLElement | null;
+  menuItemTypeUppercase: HTMLButtonElement | null;
+  menuItemTypeLowercase: HTMLButtonElement | null;
+  menuItemTypeTitlecase: HTMLButtonElement | null;
+
+  menuItemTypeLorem: HTMLButtonElement | null;
 
   menuItemRulers: HTMLButtonElement | null;
   menuItemGuides: HTMLButtonElement | null;

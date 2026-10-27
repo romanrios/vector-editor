@@ -2,7 +2,7 @@ import { StateManager, getLeafShapes } from '../../state/StateManager.ts';
 import { CommandManager } from '../../commands/CommandManager.ts';
 import { InputController } from '../../input/InputController.ts';
 import { ViewportManager } from '../../utils/viewport.ts';
-import { isGroup, type SelectableNode } from '../../types/scene-graph.ts';
+import { isGroup, isText, type SelectableNode, type Text } from '../../types/scene-graph.ts';
 import { isClosedShape } from '../../utils/booleanOperations.ts';
 import { canOutlineStroke } from '../../utils/strokeToPath.ts';
 import type { MenuBarElements } from './types.ts';
@@ -102,6 +102,47 @@ export class MenuSyncController {
     if (el.menuBtnObject) {
       el.menuBtnObject.disabled = !hasSelection;
       el.menuBtnObject.setAttribute('aria-disabled', String(!hasSelection));
+    }
+
+    const textNodes = getLeafShapes(selectedNodes).filter(isText);
+    const hasAnyText = textNodes.length > 0;
+    const singleTextNode =
+      selectedNodes.length === 1 && isText(selectedNodes[0]) ? (selectedNodes[0] as Text) : null;
+
+    if (el.menuBtnType) {
+      el.menuBtnType.disabled = !hasAnyText;
+      el.menuBtnType.setAttribute('aria-disabled', String(!hasAnyText));
+    }
+
+    const typeActionItems = [
+      el.menuItemTypeFont,
+      el.menuItemTypeSize,
+      el.menuItemTypeStyle,
+      el.menuItemTypeAlign,
+      el.menuItemTypeCasing,
+      el.menuItemTypeLorem,
+    ];
+    for (let i = 0; i < typeActionItems.length; i++) {
+      const it = typeActionItems[i];
+      if (it) {
+        it.disabled = !hasAnyText;
+        it.setAttribute('aria-disabled', String(!hasAnyText));
+      }
+    }
+
+    if (el.menuItemTypeToggleKind) {
+      const canToggleKind = singleTextNode !== null;
+      el.menuItemTypeToggleKind.disabled = !canToggleKind;
+      el.menuItemTypeToggleKind.setAttribute('aria-disabled', String(!canToggleKind));
+      if (singleTextNode) {
+        const isArea =
+          singleTextNode.textKind === 'area' ||
+          (singleTextNode.boxWidth !== undefined && singleTextNode.textKind !== 'point');
+        const label = el.menuItemTypeToggleKind.querySelector('.menu-item-label');
+        if (label) {
+          label.textContent = isArea ? 'Convertir a texto de punto' : 'Convertir a texto de área';
+        }
+      }
     }
 
     const canGroup = selectedNodes.length >= 2;

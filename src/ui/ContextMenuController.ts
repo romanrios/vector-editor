@@ -3,7 +3,7 @@ import { CommandManager } from '../commands/CommandManager.ts';
 import { InputController } from '../input/InputController.ts';
 import { SetLockedCommand } from '../commands/SetLockedCommand.ts';
 import { BatchCommand } from '../commands/BatchCommand.ts';
-import { isGroup, type SelectableNode } from '../types/scene-graph.ts';
+import { isGroup, isText, type SelectableNode, type Text } from '../types/scene-graph.ts';
 import type { AlignmentMode } from '../utils/geometry.ts';
 import { isClosedShape, type BooleanOp } from '../utils/booleanOperations.ts';
 import { canOutlineStroke } from '../utils/strokeToPath.ts';
@@ -49,6 +49,10 @@ export function setupContextMenuBindings(
   const ctxItemMakeClipMask = document.querySelector<HTMLButtonElement>('#ctx-item-make-clip-mask');
   const ctxItemReleaseClipMask = document.querySelector<HTMLButtonElement>('#ctx-item-release-clip-mask');
   const ctxItemOutlineStroke = document.querySelector<HTMLButtonElement>('#ctx-item-outline-stroke');
+
+  const ctxDividerText = document.querySelector<HTMLElement>('#ctx-divider-text');
+  const ctxItemConvertToAreaText = document.querySelector<HTMLButtonElement>('#ctx-item-convert-to-area-text');
+  const ctxItemConvertToPointText = document.querySelector<HTMLButtonElement>('#ctx-item-convert-to-point-text');
 
   const ctxItemAlign = document.querySelector<HTMLButtonElement>('#ctx-item-align');
   const ctxDropdownAlign = document.querySelector<HTMLElement>('#ctx-dropdown-align');
@@ -99,6 +103,8 @@ export function setupContextMenuBindings(
     ctxItemMakeClipMask,
     ctxItemReleaseClipMask,
     ctxItemOutlineStroke,
+    ctxItemConvertToAreaText,
+    ctxItemConvertToPointText,
     ctxItemAlign,
     ctxItemPathfinder,
     ctxItemLock,
@@ -231,6 +237,38 @@ export function setupContextMenuBindings(
       ctxItemOutlineStroke.disabled = !canOutlineStrokeValue;
       ctxItemOutlineStroke.setAttribute('aria-disabled', String(!canOutlineStrokeValue));
     }
+
+    const singleTextNode =
+      selectedNodes.length === 1 && isText(selectedNodes[0]) ? (selectedNodes[0] as Text) : null;
+    if (singleTextNode) {
+      const isArea =
+        singleTextNode.textKind === 'area' ||
+        (singleTextNode.boxWidth !== undefined && singleTextNode.textKind !== 'point');
+      if (ctxDividerText) ctxDividerText.hidden = false;
+      if (ctxItemConvertToAreaText) {
+        ctxItemConvertToAreaText.hidden = isArea;
+        ctxItemConvertToAreaText.disabled = isArea;
+        ctxItemConvertToAreaText.setAttribute('aria-disabled', String(isArea));
+      }
+      if (ctxItemConvertToPointText) {
+        ctxItemConvertToPointText.hidden = !isArea;
+        ctxItemConvertToPointText.disabled = !isArea;
+        ctxItemConvertToPointText.setAttribute('aria-disabled', String(!isArea));
+      }
+    } else {
+      if (ctxDividerText) ctxDividerText.hidden = true;
+      if (ctxItemConvertToAreaText) {
+        ctxItemConvertToAreaText.hidden = true;
+        ctxItemConvertToAreaText.disabled = true;
+        ctxItemConvertToAreaText.setAttribute('aria-disabled', 'true');
+      }
+      if (ctxItemConvertToPointText) {
+        ctxItemConvertToPointText.hidden = true;
+        ctxItemConvertToPointText.disabled = true;
+        ctxItemConvertToPointText.setAttribute('aria-disabled', 'true');
+      }
+    }
+
     if (ctxItemAlign) {
       ctxItemAlign.disabled = !canAlign;
       ctxItemAlign.setAttribute('aria-disabled', String(!canAlign));
@@ -571,6 +609,22 @@ export function setupContextMenuBindings(
     }
   };
 
+  const onCtxConvertToAreaClick = () => {
+    closeContextMenu();
+    inputController.toggleTextKind();
+    syncContextMenu();
+    options.onAction?.();
+    canvas?.focus?.();
+  };
+
+  const onCtxConvertToPointClick = () => {
+    closeContextMenu();
+    inputController.toggleTextKind();
+    syncContextMenu();
+    options.onAction?.();
+    canvas?.focus?.();
+  };
+
   const createAlignHandler = (mode: AlignmentMode) => () => {
     if (stateManager.getSelection().length >= 2) {
       closeContextMenu();
@@ -651,6 +705,8 @@ export function setupContextMenuBindings(
   ctxItemMakeClipMask?.addEventListener('click', onCtxMakeClipMaskClick);
   ctxItemReleaseClipMask?.addEventListener('click', onCtxReleaseClipMaskClick);
   ctxItemOutlineStroke?.addEventListener('click', onCtxOutlineStrokeClick);
+  ctxItemConvertToAreaText?.addEventListener('click', onCtxConvertToAreaClick);
+  ctxItemConvertToPointText?.addEventListener('click', onCtxConvertToPointClick);
 
   ctxItemAlignLeft?.addEventListener('click', onAlignLeft);
   ctxItemAlignCenterH?.addEventListener('click', onAlignCenterH);
@@ -689,6 +745,8 @@ export function setupContextMenuBindings(
       ctxItemMakeClipMask?.removeEventListener('click', onCtxMakeClipMaskClick);
       ctxItemReleaseClipMask?.removeEventListener('click', onCtxReleaseClipMaskClick);
       ctxItemOutlineStroke?.removeEventListener('click', onCtxOutlineStrokeClick);
+      ctxItemConvertToAreaText?.removeEventListener('click', onCtxConvertToAreaClick);
+      ctxItemConvertToPointText?.removeEventListener('click', onCtxConvertToPointClick);
 
       ctxItemAlignLeft?.removeEventListener('click', onAlignLeft);
       ctxItemAlignCenterH?.removeEventListener('click', onAlignCenterH);

@@ -1,12 +1,13 @@
 import type { ShapePreview } from '../input/InputController.ts';
 import type { SnapGuide } from '../types/engine.ts';
-import type { Guide, Vector2D } from '../types/scene-graph.ts';
+import type { Guide, Vector2D, TextSpan } from '../types/scene-graph.ts';
 import type { ViewportManager } from '../utils/viewport.ts';
 import type { LayerCacheManager, LayerCacheManagerOptions } from './LayerCacheManager.ts';
 
 export interface TextEditRenderState {
   textId: string;
   text: string;
+  spans?: readonly TextSpan[];
   cursorIndex?: number;
   selectionStart?: number;
   selectionEnd?: number;
