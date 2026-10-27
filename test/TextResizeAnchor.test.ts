@@ -752,5 +752,54 @@ describe('Escalado de Texto con Anclaje en Esquina Opuesta, Centro (Alt) y Progr
 
       controller.destroy();
     });
+
+    it('14. escalado suave de texto: incrementos pequeños generan valores fraccionarios de fontSize sin saltos enteros', () => {
+      const { canvas, mockCtx } = createMockCanvas();
+      setSharedMeasureContext(mockCtx);
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const controller = new InputController(canvas, stateManager, commandManager);
+
+      const initialDims = {
+        x: 100,
+        y: 100,
+        width: 100,
+        height: 20,
+        fontSize: 16,
+        lineHeight: 20,
+        boxWidth: 100,
+        rotation: 0,
+      };
+
+      // Un desplazamiento leve de +1px en X e Y
+      const resSmall = controller.calculateResizedDimensions(
+        initialDims,
+        'bottom-right',
+        1,
+        1,
+        false,
+        false
+      );
+
+      // No debe ser entero (16), debe ser fraccionario suavemente mayor a 16
+      assert.ok(resSmall.fontSize! > 16, 'fontSize debe avanzar incluso con desplazamientos mínimos (+1px)');
+      assert.ok(resSmall.fontSize! < 17, 'fontSize no debe saltar de golpe a 17');
+      assert.equal(Number.isInteger(resSmall.fontSize), false, 'fontSize debe permitir valores decimales para un escalado suave');
+
+      // Un desplazamiento de +2px debe ser suavemente mayor al de +1px
+      const resSmall2 = controller.calculateResizedDimensions(
+        initialDims,
+        'bottom-right',
+        2,
+        2,
+        false,
+        false
+      );
+      assert.ok(resSmall2.fontSize! > resSmall.fontSize!, 'Cada incremento de arrastre debe ser progresivo y suave');
+      assert.ok(resSmall2.boxWidth! > resSmall.boxWidth!, 'boxWidth debe escalar suavemente con decimales');
+      assert.ok(resSmall2.lineHeight! > resSmall.lineHeight!, 'lineHeight debe escalar suavemente con decimales');
+
+      controller.destroy();
+    });
   });
 });

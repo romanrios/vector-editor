@@ -201,7 +201,7 @@ export function calculateResizedDimensions(
     const minScale = Math.max(4 / Math.max(1, initial.fontSize), 5 / initW, 5 / initH);
     const scale = Math.max(minScale, rawScale);
 
-    const newFontSize = Math.max(4, Math.round(initial.fontSize * scale));
+    const newFontSize = Math.max(4, Math.round(initial.fontSize * scale * 100) / 100);
     const effectiveScale = newFontSize / initial.fontSize;
 
     // Nueva posición (x, y) del nodo Text manteniendo invariante el punto de anclaje en coordenadas de mundo
@@ -219,10 +219,10 @@ export function calculateResizedDimensions(
       fontSize: newFontSize,
       rotation,
       ...(initial.boxWidth !== undefined
-        ? { boxWidth: Math.max(5, Math.round(initial.boxWidth * effectiveScale)) }
+        ? { boxWidth: Math.max(5, Math.round(initial.boxWidth * effectiveScale * 100) / 100) }
         : {}),
       ...(initial.lineHeight !== undefined
-        ? { lineHeight: Math.max(1, Math.round(initial.lineHeight * effectiveScale)) }
+        ? { lineHeight: Math.max(1, Math.round(initial.lineHeight * effectiveScale * 100) / 100) }
         : {}),
       ...(initial.letterSpacing !== undefined
         ? { letterSpacing: Math.round(initial.letterSpacing * effectiveScale * 100) / 100 }

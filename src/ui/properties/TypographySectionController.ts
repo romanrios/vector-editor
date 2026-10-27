@@ -491,7 +491,7 @@ export class TypographySectionController {
     }
 
     if (this.elements.inputFontSize && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.inputFontSize))) {
-      this.elements.inputFontSize.value = String(singleTextNode.fontSize ?? 32);
+      this.elements.inputFontSize.value = String(this.roundToFourDecimals(singleTextNode.fontSize ?? 32));
     }
 
     if (this.elements.inputLineHeight && (!isTypoEditing || (typeof document !== 'undefined' && document.activeElement !== this.elements.inputLineHeight))) {
