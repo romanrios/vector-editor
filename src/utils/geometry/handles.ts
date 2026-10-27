@@ -58,6 +58,22 @@ export function getSelectionHandles(
       height: handleSize,
     });
 
+    const createTextRc = (x: number, y: number): SelectionHandle => {
+      const rcW = handleSize / 2;
+      const rcH = handleSize * 2;
+      const halfW = rcW / 2;
+      const halfH = rcH / 2;
+      return {
+        type: 'right-center',
+        minX: x - halfW,
+        minY: y - halfH,
+        maxX: x + halfW,
+        maxY: y + halfH,
+        width: rcW,
+        height: rcH,
+      };
+    };
+
     if (!includeSideHandles) {
       const handles: SelectionHandle[] = [
         createH(aabb.minX, aabb.minY, 'top-left'),
@@ -68,7 +84,7 @@ export function getSelectionHandles(
       ];
 
       if (shape.type === 'text') {
-        handles.push(createH(aabb.maxX, midY, 'right-center'));
+        handles.push(createTextRc(aabb.maxX, midY));
       }
 
       return handles;
@@ -78,7 +94,7 @@ export function getSelectionHandles(
       createH(aabb.minX, aabb.minY, 'top-left'),
       createH(midX, aabb.minY, 'top-center'),
       createH(aabb.maxX, aabb.minY, 'top-right'),
-      createH(aabb.maxX, midY, 'right-center'),
+      shape.type === 'text' ? createTextRc(aabb.maxX, midY) : createH(aabb.maxX, midY, 'right-center'),
       createH(aabb.maxX, aabb.maxY, 'bottom-right'),
       createH(midX, aabb.maxY, 'bottom-center'),
       createH(aabb.minX, aabb.maxY, 'bottom-left'),
@@ -156,6 +172,25 @@ export function getSelectionHandles(
       height: handleSize,
     });
 
+    const rcW = handleSize / 2;
+    const rcH = handleSize * 2;
+    const cosVal = Math.abs(cos);
+    const sinVal = Math.abs(sin);
+    const aabbW = rcW * cosVal + rcH * sinVal;
+    const aabbH = rcW * sinVal + rcH * cosVal;
+    const rcHalfW = aabbW / 2;
+    const rcHalfH = aabbH / 2;
+
+    const createTextRcRotated = (pt: { x: number; y: number }): SelectionHandle => ({
+      type: 'right-center',
+      minX: pt.x - rcHalfW,
+      minY: pt.y - rcHalfH,
+      maxX: pt.x + rcHalfW,
+      maxY: pt.y + rcHalfH,
+      width: aabbW,
+      height: aabbH,
+    });
+
     if (!includeSideHandles) {
       return [
         createHandle(tl, 'top-left'),
@@ -163,7 +198,7 @@ export function getSelectionHandles(
         createHandle(br, 'bottom-right'),
         createHandle(bl, 'bottom-left'),
         createHandle(rot, 'rotation-handle'),
-        createHandle(rc, 'right-center'),
+        createTextRcRotated(rc),
       ];
     }
 
@@ -171,7 +206,7 @@ export function getSelectionHandles(
       createHandle(tl, 'top-left'),
       createHandle(tc, 'top-center'),
       createHandle(tr, 'top-right'),
-      createHandle(rc, 'right-center'),
+      createTextRcRotated(rc),
       createHandle(br, 'bottom-right'),
       createHandle(bc, 'bottom-center'),
       createHandle(bl, 'bottom-left'),

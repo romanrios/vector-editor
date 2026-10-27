@@ -321,34 +321,40 @@ export function renderSingleShapeSelection(
 
   const midY = baseY + baseHeight / 2;
 
-  // 3. Manejadores (cuadrados en las 4 esquinas y en los 4 laterales)
+  // 3. Manejadores (cuadrados en las 4 esquinas y laterales; para Text, right-center es un rectángulo vertical angosto)
   const handles = [
-    { x: baseX, y: baseY },                          // Superior Izquierda
-    { x: midX, y: baseY },                           // Superior Centro
-    { x: baseX + baseWidth, y: baseY },              // Superior Derecha
-    { x: baseX + baseWidth, y: midY },               // Centro Derecha
-    { x: baseX + baseWidth, y: baseY + baseHeight }, // Inferior Derecha
-    { x: midX, y: baseY + baseHeight },              // Inferior Centro
-    { x: baseX, y: baseY + baseHeight },             // Inferior Izquierda
-    { x: baseX, y: midY },                           // Centro Izquierda
+    { x: baseX, y: baseY, type: 'top-left' as const },                          // Superior Izquierda
+    { x: midX, y: baseY, type: 'top-center' as const },                           // Superior Centro
+    { x: baseX + baseWidth, y: baseY, type: 'top-right' as const },              // Superior Derecha
+    { x: baseX + baseWidth, y: midY, type: 'right-center' as const },               // Centro Derecha
+    { x: baseX + baseWidth, y: baseY + baseHeight, type: 'bottom-right' as const }, // Inferior Derecha
+    { x: midX, y: baseY + baseHeight, type: 'bottom-center' as const },              // Inferior Centro
+    { x: baseX, y: baseY + baseHeight, type: 'bottom-left' as const },             // Inferior Izquierda
+    { x: baseX, y: midY, type: 'left-center' as const },                           // Centro Izquierda
   ];
 
   for (const h of handles) {
+    const isTextRightCenter = shape.type === 'text' && h.type === 'right-center';
+    const w = isTextRightCenter ? handleSize / 2 : handleSize;
+    const hDim = isTextRightCenter ? handleSize * 2 : handleSize;
+    const halfW = w / 2;
+    const halfH = hDim / 2;
+
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(
-      h.x - halfHandle,
-      h.y - halfHandle,
-      handleSize,
-      handleSize
+      h.x - halfW,
+      h.y - halfH,
+      w,
+      hDim
     );
 
     ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 1.5 / zoom;
     ctx.strokeRect(
-      h.x - halfHandle,
-      h.y - halfHandle,
-      handleSize,
-      handleSize
+      h.x - halfW,
+      h.y - halfH,
+      w,
+      hDim
     );
   }
 

@@ -189,10 +189,12 @@ describe('Ajuste de caja de párrafo (word-wrapping) y manejador right-center', 
       // aabb.minY = 20
       const aabb = getTextBaseAABB(text, mockCtx);
       const expectedY = (aabb.minY + aabb.maxY) / 2;
-      assert.equal(rc.minX, 210 - 4);
-      assert.equal(rc.maxX, 210 + 4);
-      assert.equal(rc.minY, expectedY - 4);
-      assert.equal(rc.maxY, expectedY + 4);
+      assert.equal(rc.minX, 210 - 2);
+      assert.equal(rc.maxX, 210 + 2);
+      assert.equal(rc.minY, expectedY - 8);
+      assert.equal(rc.maxY, expectedY + 8);
+      assert.equal(rc.width, 4);
+      assert.equal(rc.height, 16);
 
       setSharedMeasureContext(null);
     });
@@ -214,6 +216,8 @@ describe('Ajuste de caja de párrafo (word-wrapping) y manejador right-center', 
       assert.equal(handles.length, 6);
       const rc = handles.find((h) => h.type === 'right-center');
       assert.ok(rc);
+      assert.ok(Math.abs(rc.width - 16) < 1e-4, 'Con rotación 90° el ancho AABB del tirador vertical pasa a 16');
+      assert.ok(Math.abs(rc.height - 4) < 1e-4, 'Con rotación 90° la altura AABB del tirador vertical pasa a 4');
     });
 
     it('no inyecta right-center en Rectangle, Ellipse o Path', () => {
@@ -350,9 +354,9 @@ describe('Ajuste de caja de párrafo (word-wrapping) y manejador right-center', 
       const expectedRcY = aabb.minY + aabb.height / 2;
 
       const matchingHandle = rectCalls.find(
-        (r) => Math.abs(r.x - (expectedRcX - 4)) < 1e-4 && Math.abs(r.y - (expectedRcY - 4)) < 1e-4 && r.w === 8 && r.h === 8
+        (r) => Math.abs(r.x - (expectedRcX - 2)) < 1e-4 && Math.abs(r.y - (expectedRcY - 8)) < 1e-4 && r.w === 4 && r.h === 16
       );
-      assert.ok(matchingHandle, 'Debe haber dibujado el manejador right-center en la posición esperada');
+      assert.ok(matchingHandle, 'Debe haber dibujado el manejador right-center en la posición esperada como rectángulo vertical angosto');
     });
   });
 
