@@ -573,6 +573,100 @@ describe('Mejoras interactivas en la herramienta Texto (Text Editing UX)', () =>
     assert.equal(range2.end, 11);
     assert.equal(controller2.textEditingState?.currentText.slice(range2.start, range2.end), 'Linea Unica');
   });
+
+  it('23. pulsar Enter en proxy textarea o con eventos que se propagan inserta exactamente un salto de línea (no dos)', () => {
+    const origDoc = (globalThis as any).document;
+    const origWindow = (globalThis as any).window;
+
+    const proxyListeners: Record<string, ((e: any) => void)[]> = {};
+    const mockProxy = {
+      id: 'mobile-text-proxy',
+      value: '',
+      selectionStart: 0,
+      selectionEnd: 0,
+      style: {} as Record<string, string>,
+      setAttribute: () => {},
+      focus: () => {},
+      blur: () => {},
+      remove: () => {},
+      setSelectionRange: (s: number, e: number) => {
+        mockProxy.selectionStart = s;
+        mockProxy.selectionEnd = e;
+      },
+      addEventListener: (type: string, fn: (e: any) => void) => {
+        proxyListeners[type] = proxyListeners[type] || [];
+        proxyListeners[type].push(fn);
+      },
+      removeEventListener: () => {},
+    };
+
+    let appendedElement: any = null;
+    const mockBody: any = {
+      appendChild: (el: any) => {
+        appendedElement = el;
+      },
+      removeChild: () => {},
+    };
+
+    const windowListeners: Record<string, ((e: any) => void)[]> = {};
+
+    (globalThis as any).document = {
+      createElement: (tag: string) => (tag === 'textarea' ? mockProxy : {}),
+      body: mockBody,
+      activeElement: mockProxy,
+    };
+    (globalThis as any).window = {
+      addEventListener: (type: string, fn: (e: any) => void) => {
+        windowListeners[type] = windowListeners[type] || [];
+        windowListeners[type].push(fn);
+      },
+      removeEventListener: () => {},
+    };
+
+    try {
+      const { controller, textNode } = setupTestEnvironment('Linea');
+      controller.startEditingText(textNode!.id, 5);
+
+      assert.ok(appendedElement, 'El proxy debe ser adjuntado al DOM');
+      assert.equal(controller.textEditingState?.currentText, 'Linea');
+
+      let stopPropagationCalled = false;
+      let defaultPrevented = false;
+
+      const enterEvent = {
+        key: 'Enter',
+        target: mockProxy,
+        defaultPrevented: false,
+        preventDefault: () => {
+          defaultPrevented = true;
+          enterEvent.defaultPrevented = true;
+        },
+        stopPropagation: () => {
+          stopPropagationCalled = true;
+        },
+      };
+
+      // Simular keydown 'Enter' en el proxy textarea
+      for (const fn of proxyListeners['keydown'] || []) {
+        fn(enterEvent);
+      }
+
+      assert.equal(stopPropagationCalled, true, 'Debe invocar stopPropagation en Enter para evitar duplicación');
+      assert.equal(defaultPrevented, true, 'Debe prevenir la acción por defecto del textarea');
+      assert.equal(controller.textEditingState?.currentText, 'Linea\n');
+
+      // Si por alguna razón el evento llegase al window listener (simulando burbujeo si no se hubiese detenido)
+      for (const fn of windowListeners['keydown'] || []) {
+        fn(enterEvent);
+      }
+
+      // Debe seguir teniendo exactamente un único salto de línea, no dos
+      assert.equal(controller.textEditingState?.currentText, 'Linea\n');
+    } finally {
+      (globalThis as any).document = origDoc;
+      (globalThis as any).window = origWindow;
+    }
+  });
 });
 
 

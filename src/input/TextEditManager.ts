@@ -546,6 +546,7 @@ export class TextEditManager {
         this._textEditingState.selectionStart = newCursor;
         this._textEditingState.selectionEnd = newCursor;
       }
+      this.syncProxyValue();
       this.resetCursorBlink();
       this.stateManager.markDirty();
       return true;
@@ -1107,17 +1108,13 @@ export class TextEditManager {
       this._mobileInputProxy.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
+          e.stopPropagation();
           this.commitTextEdit();
         } else if (e.key === 'Enter') {
           e.preventDefault();
+          e.stopPropagation();
           this.handleKeyDown(e);
-          if (this._mobileInputProxy && this._textEditingState) {
-            this._mobileInputProxy.value = this._textEditingState.currentText;
-            const pos = this._textEditingState.cursorIndex;
-            try {
-              this._mobileInputProxy.setSelectionRange(pos, pos);
-            } catch {}
-          }
+          this.syncProxyValue();
         }
       });
 

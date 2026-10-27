@@ -25,6 +25,10 @@ export class KeyboardShortcutsHandler {
   }
 
   public handleKeyDown(event: KeyboardEvent): void {
+    if (event.defaultPrevented && (event.target as HTMLElement | null)?.id === 'mobile-text-proxy') {
+      return;
+    }
+
     if (this.isInputFocused(event)) {
       return;
     }
