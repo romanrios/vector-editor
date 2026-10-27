@@ -47,10 +47,9 @@ export class UpdateTextCommand implements Command {
    * Aplica el nuevo contenido de texto y spans al nodo Text (rehacer/redo).
    */
   public execute(): void {
-    const patch: Partial<Text> = { text: this.newText };
-    if (this.newSpans !== undefined) {
-      patch.spans = this.newSpans;
-    }
+    const patch: Partial<Text> = this.newSpans !== undefined
+      ? { text: this.newText, spans: this.newSpans }
+      : { text: this.newText };
     this.stateManager.updateShape<Text>(this.textId, patch);
   }
 
@@ -58,10 +57,9 @@ export class UpdateTextCommand implements Command {
    * Restaura el contenido de texto y spans previos al nodo Text (deshacer/undo).
    */
   public undo(): void {
-    const patch: Partial<Text> = { text: this.previousText };
-    if (this.previousSpans !== undefined) {
-      patch.spans = this.previousSpans;
-    }
+    const patch: Partial<Text> = this.previousSpans !== undefined
+      ? { text: this.previousText, spans: this.previousSpans }
+      : { text: this.previousText };
     this.stateManager.updateShape<Text>(this.textId, patch);
   }
 }

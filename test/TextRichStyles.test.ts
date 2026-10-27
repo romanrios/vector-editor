@@ -63,6 +63,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
 
     const textNode: Text = {
       id: 'text-1',
+      name: 'Text 1',
       type: 'text',
       x: 0,
       y: 0,
@@ -107,6 +108,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
 
     const textNode: Text = {
       id: 'text-2',
+      name: 'Text 2',
       type: 'text',
       x: 0,
       y: 0,
@@ -143,6 +145,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
 
     const textNode: Text = {
       id: 'text-3',
+      name: 'Text 3',
       type: 'text',
       x: 0,
       y: 0,
@@ -186,6 +189,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
 
     const textNode: Text = {
       id: 'text-4',
+      name: 'Text 4',
       type: 'text',
       x: 0,
       y: 0,
@@ -239,6 +243,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
 
     const textNode: Text = {
       id: 'text-5',
+      name: 'Text 5',
       type: 'text',
       x: 0,
       y: 0,
@@ -280,6 +285,7 @@ describe('Text Rich Styles (Multi-Style Spans)', () => {
   it('textMetrics calcula altura de línea y anchos basándose en los spans con distintos tamaños', () => {
     const textNode: Text = {
       id: 'text-6',
+      name: 'Text 6',
       type: 'text',
       x: 10,
       y: 20,

@@ -839,7 +839,7 @@ export class TextEditManager {
     const node = this.stateManager.findNode(this._textEditingState.textId);
     if (!node || !isText(node)) return false;
 
-    const resolvedPatch: Partial<TextSpan> = { ...patch };
+    const resolvedPatch: { -readonly [K in keyof Partial<TextSpan>]: Partial<TextSpan>[K] } = { ...patch };
 
     // Si se aplica negrita o cursiva, comprobar si todos los caracteres ya lo tienen para alternar
     if (patch.fontWeight !== undefined || patch.fontStyle !== undefined) {

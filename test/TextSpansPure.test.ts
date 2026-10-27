@@ -12,6 +12,7 @@ import {
 function createDummyText(spans?: TextSpan[]): Text {
   return {
     id: 'text-1',
+    name: 'Text',
     type: 'text',
     x: 0,
     y: 0,

@@ -19,7 +19,6 @@ import {
   type Guide,
   type Text,
   type TextKind,
-  type TextSpan,
 } from '../types/scene-graph.ts';
 import { ConvertTextTypeCommand } from '../commands/ConvertTextTypeCommand.ts';
 import { ChangeTextCaseCommand, type TextCaseMode } from '../commands/ChangeTextCaseCommand.ts';
@@ -1676,13 +1675,19 @@ export class InputController {
 
   public applyTextTypography(patch: TextPropertyUpdate, nodeId?: string): boolean {
     if (this.textEditManager.isEditingText && this.textEditManager.hasTextSelection) {
-      const spanPatch: Partial<TextSpan> = {};
+      const spanPatch: {
+        fontFamily?: string;
+        fontSize?: number;
+        fontWeight?: Text['fontWeight'];
+        fontStyle?: Text['fontStyle'];
+        fill?: Text['fill'];
+        letterSpacing?: number;
+      } = {};
       if (patch.fontFamily !== undefined) spanPatch.fontFamily = patch.fontFamily;
       if (patch.fontSize !== undefined) spanPatch.fontSize = patch.fontSize;
       if (patch.fontWeight !== undefined) spanPatch.fontWeight = patch.fontWeight;
       if (patch.fontStyle !== undefined) spanPatch.fontStyle = patch.fontStyle;
       if (patch.fill !== undefined) spanPatch.fill = patch.fill;
-      if (patch.textDecoration !== undefined) spanPatch.textDecoration = patch.textDecoration;
       if (Object.keys(spanPatch).length > 0) {
         return this.textEditManager.applySpanToSelection(spanPatch);
       }
