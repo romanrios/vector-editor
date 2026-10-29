@@ -71,6 +71,8 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   const groupExportArtboardSelect = document.querySelector<HTMLElement>('#group-export-artboard-select');
   const selectExportArtboard = document.querySelector<HTMLSelectElement>('#select-export-artboard');
   const groupExportPdfPages = document.querySelector<HTMLElement>('#group-export-pdf-pages');
+  const groupExportPdfOptions = document.querySelector<HTMLElement>('#group-export-pdf-options');
+  const checkExportPdfCurves = document.querySelector<HTMLInputElement>('#check-export-pdf-curves');
 
   const saveJsonDialog = document.querySelector<HTMLDialogElement>('#save-json-dialog');
   const btnCloseSaveJson = document.querySelector<HTMLButtonElement>('#btn-close-save-json');
@@ -223,6 +225,10 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
         format === 'pdf' && scope === 'artboard' && isAllArtboards && artboards.length > 1
           ? 'flex'
           : 'none';
+    }
+
+    if (groupExportPdfOptions) {
+      groupExportPdfOptions.style.display = format === 'pdf' ? 'flex' : 'none';
     }
 
     const pdfMode = getSelectedExportPdfMode();
@@ -378,6 +384,8 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
     closeExportDialog();
 
+    const outlineText = checkExportPdfCurves ? checkExportPdfCurves.checked : true;
+
     try {
       if (isAllArtboards && artboards.length > 0) {
         const scaleSuffix = scale > 1 ? `@${scale}x` : '';
@@ -388,6 +396,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
             scope: 'artboard',
             artboardMode: 'single',
             backgroundColor: bg === 'white' ? '#ffffff' : null,
+            outlineText,
           });
           downloadPdf(`${baseName}.pdf`, blob);
           debug(`💾 [Export] Documento PDF multipágina (${artboards.length} páginas) exportado correctamente`);
@@ -416,6 +425,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
                 scope: 'artboard',
                 artboardId: ab.id,
                 backgroundColor: bg === 'white' ? '#ffffff' : null,
+                outlineText,
               });
               downloadPdf(`${itemBaseName}.pdf`, blob);
             } else if (format === 'json') {
@@ -454,6 +464,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
             selectedIds: selection,
             artboardId: targetArtboardId,
             backgroundColor: bg === 'white' ? '#ffffff' : null,
+            outlineText,
           });
           downloadPdf(`${baseName}.pdf`, blob);
           debug('💾 [Export] PDF exportado correctamente');

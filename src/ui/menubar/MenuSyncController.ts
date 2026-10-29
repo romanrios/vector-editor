@@ -119,6 +119,7 @@ export class MenuSyncController {
       el.menuItemTypeSize,
       el.menuItemTypeStyle,
       el.menuItemTypeAlign,
+      el.menuItemTypeConvertToCurves,
       el.menuItemTypeCasing,
       el.menuItemTypeLorem,
     ];

@@ -117,6 +117,7 @@ export interface MenuBarElements {
   menuItemTypeAlignRight: HTMLButtonElement | null;
 
   menuItemTypeToggleKind: HTMLButtonElement | null;
+  menuItemTypeConvertToCurves: HTMLButtonElement | null;
 
   menuItemTypeCasing: HTMLButtonElement | null;
   menuDropdownTypeCasing: HTMLElement | null;

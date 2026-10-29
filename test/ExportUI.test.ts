@@ -949,6 +949,10 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
       const groupBg = createMockElement('group-export-background', 'div');
       const extSpan = createMockElement('export-filename-extension', 'span');
       const groupPdfPages = createMockElement('group-export-pdf-pages', 'div');
+      const groupPdfOptions = createMockElement('group-export-pdf-options', 'div');
+      const checkPdfCurves = createMockElement('check-export-pdf-curves', 'input');
+      checkPdfCurves.type = 'checkbox';
+      checkPdfCurves.checked = true;
       const radioPdfSingle = createMockElement('radio-pdf-single', 'input');
       radioPdfSingle.value = 'single';
       radioPdfSingle.checked = true;
@@ -976,6 +980,8 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
         '#group-export-background': groupBg,
         '#export-filename-extension': extSpan,
         '#group-export-pdf-pages': groupPdfPages,
+        '#group-export-pdf-options': groupPdfOptions,
+        '#check-export-pdf-curves': checkPdfCurves,
         '#group-export-artboard-select': groupArtboardSelect,
         '#select-export-artboard': selectArtboard,
         '#export-summary-dim': summaryDim,
@@ -1043,6 +1049,8 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
 
         // 4. Muestra selector de estructura PDF para múltiples mesas
         assert.strictEqual(groupPdfPages.style.display, 'flex');
+        // Muestra opciones de fidelidad tipográfica (curvas) para PDF
+        assert.strictEqual(groupPdfOptions.style.display, 'flex');
 
         // 5. En modo "single", el resumen indica documento multipágina
         assert.match(summaryDim.textContent, /2 páginas \(mesas de trabajo\)/);

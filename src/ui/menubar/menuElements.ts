@@ -97,6 +97,7 @@ export function queryMenuBarElements(options: MenuBarControllerOptions): MenuBar
     menuItemTypeAlignRight: q<HTMLButtonElement>('#menu-item-type-align-right'),
 
     menuItemTypeToggleKind: q<HTMLButtonElement>('#menu-item-type-toggle-kind'),
+    menuItemTypeConvertToCurves: q<HTMLButtonElement>('#menu-item-type-convert-to-curves'),
 
     menuItemTypeCasing: q<HTMLButtonElement>('#menu-item-type-casing'),
     menuDropdownTypeCasing: q<HTMLElement>('#menu-dropdown-type-casing'),
@@ -175,6 +176,7 @@ export function createMenuEntries(el: MenuBarElements): MenuEntry[] {
         el.menuItemTypeStyle,
         el.menuItemTypeAlign,
         el.menuItemTypeToggleKind,
+        el.menuItemTypeConvertToCurves,
         el.menuItemTypeCasing,
         el.menuItemTypeLorem,
       ],

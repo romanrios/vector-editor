@@ -141,6 +141,18 @@ export class KeyboardShortcutsHandler {
         return;
       }
 
+      if (keyLower === 'o' && event.shiftKey) {
+        event.preventDefault?.();
+        const selected = this.controller.stateManager.getSelectedNodes();
+        const hasText = getLeafShapes(selected).some(isText);
+        if (hasText) {
+          void this.controller.convertTextToCurves();
+        } else {
+          this.controller.outlineStroke();
+        }
+        return;
+      }
+
       if (key === '7' || event.code === 'Digit7' || event.code === 'Numpad7') {
         event.preventDefault?.();
         if (event.altKey) {
@@ -148,12 +160,6 @@ export class KeyboardShortcutsHandler {
         } else {
           this.controller.makeClipMask();
         }
-        return;
-      }
-
-      if (keyLower === 'o' && event.shiftKey) {
-        event.preventDefault?.();
-        this.controller.outlineStroke();
         return;
       }
 

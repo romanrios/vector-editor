@@ -23,6 +23,8 @@ import {
 import { ConvertTextTypeCommand } from '../commands/ConvertTextTypeCommand.ts';
 import { ChangeTextCaseCommand, type TextCaseMode } from '../commands/ChangeTextCaseCommand.ts';
 import { UpdateTextCommand } from '../commands/UpdateTextCommand.ts';
+import { ConvertTextToCurvesCommand } from '../commands/ConvertTextToCurvesCommand.ts';
+import { convertTextToGroup } from '../utils/textToPath.ts';
 import {
   UpdateTextTypographyCommand,
   type TextPropertyUpdate,
@@ -1667,6 +1669,44 @@ export class InputController {
       (t) => new UpdateTextCommand(this.stateManager, t.id, t.text ?? '', lorem)
     );
     this.commandManager.executeCommand(new BatchCommand(cmds, 'Fill Lorem Ipsum'));
+    return true;
+  }
+
+  public async convertTextToCurves(nodeId?: string): Promise<boolean> {
+    if (this.textEditManager.isEditingText) {
+      this.textEditManager.commitTextEdit();
+    }
+    const selectedNodes = this.stateManager.getSelectedNodes();
+    const textNodes: Text[] = nodeId
+      ? (() => {
+          const n = this.stateManager.findNode(nodeId);
+          return n && isText(n) ? [n as Text] : [];
+        })()
+      : getLeafShapes(selectedNodes).filter(isText);
+
+    if (textNodes.length === 0) {
+      return false;
+    }
+
+    const conversionResults: { textNode: Text; groupNode: Group }[] = [];
+    for (const textNode of textNodes) {
+      const groupNode = await convertTextToGroup(textNode);
+      conversionResults.push({ textNode, groupNode });
+    }
+
+    if (conversionResults.length === 1) {
+      const { textNode, groupNode } = conversionResults[0];
+      const cmd = new ConvertTextToCurvesCommand(this.stateManager, textNode, groupNode);
+      this.commandManager.executeCommand(cmd);
+      return true;
+    }
+
+    const cmds = conversionResults.map(
+      ({ textNode, groupNode }) =>
+        new ConvertTextToCurvesCommand(this.stateManager, textNode, groupNode)
+    );
+    this.commandManager.executeCommand(new BatchCommand(cmds, 'Convert Text to Curves'));
+    this.stateManager.setSelection(conversionResults.map((c) => c.groupNode.id));
     return true;
   }
 

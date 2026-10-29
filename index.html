@@ -373,6 +373,10 @@
             <button id="menu-item-type-toggle-kind" class="menu-dropdown-item" role="menuitem" tabindex="-1">
               <span class="menu-item-label">Convertir a texto de área</span>
             </button>
+            <button id="menu-item-type-convert-to-curves" class="menu-dropdown-item" role="menuitem" tabindex="-1">
+              <span class="menu-item-label">Crear contornos</span>
+              <span class="menu-shortcut">Ctrl+Shift+O</span>
+            </button>
 
             <div class="menu-divider" role="separator" aria-hidden="true"></div>
 
@@ -2074,6 +2078,13 @@
             </label>
           </div>
         </div>
+        <div class="export-pdf-options-container" id="group-export-pdf-options"
+          style="display: none; margin-top: 8px;">
+          <label class="scope-radio-label">
+            <input type="checkbox" id="check-export-pdf-curves" name="export-pdf-curves" checked />
+            <span id="text-export-pdf-curves">Convertir texto a curvas (máxima fidelidad)</span>
+          </label>
+        </div>
       </div>
 
       <div class="export-field-group" id="group-export-background">
@@ -2301,6 +2312,10 @@
     </button>
     <button id="ctx-item-convert-to-point-text" class="menu-dropdown-item" role="menuitem" tabindex="-1" hidden>
       <span class="menu-item-label">Convertir a texto de punto</span>
+    </button>
+    <button id="ctx-item-convert-to-curves" class="menu-dropdown-item" role="menuitem" tabindex="-1" hidden>
+      <span class="menu-item-label">Convertir a curvas</span>
+      <span class="menu-shortcut">Ctrl+Shift+O</span>
     </button>
     <div class="menu-divider" role="separator" aria-hidden="true"></div>
     <div class="menu-submenu-container" id="ctx-submenu-align-container">

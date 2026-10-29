@@ -6,6 +6,7 @@ import type { Document } from '../types/scene-graph.ts';
 import { exportDocumentToSvg } from './exportSvg.ts';
 import { calculateExportBounds } from './exportRaster.ts';
 import { isNonePaint } from './color.ts';
+import { convertDocumentTextToCurves } from './textToPath.ts';
 
 const svg2pdf = svg2pdfFn as (element: Element, pdf: jsPDF, options?: Svg2pdfOptions) => Promise<jsPDF>;
 
@@ -46,6 +47,13 @@ export interface ExportPdfOptions {
    * Precisión de decimales en las coordenadas SVG subyacentes (por defecto 2).
    */
   readonly precision?: number;
+
+  /**
+   * Si es true (por defecto), convierte todos los textos tipográficos a trazados vectoriales (curvas Bézier)
+   * antes de generar el SVG y PDF. Esto garantiza una fidelidad visual del 100% en cualquier visor o sistema.
+   * Si es false, exporta elementos <text> SVG estándar.
+   */
+  readonly outlineText?: boolean;
 
   /**
    * Gancho opcional para parsear la cadena SVG a Element (útil para pruebas en entornos no DOM).
@@ -98,18 +106,24 @@ export async function exportDocumentToPdf(
     artboardMode = 'single',
     backgroundColor,
     precision = 2,
+    outlineText = true,
     parseElement = parseSvgElement,
     renderSvg = async (elem, pdf, opts) => {
       await svg2pdf(elem, pdf, opts);
     },
   } = options;
 
+  const shouldOutlineText = outlineText !== false;
+  const targetDoc = shouldOutlineText
+    ? await convertDocumentTextToCurves(doc, { precision })
+    : doc;
+
   const shouldIncludeBg = Boolean(
     backgroundColor && !isNonePaint(backgroundColor) && backgroundColor !== 'transparent'
   );
   const bgColor = shouldIncludeBg ? (backgroundColor as string) : undefined;
 
-  const artboards = doc.artboards ?? [];
+  const artboards = targetDoc.artboards ?? [];
   const isAllArtboards =
     scope === 'artboard' &&
     (!artboardId || artboardId === 'all') &&
@@ -139,7 +153,7 @@ export async function exportDocumentToPdf(
         pdf.addPage([w, h], orientation);
       }
 
-      const svgString = exportDocumentToSvg(doc, {
+      const svgString = exportDocumentToSvg(targetDoc, {
         artboardId: ab.id,
         includeBackground: shouldIncludeBg,
         backgroundColor: bgColor,
@@ -154,13 +168,13 @@ export async function exportDocumentToPdf(
   }
 
   // Dimensiones para una sola página (mesa concreta, selección o documento)
-  let pageWidth = Math.max(1, doc.width);
-  let pageHeight = Math.max(1, doc.height);
+  let pageWidth = Math.max(1, targetDoc.width);
+  let pageHeight = Math.max(1, targetDoc.height);
   let targetArtboardId: string | undefined = undefined;
   const isSelectionScope = scope === 'selection' && selectedIds.length > 0;
 
   if (isSelectionScope) {
-    const bounds = calculateExportBounds(doc, true, selectedIds);
+    const bounds = calculateExportBounds(targetDoc, true, selectedIds);
     pageWidth = Math.max(1, bounds.width);
     pageHeight = Math.max(1, bounds.height);
   } else if (scope === 'artboard' && artboards.length > 0) {
@@ -181,7 +195,7 @@ export async function exportDocumentToPdf(
     compress: true,
   });
 
-  const svgString = exportDocumentToSvg(doc, {
+  const svgString = exportDocumentToSvg(targetDoc, {
     onlySelected: isSelectionScope,
     selectedIds: isSelectionScope ? selectedIds : undefined,
     artboardId: targetArtboardId,

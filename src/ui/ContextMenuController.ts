@@ -53,6 +53,7 @@ export function setupContextMenuBindings(
   const ctxDividerText = document.querySelector<HTMLElement>('#ctx-divider-text');
   const ctxItemConvertToAreaText = document.querySelector<HTMLButtonElement>('#ctx-item-convert-to-area-text');
   const ctxItemConvertToPointText = document.querySelector<HTMLButtonElement>('#ctx-item-convert-to-point-text');
+  const ctxItemConvertToCurves = document.querySelector<HTMLButtonElement>('#ctx-item-convert-to-curves');
 
   const ctxItemAlign = document.querySelector<HTMLButtonElement>('#ctx-item-align');
   const ctxDropdownAlign = document.querySelector<HTMLElement>('#ctx-dropdown-align');
@@ -255,6 +256,11 @@ export function setupContextMenuBindings(
         ctxItemConvertToPointText.disabled = !isArea;
         ctxItemConvertToPointText.setAttribute('aria-disabled', String(!isArea));
       }
+      if (ctxItemConvertToCurves) {
+        ctxItemConvertToCurves.hidden = false;
+        ctxItemConvertToCurves.disabled = false;
+        ctxItemConvertToCurves.setAttribute('aria-disabled', 'false');
+      }
     } else {
       if (ctxDividerText) ctxDividerText.hidden = true;
       if (ctxItemConvertToAreaText) {
@@ -266,6 +272,11 @@ export function setupContextMenuBindings(
         ctxItemConvertToPointText.hidden = true;
         ctxItemConvertToPointText.disabled = true;
         ctxItemConvertToPointText.setAttribute('aria-disabled', 'true');
+      }
+      if (ctxItemConvertToCurves) {
+        ctxItemConvertToCurves.hidden = true;
+        ctxItemConvertToCurves.disabled = true;
+        ctxItemConvertToCurves.setAttribute('aria-disabled', 'true');
       }
     }
 
@@ -625,6 +636,14 @@ export function setupContextMenuBindings(
     canvas?.focus?.();
   };
 
+  const onCtxConvertToCurvesClick = () => {
+    closeContextMenu();
+    void inputController.convertTextToCurves();
+    syncContextMenu();
+    options.onAction?.();
+    canvas?.focus?.();
+  };
+
   const createAlignHandler = (mode: AlignmentMode) => () => {
     if (stateManager.getSelection().length >= 2) {
       closeContextMenu();
@@ -707,6 +726,7 @@ export function setupContextMenuBindings(
   ctxItemOutlineStroke?.addEventListener('click', onCtxOutlineStrokeClick);
   ctxItemConvertToAreaText?.addEventListener('click', onCtxConvertToAreaClick);
   ctxItemConvertToPointText?.addEventListener('click', onCtxConvertToPointClick);
+  ctxItemConvertToCurves?.addEventListener('click', onCtxConvertToCurvesClick);
 
   ctxItemAlignLeft?.addEventListener('click', onAlignLeft);
   ctxItemAlignCenterH?.addEventListener('click', onAlignCenterH);
@@ -747,6 +767,7 @@ export function setupContextMenuBindings(
       ctxItemOutlineStroke?.removeEventListener('click', onCtxOutlineStrokeClick);
       ctxItemConvertToAreaText?.removeEventListener('click', onCtxConvertToAreaClick);
       ctxItemConvertToPointText?.removeEventListener('click', onCtxConvertToPointClick);
+      ctxItemConvertToCurves?.removeEventListener('click', onCtxConvertToCurvesClick);
 
       ctxItemAlignLeft?.removeEventListener('click', onAlignLeft);
       ctxItemAlignCenterH?.removeEventListener('click', onAlignCenterH);

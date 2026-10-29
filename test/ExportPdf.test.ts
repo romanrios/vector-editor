@@ -276,5 +276,61 @@ describe('Exportación a PDF (Fase 1: jsPDF + Vector)', () => {
       (globalThis as any).DOMParser = origDOMParser;
     }
   });
+
+  it('exportDocumentToPdf convierte texto a curvas por defecto (outlineText=true) y omite <text> SVG', async () => {
+    const docWithText: Document = {
+      id: 'doc-text-pdf',
+      type: 'document',
+      name: 'Doc Con Texto',
+      width: 500,
+      height: 400,
+      children: [
+        {
+          id: 'layer-text',
+          name: 'Capa Texto',
+          type: 'layer',
+          children: [
+            {
+              id: 'text-1',
+              type: 'text',
+              name: 'Titular',
+              x: 50,
+              y: 50,
+              text: 'PDF Curvas',
+              fontSize: 24,
+              fontFamily: 'Inter',
+              fill: '#000000',
+            },
+          ],
+        },
+      ],
+    };
+
+    let renderedSvgOutline = '';
+    await exportDocumentToPdf(docWithText, {
+      parseElement: (svgString) => {
+        renderedSvgOutline = svgString;
+        return { tagName: 'svg' } as any;
+      },
+      renderSvg: async () => {},
+    });
+
+    // Con outlineText=true (por defecto), el texto fue vectorizado en <path> y no existe <text>
+    assert.ok(renderedSvgOutline.includes('<path'));
+    assert.strictEqual(renderedSvgOutline.includes('<text'), false);
+
+    let renderedSvgTextOnly = '';
+    await exportDocumentToPdf(docWithText, {
+      outlineText: false,
+      parseElement: (svgString) => {
+        renderedSvgTextOnly = svgString;
+        return { tagName: 'svg' } as any;
+      },
+      renderSvg: async () => {},
+    });
+
+    // Con outlineText=false, se exporta el elemento <text> nativo de SVG
+    assert.ok(renderedSvgTextOnly.includes('<text'));
+  });
 });
 

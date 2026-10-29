@@ -396,6 +396,15 @@ export class MenuItemActionsController {
     this.elements.canvas?.focus?.();
   };
 
+  private onTypeConvertToCurvesClick = (): void => {
+    this.navigation.closeAllMenus();
+    void this.inputController.convertTextToCurves();
+    this.sync.syncMenuItems();
+    this.options.onAction?.();
+    this.options.onSyncPropertiesPanel?.();
+    this.elements.canvas?.focus?.();
+  };
+
   private onTypeUppercaseClick = (): void => {
     this.navigation.closeAllMenus();
     this.inputController.changeTextCase('uppercase');
@@ -507,6 +516,7 @@ export class MenuItemActionsController {
     el.menuItemTypeAlignCenter?.addEventListener('click', this.onTypeAlignCenterClick);
     el.menuItemTypeAlignRight?.addEventListener('click', this.onTypeAlignRightClick);
     el.menuItemTypeToggleKind?.addEventListener('click', this.onTypeToggleKindClick);
+    el.menuItemTypeConvertToCurves?.addEventListener('click', this.onTypeConvertToCurvesClick);
     el.menuItemTypeUppercase?.addEventListener('click', this.onTypeUppercaseClick);
     el.menuItemTypeLowercase?.addEventListener('click', this.onTypeLowercaseClick);
     el.menuItemTypeTitlecase?.addEventListener('click', this.onTypeTitlecaseClick);
@@ -578,6 +588,7 @@ export class MenuItemActionsController {
     el.menuItemTypeAlignCenter?.removeEventListener('click', this.onTypeAlignCenterClick);
     el.menuItemTypeAlignRight?.removeEventListener('click', this.onTypeAlignRightClick);
     el.menuItemTypeToggleKind?.removeEventListener('click', this.onTypeToggleKindClick);
+    el.menuItemTypeConvertToCurves?.removeEventListener('click', this.onTypeConvertToCurvesClick);
     el.menuItemTypeUppercase?.removeEventListener('click', this.onTypeUppercaseClick);
     el.menuItemTypeLowercase?.removeEventListener('click', this.onTypeLowercaseClick);
     el.menuItemTypeTitlecase?.removeEventListener('click', this.onTypeTitlecaseClick);
