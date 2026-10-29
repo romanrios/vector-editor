@@ -173,7 +173,7 @@ describe('Exportación a PDF (Fase 1: jsPDF + Vector)', () => {
     const blob = await exportDocumentToPdfBlob(doc, {
       scope: 'document',
       parseElement: () => ({} as Element),
-      renderSvg: async () => {},
+      renderSvg: async () => { },
     });
 
     assert.ok(blob instanceof Blob);
@@ -203,7 +203,7 @@ describe('Exportación a PDF (Fase 1: jsPDF + Vector)', () => {
         return capturedDownload;
       },
       style: { display: '' },
-      setAttribute: () => {},
+      setAttribute: () => { },
       click: () => {
         clicked = true;
       },
