@@ -143,6 +143,10 @@ export interface InputControllerOptions {
    * Gestor reactivo de la vista (zoom y pan). Si no se proporciona, crea uno nuevo.
    */
   viewportManager?: ViewportManager;
+  /**
+   * Determina si la relación de aspecto de ancho y alto se encuentra bloqueada.
+   */
+  isRatioLocked?: () => boolean;
 }
 
 /**
@@ -271,6 +275,7 @@ export class InputController {
       {
         deselectOnEmptyClick: this.options.deselectOnEmptyClick,
         isTouch: () => this.isTouch,
+        isRatioLocked: () => this.options.isRatioLocked?.() ?? false,
       }
     );
 

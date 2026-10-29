@@ -122,7 +122,8 @@ export class SelectToolHandler implements ToolHandler {
       getZoom,
       this.isSmartGuidesEnabled,
       this.setActiveGuides,
-      getCtx
+      getCtx,
+      () => this.options.isRatioLocked?.() ?? false
     );
 
     this.rotateHandler = new RotateHandler(
@@ -135,7 +136,8 @@ export class SelectToolHandler implements ToolHandler {
       this.commandManager,
       getZoom,
       this.isSmartGuidesEnabled,
-      this.setActiveGuides
+      this.setActiveGuides,
+      () => this.options.isRatioLocked?.() ?? false
     );
 
     this.overlayHandler = new OverlayInteractionsHandler(

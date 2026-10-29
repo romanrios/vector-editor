@@ -36,19 +36,22 @@ export class MultiTransformHandler {
   private _multiTransformState: MultiTransformState | null = null;
   private _lastShiftKey: boolean = false;
   private _lastAltKey: boolean = false;
+  private readonly isRatioLocked?: () => boolean;
 
   constructor(
     stateManager: StateManager,
     commandManager: CommandManager,
     getViewportZoom: () => number,
     isSmartGuidesEnabled: () => boolean,
-    setActiveGuides: (guides: SnapGuide[]) => void
+    setActiveGuides: (guides: SnapGuide[]) => void,
+    isRatioLocked?: () => boolean
   ) {
     this.stateManager = stateManager;
     this.commandManager = commandManager;
     this.getViewportZoom = getViewportZoom;
     this.isSmartGuidesEnabled = isSmartGuidesEnabled;
     this.setActiveGuides = setActiveGuides;
+    this.isRatioLocked = isRatioLocked;
   }
 
   public get isMultiTransforming(): boolean {
@@ -129,7 +132,7 @@ export class MultiTransformHandler {
       const handle = transformState.handle!;
       const bounds = transformState.initialBounds;
       const hasTextOrImage = transformState.leafShapes.some((s) => s.type === 'text' || s.type === 'image');
-      const shouldPreserveAspect = hasTextOrImage ? true : shiftKey;
+      const shouldPreserveAspect = hasTextOrImage || Boolean(this.isRatioLocked?.()) ? true : shiftKey;
 
       const applyScale = (mouseX: number, mouseY: number): void => {
         const dx = mouseX - transformState.startMouse.x;

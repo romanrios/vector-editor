@@ -74,6 +74,7 @@ export interface PropertiesPanelElements {
   readonly inputObjectY: HTMLInputElement | null;
   readonly inputObjectWidth: HTMLInputElement | null;
   readonly inputObjectHeight: HTMLInputElement | null;
+  readonly checkObjectRatio: HTMLInputElement | null;
   readonly inputObjectRotation: HTMLInputElement | null;
   readonly groupCornerRadius: HTMLElement | null;
   readonly inputCornerRadius: HTMLInputElement | null;

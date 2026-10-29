@@ -22,6 +22,7 @@ export interface MultiTransformState {
 export interface SelectToolHandlerOptions {
   deselectOnEmptyClick?: boolean;
   isTouch?: () => boolean;
+  isRatioLocked?: () => boolean;
 }
 
 export interface GradientDragState {

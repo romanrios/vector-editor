@@ -32,13 +32,16 @@ export class ResizeHandler {
   private initialDimensions: ShapeDimensions | null = null;
 
 
+  private readonly isRatioLocked?: () => boolean;
+
   constructor(
     stateManager: StateManager,
     commandManager: CommandManager,
     getViewportZoom: () => number,
     isSmartGuidesEnabled: () => boolean,
     setActiveGuides: (guides: SnapGuide[]) => void,
-    getCanvasContext: () => CanvasRenderingContext2D | null
+    getCanvasContext: () => CanvasRenderingContext2D | null,
+    isRatioLocked?: () => boolean
   ) {
     this.stateManager = stateManager;
     this.commandManager = commandManager;
@@ -46,6 +49,7 @@ export class ResizeHandler {
     this.isSmartGuidesEnabled = isSmartGuidesEnabled;
     this.setActiveGuides = setActiveGuides;
     this.getCanvasContext = getCanvasContext;
+    this.isRatioLocked = isRatioLocked;
   }
 
   public get isResizing(): boolean {
@@ -215,7 +219,8 @@ export class ResizeHandler {
     const isImageNode = currentShape?.type === 'image';
     const isTextNode = currentShape?.type === 'text';
     const isParametricRegular = currentShape?.type === 'polygon' || currentShape?.type === 'star';
-    const preserveRatio = isImageNode || isTextNode || isParametricRegular ? true : shiftKey;
+    const isRatioLocked = Boolean(this.isRatioLocked?.());
+    const preserveRatio = isImageNode || isTextNode || isParametricRegular || isRatioLocked ? true : shiftKey;
 
     const deltaX = mouseX - this.resizeOrigin.x;
     const deltaY = mouseY - this.resizeOrigin.y;

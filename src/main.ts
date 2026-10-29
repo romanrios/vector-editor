@@ -395,6 +395,7 @@ if (typeof document !== 'undefined') {
     // Controlador de Entrada con herramientas de Selección y Pluma
     inputController = new InputController(canvas, stateManager, commandManager, {
       viewportManager,
+      isRatioLocked: () => Boolean(document.querySelector<HTMLInputElement>('#check-object-ratio')?.checked),
     });
 
     // Motor de Renderizado

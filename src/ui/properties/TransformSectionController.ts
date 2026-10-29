@@ -21,6 +21,7 @@ import { markInputTarget, isInputTargetValid, clearInputTarget } from './types.t
 export class TransformSectionController {
   private initialCornerRadiusSnapshots: Map<string, number> | null = null;
   private editingNodeIds: readonly string[] | null = null;
+  private objectAspectRatio: number = 1;
   private readonly roundToFourDecimals = (value: number): number => Number(value.toFixed(4));
 
   private readonly stateManager: StateManager;
@@ -101,8 +102,32 @@ export class TransformSectionController {
     let targetHeight = bounds.height;
     if (property === 'x') targetMinX = value;
     if (property === 'y') targetMinY = value;
-    if (property === 'width') targetWidth = value;
-    if (property === 'height') targetHeight = value;
+
+    if (this.elements.checkObjectRatio?.checked) {
+      if (!Number.isFinite(this.objectAspectRatio) || this.objectAspectRatio <= 0) {
+        this.objectAspectRatio = bounds.height > 0 ? bounds.width / bounds.height : 1;
+      }
+      if (this.objectAspectRatio <= 0) {
+        this.objectAspectRatio = 1;
+      }
+
+      if (property === 'width') {
+        targetWidth = value;
+        targetHeight = Math.max(0.1, this.roundToFourDecimals(targetWidth / this.objectAspectRatio));
+        if (this.elements.inputObjectHeight) {
+          this.elements.inputObjectHeight.value = String(targetHeight);
+        }
+      } else if (property === 'height') {
+        targetHeight = value;
+        targetWidth = Math.max(0.1, this.roundToFourDecimals(targetHeight * this.objectAspectRatio));
+        if (this.elements.inputObjectWidth) {
+          this.elements.inputObjectWidth.value = String(targetWidth);
+        }
+      }
+    } else {
+      if (property === 'width') targetWidth = value;
+      if (property === 'height') targetHeight = value;
+    }
 
     const scaleX = targetWidth / Math.max(bounds.width, 0.1);
     const scaleY = targetHeight / Math.max(bounds.height, 0.1);
@@ -207,10 +232,70 @@ export class TransformSectionController {
   private onTransformFocus = (e?: Event) => {
     const selectedNodes = this.stateManager.getSelectedNodes();
     this.editingNodeIds = selectedNodes.map((n) => n.id);
+    if (this.elements.checkObjectRatio?.checked) {
+      const bounds = getSelectionBounds(selectedNodes);
+      if (bounds && bounds.height > 0) {
+        this.objectAspectRatio = bounds.width / bounds.height;
+      }
+    }
     if (e?.currentTarget) {
       markInputTarget(e.currentTarget, selectedNodes);
     }
   };
+
+  private onObjectRatioChange = (): void => {
+    if (this.elements.checkObjectRatio?.checked) {
+      const selectedNodes = this.stateManager.getSelectedNodes();
+      const bounds = getSelectionBounds(selectedNodes);
+      if (bounds && bounds.height > 0) {
+        this.objectAspectRatio = bounds.width / bounds.height;
+      }
+    }
+  };
+
+  private onObjectWidthInput = (): void => {
+    if (!this.elements.inputObjectWidth || !this.elements.checkObjectRatio?.checked) return;
+    const parsed = parseFloat(this.elements.inputObjectWidth.value);
+    if (Number.isFinite(parsed) && parsed > 0 && this.objectAspectRatio > 0) {
+      const calculatedHeight = Math.max(0.1, this.roundToFourDecimals(parsed / this.objectAspectRatio));
+      if (this.elements.inputObjectHeight) {
+        this.elements.inputObjectHeight.value = String(calculatedHeight);
+      }
+    }
+  };
+
+  private onObjectHeightInput = (): void => {
+    if (!this.elements.inputObjectHeight || !this.elements.checkObjectRatio?.checked) return;
+    const parsed = parseFloat(this.elements.inputObjectHeight.value);
+    if (Number.isFinite(parsed) && parsed > 0 && this.objectAspectRatio > 0) {
+      const calculatedWidth = Math.max(0.1, this.roundToFourDecimals(parsed * this.objectAspectRatio));
+      if (this.elements.inputObjectWidth) {
+        this.elements.inputObjectWidth.value = String(calculatedWidth);
+      }
+    }
+  };
+
+  private onObjectWidthKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      this.onObjectWidthChange();
+      this.elements.inputObjectWidth?.blur();
+    }
+  };
+
+  private onObjectHeightKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') {
+      this.onObjectHeightChange();
+      this.elements.inputObjectHeight?.blur();
+    }
+  };
+
+  public getAspectRatio(): number {
+    return this.objectAspectRatio;
+  }
+
+  public isRatioLocked(): boolean {
+    return Boolean(this.elements.checkObjectRatio?.checked);
+  }
 
   private onObjectXChange = () => this.elements.inputObjectX && this.applyObjectGeometry('x', this.elements.inputObjectX);
   private onObjectYChange = () => this.elements.inputObjectY && this.applyObjectGeometry('y', this.elements.inputObjectY);
@@ -430,6 +515,15 @@ export class TransformSectionController {
           (typeof document === 'undefined' || document.activeElement !== this.elements.inputObjectRotation)) {
         this.elements.inputObjectRotation.value = String(this.roundToFourDecimals(firstLeafRotation));
       }
+      if (
+        this.elements.checkObjectRatio?.checked &&
+        selectionBounds.height > 0 &&
+        (typeof document === 'undefined' ||
+          (document.activeElement !== this.elements.inputObjectWidth &&
+            document.activeElement !== this.elements.inputObjectHeight))
+      ) {
+        this.objectAspectRatio = selectionBounds.width / selectionBounds.height;
+      }
     }
 
     const cornerLeafs = leafShapes.filter((s): s is Rectangle | Polygon | Star | Path =>
@@ -461,14 +555,19 @@ export class TransformSectionController {
   }
 
   public bind(): void {
+    this.elements.checkObjectRatio?.addEventListener('change', this.onObjectRatioChange);
     this.elements.inputObjectX?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectX?.addEventListener('change', this.onObjectXChange);
     this.elements.inputObjectY?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectY?.addEventListener('change', this.onObjectYChange);
     this.elements.inputObjectWidth?.addEventListener('focus', this.onTransformFocus);
+    this.elements.inputObjectWidth?.addEventListener('input', this.onObjectWidthInput);
     this.elements.inputObjectWidth?.addEventListener('change', this.onObjectWidthChange);
+    this.elements.inputObjectWidth?.addEventListener('keydown', this.onObjectWidthKeyDown as EventListener);
     this.elements.inputObjectHeight?.addEventListener('focus', this.onTransformFocus);
+    this.elements.inputObjectHeight?.addEventListener('input', this.onObjectHeightInput);
     this.elements.inputObjectHeight?.addEventListener('change', this.onObjectHeightChange);
+    this.elements.inputObjectHeight?.addEventListener('keydown', this.onObjectHeightKeyDown as EventListener);
     this.elements.inputObjectRotation?.addEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectRotation?.addEventListener('change', this.onObjectRotationChange);
     this.elements.inputObjectX?.addEventListener('blur', this.onObjectGeometryBlur);
@@ -484,14 +583,19 @@ export class TransformSectionController {
   }
 
   public cleanup(): void {
+    this.elements.checkObjectRatio?.removeEventListener('change', this.onObjectRatioChange);
     this.elements.inputObjectX?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectX?.removeEventListener('change', this.onObjectXChange);
     this.elements.inputObjectY?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectY?.removeEventListener('change', this.onObjectYChange);
     this.elements.inputObjectWidth?.removeEventListener('focus', this.onTransformFocus);
+    this.elements.inputObjectWidth?.removeEventListener('input', this.onObjectWidthInput);
     this.elements.inputObjectWidth?.removeEventListener('change', this.onObjectWidthChange);
+    this.elements.inputObjectWidth?.removeEventListener('keydown', this.onObjectWidthKeyDown as EventListener);
     this.elements.inputObjectHeight?.removeEventListener('focus', this.onTransformFocus);
+    this.elements.inputObjectHeight?.removeEventListener('input', this.onObjectHeightInput);
     this.elements.inputObjectHeight?.removeEventListener('change', this.onObjectHeightChange);
+    this.elements.inputObjectHeight?.removeEventListener('keydown', this.onObjectHeightKeyDown as EventListener);
     this.elements.inputObjectRotation?.removeEventListener('focus', this.onTransformFocus);
     this.elements.inputObjectRotation?.removeEventListener('change', this.onObjectRotationChange);
     this.elements.inputObjectX?.removeEventListener('blur', this.onObjectGeometryBlur);
