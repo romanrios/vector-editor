@@ -5,6 +5,7 @@ import { CommandManager } from '../src/commands/CommandManager.ts';
 import { InputController } from '../src/input/InputController.ts';
 import { TouchGestureController } from '../src/input/TouchGestureController.ts';
 import { ViewportManager } from '../src/utils/viewport.ts';
+import { getTextAABB } from '../src/utils/geometry.ts';
 import type { Rectangle, Text, Vector2D } from '../src/types/scene-graph.ts';
 
 function createMockCanvas(): HTMLCanvasElement & { dispatchSimulatedEvent: (type: string, e: unknown) => void } {
@@ -690,6 +691,191 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       });
       assert.equal(inputController.isEditingText, true);
       assert.equal(mockDocument.activeElement, mockProxy);
+
+      inputController.destroy();
+    } finally {
+      (globalThis as any).document = origDoc;
+      (globalThis as any).window = origWindow;
+    }
+  });
+
+  it('10. en mobile, los manejadores de un texto seleccionado permiten escalarlo sin entrar en modo edición de texto', async () => {
+    const origDoc = (globalThis as any).document;
+    const origWindow = (globalThis as any).window;
+
+    try {
+      const canvas = createMockCanvas();
+      const stateManager = new StateManager();
+      const commandManager = new CommandManager();
+      const viewportManager = new ViewportManager({ zoom: 1, panX: 0, panY: 0 });
+
+      const inputController = new InputController(canvas, stateManager, commandManager, {
+        viewportManager,
+      });
+
+      const layerId = stateManager.getState().children[0].id;
+      const textNode: Text = {
+        id: 'text-scale-1',
+        type: 'text',
+        name: 'Texto Escalar',
+        x: 100,
+        y: 100,
+        text: 'Hello World',
+        fontFamily: 'Inter',
+        fontSize: 16,
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        textAlign: 'left',
+        fill: '#000000',
+        stroke: 'none',
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+      };
+      stateManager.addShape(layerId, textNode);
+
+      // Paso 1: Activar modo táctil seleccionando el texto
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 120,
+        clientY: 108,
+        pointerType: 'touch',
+        button: 0,
+      });
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 120,
+        clientY: 108,
+        pointerType: 'touch',
+      });
+
+      assert.equal(inputController.isTouch, true);
+      assert.equal(stateManager.getSelectedNodes().length, 1);
+      assert.equal(stateManager.getSelectedNodes()[0].id, textNode.id);
+      assert.equal(inputController.currentTool, 'select');
+      assert.equal(inputController.isEditingText, false);
+
+      // Esperar más que doubleTapDelayMs (300ms) para que el siguiente toque no sea interpretado como double-tap
+      await new Promise((r) => setTimeout(r, 350));
+
+      // Obtener las coordenadas del manejador top-left (esquina para escalar tamaño de fuente)
+      const textAABB = getTextAABB(textNode);
+      const tlX = textAABB.minX;
+      const tlY = textAABB.minY;
+
+      // Paso 2: Tocar el manejador top-left
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: tlX,
+        clientY: tlY,
+        pointerType: 'touch',
+        button: 0,
+      });
+
+      // NO debe entrar en modo edición de texto; la herramienta debe permanecer en 'select' y activar redimensionado
+      assert.equal(inputController.isEditingText, false, 'No debe entrar en modo edición al tocar el manejador');
+      assert.equal(inputController.currentTool, 'select', 'La herramienta debe permanecer en select');
+      assert.equal(inputController.selectToolHandler.isResizing, true, 'Debe iniciar redimensionado');
+      assert.equal(inputController.selectToolHandler.currentResizeHandle, 'top-left');
+
+      // Paso 3: Arrastrar el manejador top-left hacia afuera (-40, -40) para aumentar el tamaño de fuente
+      canvas.dispatchSimulatedEvent('pointermove', {
+        pointerId: 1,
+        clientX: tlX - 40,
+        clientY: tlY - 40,
+        pointerType: 'touch',
+      });
+
+      // El tamaño de fuente debe haber aumentado
+      const intermediateNode = stateManager.findNode(textNode.id) as Text;
+      assert.ok((intermediateNode.fontSize ?? 16) > 16, 'El tamaño de fuente debe haber aumentado tras arrastrar el manejador');
+
+      // Paso 4: Levantar el dedo para completar el escalado
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: tlX - 40,
+        clientY: tlY - 40,
+        pointerType: 'touch',
+      });
+
+      assert.equal(inputController.selectToolHandler.isResizing, false);
+      assert.equal(inputController.isEditingText, false);
+      assert.equal(inputController.currentTool, 'select');
+
+      const finalNode = stateManager.findNode(textNode.id) as Text;
+      assert.ok((finalNode.fontSize ?? 16) > 16);
+
+      // Deshacer revierte el escalado
+      assert.ok(commandManager.canUndo);
+      commandManager.undo();
+      const undoneNode = stateManager.findNode(textNode.id) as Text;
+      assert.equal(undoneNode.fontSize, 16);
+
+      // Paso 5: Probar que tocar el manejador right-center permite ajustar boxWidth sin entrar en edición
+      await new Promise((r) => setTimeout(r, 350));
+      const midY = (textAABB.minY + textAABB.maxY) / 2;
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: textAABB.maxX,
+        clientY: midY,
+        pointerType: 'touch',
+        button: 0,
+      });
+
+      assert.equal(inputController.isEditingText, false, 'No debe editar texto al tocar el manejador');
+      assert.equal(inputController.currentTool, 'select');
+      assert.equal(inputController.selectToolHandler.isResizing, true);
+      assert.ok(inputController.selectToolHandler.currentResizeHandle !== null);
+
+      canvas.dispatchSimulatedEvent('pointermove', {
+        pointerId: 1,
+        clientX: textAABB.maxX + 50,
+        clientY: midY,
+        pointerType: 'touch',
+      });
+
+      const scaledNode = stateManager.findNode(textNode.id) as Text;
+      assert.ok(
+        (scaledNode.fontSize ?? 16) !== 16 ||
+        (scaledNode.boxWidth !== undefined && scaledNode.boxWidth > 0),
+        'Las dimensiones del texto deben cambiar al arrastrar el manejador'
+      );
+
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: textAABB.maxX + 50,
+        clientY: midY,
+        pointerType: 'touch',
+      });
+
+      assert.equal(inputController.selectToolHandler.isResizing, false);
+      assert.equal(inputController.isEditingText, false);
+
+      // Paso 6: Probar que tocar el manejador de rotación permite rotar el texto sin entrar en edición
+      await new Promise((r) => setTimeout(r, 350));
+      const rotY = textAABB.minY - 36;
+      const midX = (textAABB.minX + textAABB.maxX) / 2;
+
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: midX,
+        clientY: rotY,
+        pointerType: 'touch',
+        button: 0,
+      });
+
+      assert.equal(inputController.isEditingText, false, 'No debe editar texto al tocar manejador de rotación');
+      assert.equal(inputController.currentTool, 'select');
+      assert.equal(inputController.selectToolHandler.isRotating, true);
+
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: midX,
+        clientY: rotY,
+        pointerType: 'touch',
+      });
+      assert.equal(inputController.selectToolHandler.isRotating, false);
 
       inputController.destroy();
     } finally {

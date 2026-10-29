@@ -1235,22 +1235,23 @@ export class InputController {
 
     // Modo 'select'
     if (this.isTouch && this._currentTool === 'select') {
-      const hitShape = this.hitTest(x, y);
       const selectedNodes = this.stateManager.getSelectedNodes();
       if (
-        hitShape &&
-        isText(hitShape) &&
         selectedNodes.length === 1 &&
-        selectedNodes[0].id === hitShape.id
+        isText(selectedNodes[0]) &&
+        !this.selectToolHandler.isPointOnHandle(coords)
       ) {
-        event.preventDefault?.();
-        this._currentTool = 'text';
-        this.emit('toolChange', 'text');
-        this.canvas.style.cursor = 'text';
-        const ctx = this.textEditManager.getMeasureContext();
-        const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
-        this.startEditingText(hitShape.id, charIndex);
-        return;
+        const hitShape = this.hitTest(x, y);
+        if (hitShape && isText(hitShape) && hitShape.id === selectedNodes[0].id) {
+          event.preventDefault?.();
+          this._currentTool = 'text';
+          this.emit('toolChange', 'text');
+          this.canvas.style.cursor = 'text';
+          const ctx = this.textEditManager.getMeasureContext();
+          const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
+          this.startEditingText(hitShape.id, charIndex);
+          return;
+        }
       }
     }
 

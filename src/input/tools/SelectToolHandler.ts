@@ -241,6 +241,76 @@ export class SelectToolHandler implements ToolHandler {
     this.dragMoveHandler.reset();
   }
 
+  /**
+   * Determina si las coordenadas en espacio del mundo coinciden con algún manejador interactivo
+   * (redimensionado, rotación, radio de esquina o degradados) de la selección activa.
+   */
+  public isPointOnHandle(coords: Vector2D): boolean {
+    const selectedNodes = this.stateManager
+      .getSelectedNodes()
+      .filter((n) => !this.stateManager.isEffectivelyLocked(n.id));
+
+    if (selectedNodes.length === 0) {
+      return false;
+    }
+
+    const zoom = this.getViewportManager().zoom;
+    const handleScreenSize = this.isTouch ? 22 : 8;
+    const rotationDistance = this.isTouch ? 36 : 30;
+    const isMultiOrGroup =
+      selectedNodes.length >= 2 || (selectedNodes.length === 1 && isGroup(selectedNodes[0]));
+
+    if (isMultiOrGroup) {
+      const bounds = getSelectionBounds(selectedNodes);
+      if (bounds) {
+        const handles = getSelectionBoxHandles(
+          bounds,
+          handleScreenSize / zoom,
+          rotationDistance / zoom,
+          true
+        );
+        return handles.some((handle) => isPointInAABB(coords.x, coords.y, handle));
+      }
+      return false;
+    }
+
+    if (selectedNodes.length === 1) {
+      const selectedNode = selectedNodes[0];
+      if (isShape(selectedNode)) {
+        const grad = isGradient(selectedNode.fill)
+          ? selectedNode.fill
+          : isGradient(selectedNode.stroke)
+          ? selectedNode.stroke
+          : null;
+        if (grad) {
+          const gradTolerance = (this.isTouch ? 20 : 10) / zoom;
+          const hitGrad = hitTestGradientHandles(selectedNode, grad, coords.x, coords.y, gradTolerance);
+          if (hitGrad) {
+            return true;
+          }
+        }
+
+        const handles = getSelectionHandles(
+          selectedNode,
+          handleScreenSize / zoom,
+          rotationDistance / zoom,
+          true
+        );
+        if (handles.some((handle) => isPointInAABB(coords.x, coords.y, handle))) {
+          return true;
+        }
+
+        const crHandles = getShapeCornerRadiusHandles(selectedNode, zoom);
+        const crTolerance = (this.isTouch ? 18 : 8) / zoom;
+        if (hitTestCornerRadiusHandle(crHandles, coords.x, coords.y, crTolerance)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   public onMouseDown(event: MouseEvent, coords: Vector2D): void {
     if (event.button !== 0 && event.button !== undefined) {
       return;
