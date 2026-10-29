@@ -4,6 +4,7 @@ import { InputController } from '../input/InputController.ts';
 import { Serializer } from '../state/Serializer.ts';
 import { exportDocumentToSvg, downloadSvg } from '../utils/exportSvg.ts';
 import { exportDocumentToRasterBlob, downloadRaster, calculateExportBounds } from '../utils/exportRaster.ts';
+import { exportDocumentToPdfBlob, downloadPdf } from '../utils/exportPdf.ts';
 import { sanitizeFilename } from '../utils/sanitizeFilename.ts';
 
 import type { Document } from '../types/scene-graph.ts';
@@ -36,6 +37,7 @@ export interface DialogsController {
   readonly exportSvg: (customFilename?: string) => void;
   readonly exportPng: (customFilename?: string) => Promise<void>;
   readonly exportWebp: (customFilename?: string) => Promise<void>;
+  readonly exportPdf?: (customFilename?: string) => Promise<void>;
   readonly cleanup: () => void;
 }
 
@@ -68,6 +70,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
   const textExportScopeArtboard = document.querySelector<HTMLElement>('#text-export-scope-artboard');
   const groupExportArtboardSelect = document.querySelector<HTMLElement>('#group-export-artboard-select');
   const selectExportArtboard = document.querySelector<HTMLSelectElement>('#select-export-artboard');
+  const groupExportPdfPages = document.querySelector<HTMLElement>('#group-export-pdf-pages');
 
   const saveJsonDialog = document.querySelector<HTMLDialogElement>('#save-json-dialog');
   const btnCloseSaveJson = document.querySelector<HTMLButtonElement>('#btn-close-save-json');
@@ -122,9 +125,14 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     exportJson();
   };
 
-  const getSelectedExportFormat = (): 'svg' | 'png' | 'webp' | 'json' => {
+  const getSelectedExportFormat = (): 'svg' | 'png' | 'webp' | 'json' | 'pdf' => {
     const radio = document.querySelector<HTMLInputElement>('input[name="export-format"]:checked');
-    return (radio?.value as 'svg' | 'png' | 'webp' | 'json') || 'svg';
+    return (radio?.value as 'svg' | 'png' | 'webp' | 'json' | 'pdf') || 'svg';
+  };
+
+  const getSelectedExportPdfMode = (): 'single' | 'individual' => {
+    const radio = document.querySelector<HTMLInputElement>('input[name="export-pdf-mode"]:checked');
+    return (radio?.value as 'single' | 'individual') || 'single';
   };
 
   const getSelectedExportScale = (): number => {
@@ -210,6 +218,15 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     const selectedArtboardVal = selectExportArtboard ? selectExportArtboard.value : 'all';
     const isAllArtboards = scope === 'artboard' && (selectedArtboardVal === 'all' || (artboards.length > 1 && !selectedArtboardVal));
 
+    if (groupExportPdfPages) {
+      groupExportPdfPages.style.display =
+        format === 'pdf' && scope === 'artboard' && isAllArtboards && artboards.length > 1
+          ? 'flex'
+          : 'none';
+    }
+
+    const pdfMode = getSelectedExportPdfMode();
+
     const targetArtboard = scope === 'artboard' && !isAllArtboards
       ? (artboards.find((a) => a.id === selectedArtboardVal) ?? stateManager.getActiveArtboard() ?? artboards[0])
       : null;
@@ -223,7 +240,11 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
     if (exportSummaryDim) {
       if (isAllArtboards) {
-        exportSummaryDim.textContent = `Dimensiones: ${artboards.length} mesas de trabajo independientes${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+        if (format === 'pdf' && pdfMode === 'single') {
+          exportSummaryDim.textContent = `Dimensiones: ${artboards.length} páginas (mesas de trabajo)`;
+        } else {
+          exportSummaryDim.textContent = `Dimensiones: ${artboards.length} mesas de trabajo independientes${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
+        }
       } else {
         exportSummaryDim.textContent = `Dimensiones: ${w} × ${h} px${isRaster && scale > 1 ? ` (@${scale}x)` : ''}`;
       }
@@ -242,8 +263,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
       const baseName = userFilename || defaultBaseName;
 
       if (isAllArtboards) {
-        const prefix = userFilename ? `${userFilename}_` : '';
-        exportSummaryFilename.textContent = `Archivos: ${prefix}[mesa]${scaleSuffix}.${format} (${artboards.length} archivos)`;
+        if (format === 'pdf' && pdfMode === 'single') {
+          exportSummaryFilename.textContent = `Archivo: ${baseName}.pdf (${artboards.length} páginas)`;
+        } else {
+          const prefix = userFilename ? `${userFilename}_` : '';
+          exportSummaryFilename.textContent = `Archivos: ${prefix}[mesa]${scaleSuffix}.${format} (${artboards.length} archivos)`;
+        }
       } else {
         exportSummaryFilename.textContent = `Archivo: ${baseName}${scaleSuffix}.${format}`;
       }
@@ -356,31 +381,50 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     try {
       if (isAllArtboards && artboards.length > 0) {
         const scaleSuffix = scale > 1 ? `@${scale}x` : '';
-        for (const ab of artboards) {
-          const abName = sanitizeFilename(ab.name) || `mesa-${ab.id}`;
-          const itemBaseName = userFilename ? `${userFilename}_${abName}` : abName;
+        const pdfMode = getSelectedExportPdfMode();
 
-          if (format === 'svg') {
-            const svgContent = exportDocumentToSvg(doc, {
-              artboardId: ab.id,
-              includeBackground: bg === 'white',
-              backgroundColor: '#ffffff',
-            });
-            downloadSvg(`${itemBaseName}.svg`, svgContent);
-          } else if (format === 'png' || format === 'webp') {
-            const blob = await exportDocumentToRasterBlob(doc, {
-              format,
-              scale,
-              artboardId: ab.id,
-              backgroundColor: bg === 'white' ? '#ffffff' : null,
-            });
-            downloadRaster(`${itemBaseName}${scaleSuffix}.${format}`, blob);
-          } else if (format === 'json') {
-            const jsonContent = Serializer.serializeDocument(doc);
-            Serializer.downloadJson(`${itemBaseName}.json`, jsonContent);
+        if (format === 'pdf' && pdfMode === 'single') {
+          const blob = await exportDocumentToPdfBlob(doc, {
+            scope: 'artboard',
+            artboardMode: 'single',
+            backgroundColor: bg === 'white' ? '#ffffff' : null,
+          });
+          downloadPdf(`${baseName}.pdf`, blob);
+          debug(`💾 [Export] Documento PDF multipágina (${artboards.length} páginas) exportado correctamente`);
+        } else {
+          for (const ab of artboards) {
+            const abName = sanitizeFilename(ab.name) || `mesa-${ab.id}`;
+            const itemBaseName = userFilename ? `${userFilename}_${abName}` : abName;
+
+            if (format === 'svg') {
+              const svgContent = exportDocumentToSvg(doc, {
+                artboardId: ab.id,
+                includeBackground: bg === 'white',
+                backgroundColor: '#ffffff',
+              });
+              downloadSvg(`${itemBaseName}.svg`, svgContent);
+            } else if (format === 'png' || format === 'webp') {
+              const blob = await exportDocumentToRasterBlob(doc, {
+                format,
+                scale,
+                artboardId: ab.id,
+                backgroundColor: bg === 'white' ? '#ffffff' : null,
+              });
+              downloadRaster(`${itemBaseName}${scaleSuffix}.${format}`, blob);
+            } else if (format === 'pdf') {
+              const blob = await exportDocumentToPdfBlob(doc, {
+                scope: 'artboard',
+                artboardId: ab.id,
+                backgroundColor: bg === 'white' ? '#ffffff' : null,
+              });
+              downloadPdf(`${itemBaseName}.pdf`, blob);
+            } else if (format === 'json') {
+              const jsonContent = Serializer.serializeDocument(doc);
+              Serializer.downloadJson(`${itemBaseName}.json`, jsonContent);
+            }
           }
+          debug(`💾 [Export] ${artboards.length} mesas de trabajo exportadas correctamente en formato ${format.toUpperCase()}`);
         }
-        debug(`💾 [Export] ${artboards.length} mesas de trabajo exportadas correctamente en formato ${format.toUpperCase()}`);
       } else {
         if (format === 'svg') {
           const svgContent = exportDocumentToSvg(doc, {
@@ -404,6 +448,15 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
           const scaleSuffix = scale > 1 ? `@${scale}x` : '';
           downloadRaster(`${baseName}${scaleSuffix}.${format}`, blob);
           debug(`💾 [Export] ${format.toUpperCase()} exportado correctamente`);
+        } else if (format === 'pdf') {
+          const blob = await exportDocumentToPdfBlob(doc, {
+            scope,
+            selectedIds: selection,
+            artboardId: targetArtboardId,
+            backgroundColor: bg === 'white' ? '#ffffff' : null,
+          });
+          downloadPdf(`${baseName}.pdf`, blob);
+          debug('💾 [Export] PDF exportado correctamente');
         } else if (format === 'json') {
           const jsonContent = Serializer.serializeDocument(doc);
           Serializer.downloadJson(`${baseName}.json`, jsonContent);
@@ -436,6 +489,12 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     downloadRaster(`${defaultName}.webp`, blob);
   };
 
+  const exportPdf = async (customFilename?: string) => {
+    const defaultName = sanitizeFilename(customFilename) || 'escena';
+    const blob = await exportDocumentToPdfBlob(stateManager.getState());
+    downloadPdf(`${defaultName}.pdf`, blob);
+  };
+
   const onExportRadioChange = () => {
     if (exportFilenameInput && exportFilenameInput.dataset.autoName === 'true') {
       const scope = getSelectedExportScope();
@@ -461,7 +520,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
 
   const exportRadioInputs = typeof document.querySelectorAll === 'function'
     ? Array.from(document.querySelectorAll<HTMLInputElement>(
-        'input[name="export-format"], input[name="export-scale"], input[name="export-scope"], input[name="export-bg"]'
+        'input[name="export-format"], input[name="export-scale"], input[name="export-scope"], input[name="export-bg"], input[name="export-pdf-mode"]'
       ))
     : [];
   exportRadioInputs.forEach((input) => {
@@ -953,6 +1012,7 @@ export function setupDialogsBindings(options: DialogsControllerOptions): Dialogs
     exportSvg,
     exportPng,
     exportWebp,
+    exportPdf,
     cleanup: () => {
       exportFilenameInput?.removeEventListener('input', onExportFilenameInputChange);
       btnCloseSaveJson?.removeEventListener('click', onCancelSaveJsonClick);

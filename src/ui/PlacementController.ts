@@ -5,7 +5,9 @@ import { screenToWorld } from '../utils/viewport.ts';
 import type { Group, ImageNode, LayerChildNode, Path } from '../types/scene-graph.ts';
 import { assetManager } from '../assets/AssetManager.ts';
 import { parseSvgString } from '../utils/svgImport.ts';
+import { parsePdfFile } from '../utils/pdfImport.ts';
 import { AddShapeCommand } from '../commands/AddShapeCommand.ts';
+import { AddArtboardCommand } from '../commands/AddArtboardCommand.ts';
 import { BatchCommand } from '../commands/BatchCommand.ts';
 
 export interface PlacementControllerOptions {
@@ -39,7 +41,7 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     fileInput = document.createElement('input');
     fileInput.id = 'file-input-place';
     fileInput.type = 'file';
-    fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg';
+    fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg,application/pdf,.pdf';
     fileInput.multiple = true;
     fileInput.style.display = 'none';
     fileInput.setAttribute('aria-hidden', 'true');
@@ -81,6 +83,68 @@ export function setupPlacementController(options: PlacementControllerOptions): P
     targetWorld: { x: number; y: number }
   ): Promise<LayerChildNode[]> => {
     const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    if (isPdf) {
+      try {
+        const pdfResult = await parsePdfFile(file);
+        if (pdfResult.success && pdfResult.shapes.length > 0) {
+          // Si el PDF contiene mesas de trabajo creadas (ej. multipágina), crearlas
+          if (pdfResult.artboards && pdfResult.artboards.length > 0) {
+            const addAbCmds = pdfResult.artboards.map((ab) => new AddArtboardCommand(stateManager, ab));
+            commandManager.executeCommand(new BatchCommand(addAbCmds));
+          }
+
+          // Centrar las figuras importadas sobre el punto targetWorld
+          const offX = targetWorld.x - pdfResult.width / 2;
+          const offY = targetWorld.y - pdfResult.height / 2;
+
+          const offsetNode = (node: LayerChildNode): LayerChildNode => {
+            if (node.type === 'group') {
+              return {
+                ...node,
+                children: node.children.map(offsetNode),
+              };
+            }
+            if (node.type === 'path') {
+              const p = node as Path;
+              return {
+                ...p,
+                x: p.x + offX,
+                y: p.y + offY,
+                points: p.points.map((pt) => ({
+                  ...pt,
+                  x: pt.x + offX,
+                  y: pt.y + offY,
+                  handleIn: pt.handleIn ? { x: pt.handleIn.x + offX, y: pt.handleIn.y + offY } : undefined,
+                  handleOut: pt.handleOut ? { x: pt.handleOut.x + offX, y: pt.handleOut.y + offY } : undefined,
+                })),
+              };
+            }
+            return {
+              ...node,
+              x: node.x + offX,
+              y: node.y + offY,
+            };
+          };
+
+          const placedShapes = pdfResult.shapes.map(offsetNode);
+          if (placedShapes.length > 1 && (!pdfResult.artboards || pdfResult.artboards.length === 0)) {
+            const baseName = file.name ? file.name.replace(/\.[^/.]+$/, '') : 'PDF';
+            const groupNode: Group = {
+              id: `group-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              type: 'group',
+              name: baseName,
+              children: placedShapes,
+            };
+            return [groupNode];
+          }
+          return placedShapes;
+        }
+      } catch {
+        // Fallback a ráster si la vectorización falla
+      }
+    }
 
     if (isSvg) {
       try {

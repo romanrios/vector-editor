@@ -2001,6 +2001,13 @@
             </div>
           </label>
           <label class="export-radio-card">
+            <input type="radio" name="export-format" value="pdf" />
+            <div class="radio-card-content">
+              <span class="radio-card-title">PDF</span>
+              <span class="radio-card-desc">Documento vectorial</span>
+            </div>
+          </label>
+          <label class="export-radio-card">
             <input type="radio" name="export-format" value="json" />
             <div class="radio-card-content">
               <span class="radio-card-title">JSON</span>
@@ -2051,6 +2058,20 @@
             <select id="select-export-artboard" class="export-select-input">
               <option value="all">Todas las mesas de trabajo</option>
             </select>
+          </div>
+        </div>
+        <div class="export-pdf-pages-container" id="group-export-pdf-pages"
+          style="display: none; margin-top: 8px;">
+          <label class="export-field-sublabel">Estructura del PDF (Mesas de trabajo)</label>
+          <div class="export-pdf-pages-options">
+            <label class="scope-radio-label">
+              <input type="radio" name="export-pdf-mode" value="single" checked />
+              <span>Un solo PDF con múltiples páginas</span>
+            </label>
+            <label class="scope-radio-label">
+              <input type="radio" name="export-pdf-mode" value="individual" />
+              <span>Múltiples archivos PDF independientes</span>
+            </label>
           </div>
         </div>
       </div>
@@ -2348,7 +2369,7 @@
 
   <!-- Inputs de archivo ocultos para importación de proyectos y colocación de recursos -->
   <input type="file" id="file-import-input" accept=".json,application/json" style="display:none" aria-hidden="true" />
-  <input type="file" id="file-input-place" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"
+  <input type="file" id="file-input-place" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg,application/pdf,.pdf"
     multiple style="display:none" aria-hidden="true" />
 
   <script type="module" src="/src/main.ts"></script>

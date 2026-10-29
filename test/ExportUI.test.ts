@@ -937,5 +937,130 @@ describe('Integración UI de Exportación (Modal y Menús)', () => {
         (globalThis as any).document = origDoc;
       }
     });
+
+    it('al seleccionar formato PDF en el diálogo, oculta resolución/escala y muestra estructura de páginas con múltiples mesas', () => {
+      const dialog = createMockElement('export-dialog', 'dialog');
+      const btnOpen = createMockElement('menu-item-export-modal', 'button');
+      const radioFormatPdf = createMockElement('radio-format-pdf', 'input');
+      radioFormatPdf.value = 'pdf';
+      radioFormatPdf.checked = true;
+
+      const groupScale = createMockElement('group-export-scale', 'div');
+      const groupBg = createMockElement('group-export-background', 'div');
+      const extSpan = createMockElement('export-filename-extension', 'span');
+      const groupPdfPages = createMockElement('group-export-pdf-pages', 'div');
+      const radioPdfSingle = createMockElement('radio-pdf-single', 'input');
+      radioPdfSingle.value = 'single';
+      radioPdfSingle.checked = true;
+      const radioPdfIndividual = createMockElement('radio-pdf-individual', 'input');
+      radioPdfIndividual.value = 'individual';
+      radioPdfIndividual.checked = false;
+
+      const radioScopeArtboard = createMockElement('radio-export-artboard', 'input');
+      radioScopeArtboard.value = 'artboard';
+      radioScopeArtboard.checked = true;
+
+      const groupArtboardSelect = createMockElement('group-export-artboard-select', 'div');
+      const selectArtboard = createMockElement('select-export-artboard', 'select');
+      selectArtboard.value = 'all';
+
+      const summaryDim = createMockElement('export-summary-dim', 'span');
+      const summaryFilename = createMockElement('export-summary-filename', 'span');
+      const filenameInput = createMockElement('export-filename-input', 'input');
+      filenameInput.value = 'mi-catalogo';
+
+      const elements: Record<string, any> = {
+        '#menu-item-export-modal': btnOpen,
+        '#export-dialog': dialog,
+        '#group-export-scale': groupScale,
+        '#group-export-background': groupBg,
+        '#export-filename-extension': extSpan,
+        '#group-export-pdf-pages': groupPdfPages,
+        '#group-export-artboard-select': groupArtboardSelect,
+        '#select-export-artboard': selectArtboard,
+        '#export-summary-dim': summaryDim,
+        '#export-summary-filename': summaryFilename,
+        '#export-filename-input': filenameInput,
+        '#radio-export-artboard': radioScopeArtboard,
+        'input[name="export-format"]:checked': radioFormatPdf,
+        'input[name="export-scope"]:checked': radioScopeArtboard,
+        'input[name="export-pdf-mode"]:checked': radioPdfSingle,
+        'input[name="export-scale"]:checked': createMockElement('scale-1', 'input'),
+        'input[name="export-bg"]:checked': createMockElement('bg-trans', 'input'),
+      };
+
+      const docMock: Document = {
+        id: 'doc-pdf-multi',
+        name: 'Catálogo Productos',
+        type: 'document',
+        width: 800,
+        height: 600,
+        children: [],
+        artboards: [
+          { id: 'ab-1', name: 'Portada', x: 0, y: 0, width: 800, height: 600 },
+          { id: 'ab-2', name: 'Página 1', x: 900, y: 0, width: 800, height: 600 },
+        ],
+      };
+
+      const origDoc = (globalThis as any).document;
+      (globalThis as any).document = {
+        querySelector: (selector: string) => elements[selector] ?? null,
+        querySelectorAll: (selector: string) => {
+          if (selector.includes('export-pdf-mode')) {
+            return [radioPdfSingle, radioPdfIndividual];
+          }
+          return [];
+        },
+        createElement: (tag: string) => createMockElement(`elem-${tag}`, tag),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        activeElement: null,
+      };
+
+      try {
+        const commandManager = new CommandManager();
+        const stateManager = new StateManager(docMock, commandManager);
+        const inputController = new InputController(
+          { width: 800, height: 600, addEventListener: () => {}, removeEventListener: () => {} } as any,
+          stateManager,
+          commandManager,
+          { enableKeyboardShortcuts: false }
+        );
+
+        const bindings = setupUIBindings(inputController, commandManager, stateManager);
+        btnOpen.click();
+
+        // 1. PDF es vectorial: no muestra escala de resolución
+        assert.strictEqual(groupScale.style.display, 'none');
+        // 2. Fondo sí se muestra para PDF
+        assert.strictEqual(groupBg.style.display, 'flex');
+        // 3. Extensión actualizada a .pdf
+        assert.strictEqual(extSpan.textContent, '.pdf');
+
+        // Seleccionar "Todas las mesas de trabajo"
+        selectArtboard.value = 'all';
+        selectArtboard.dispatchEvent({ type: 'change' });
+
+        // 4. Muestra selector de estructura PDF para múltiples mesas
+        assert.strictEqual(groupPdfPages.style.display, 'flex');
+
+        // 5. En modo "single", el resumen indica documento multipágina
+        assert.match(summaryDim.textContent, /2 páginas \(mesas de trabajo\)/);
+        assert.match(summaryFilename.textContent, /Archivo: mi-catalogo\.pdf \(2 páginas\)/);
+
+        // 6. Conmutar a "individual"
+        radioPdfSingle.checked = false;
+        radioPdfIndividual.checked = true;
+        elements['input[name="export-pdf-mode"]:checked'] = radioPdfIndividual;
+        radioPdfIndividual.dispatchEvent({ type: 'change' });
+
+        assert.match(summaryDim.textContent, /2 mesas de trabajo independientes/);
+        assert.match(summaryFilename.textContent, /Archivos: mi-catalogo_\[mesa\]\.pdf \(2 archivos\)/);
+
+        bindings.cleanup();
+      } finally {
+        (globalThis as any).document = origDoc;
+      }
+    });
   });
 });

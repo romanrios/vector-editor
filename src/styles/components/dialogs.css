@@ -243,6 +243,10 @@
         gap: 8px;
       }
 
+      .export-format-options .export-radio-card:last-child:nth-child(odd) {
+        grid-column: span 2;
+      }
+
       .export-radio-card {
         display: flex;
         align-items: flex-start;
@@ -318,7 +322,8 @@
         accent-color: var(--accent);
       }
 
-      .export-artboard-select-container {
+      .export-artboard-select-container,
+      .export-pdf-pages-container {
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -326,6 +331,12 @@
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-sm);
         padding: 8px 10px;
+      }
+
+      .export-pdf-pages-options {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       .export-field-sublabel {

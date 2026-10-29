@@ -88,3 +88,5 @@ export * from './utils/cornerSmoothing.ts';
 export * from './state/Serializer.ts';
 export * from './utils/exportSvg.ts';
 export * from './utils/exportRaster.ts';
+export * from './utils/exportPdf.ts';
+export * from './utils/pdfImport.ts';
