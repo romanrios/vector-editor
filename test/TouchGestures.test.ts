@@ -501,7 +501,7 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
     }
   });
 
-  it('9. re-tocar un texto existente en Android mantiene el foco del teclado y previene el desenfoque del canvas', () => {
+  it('9. re-tocar un texto existente en Android mantiene el foco del teclado y previene el desenfoque del canvas', async () => {
     const origDoc = (globalThis as any).document;
     const origWindow = (globalThis as any).window;
 
@@ -635,30 +635,77 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       assert.equal(stateManager.getSelectedNodes()[0].id, textNode.id);
       assert.equal(inputController.currentTool, 'select');
 
-      // Paso 2: Volver a tocar el texto ya seleccionado en táctil
-      // Debe entrar directamente en edición, prevenir el desenfoque del canvas (preventDefault) y enfocar el proxy
-      let preventedDefault2 = false;
-      const initialFocusCount = focusCount;
+      // Esperar más que doubleTapDelayMs (300ms) para que el siguiente toque no sea interpretado como double-tap
+      await new Promise((r) => setTimeout(r, 350));
+
+      // Paso 2: Tocar y arrastrar el texto ya seleccionado en táctil para moverlo
+      // En mobile NO debe entrar en modo edición al tocarlo, para poder moverlo cómodamente.
+      // Tocamos en el cuerpo del texto (75, 128) lejos de los manejadores de esquina
       canvas.dispatchSimulatedEvent('pointerdown', {
         pointerId: 1,
-        clientX: 50,
-        clientY: 120,
+        clientX: 75,
+        clientY: 128,
         pointerType: 'touch',
         button: 0,
-        preventDefault: () => { preventedDefault2 = true; },
+      });
+      assert.equal(inputController.isEditingText, false, 'No debe entrar en modo edición al tocar para mover');
+      assert.equal(inputController.currentTool, 'select');
+      assert.equal(inputController.selectToolHandler.isDragging, true);
+
+      canvas.dispatchSimulatedEvent('pointermove', {
+        pointerId: 1,
+        clientX: 105,
+        clientY: 158,
+        pointerType: 'touch',
+      });
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 105,
+        clientY: 158,
+        pointerType: 'touch',
+      });
+      assert.equal(inputController.isEditingText, false);
+      assert.equal(inputController.selectToolHandler.isDragging, false);
+      const movedNode = stateManager.findNode(textNode.id) as Text;
+      assert.equal(movedNode.x, 80);
+      assert.equal(movedNode.y, 150);
+
+      // Paso 3: Entrar en modo edición de texto con doble toque (Double-Tap)
+      await new Promise((r) => setTimeout(r, 350));
+      const initialFocusCount = focusCount;
+
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 105,
+        clientY: 158,
+        pointerType: 'touch',
+        button: 0,
+      });
+      canvas.dispatchSimulatedEvent('pointerup', {
+        pointerId: 1,
+        clientX: 105,
+        clientY: 158,
+        pointerType: 'touch',
+      });
+      // 2do toque rápido para completar el double-tap
+      canvas.dispatchSimulatedEvent('pointerdown', {
+        pointerId: 1,
+        clientX: 105,
+        clientY: 158,
+        pointerType: 'touch',
+        button: 0,
       });
 
-      assert.equal(preventedDefault2, true, 'Debe invocar preventDefault para que el canvas no robe el foco');
-      assert.equal(inputController.isEditingText, true, 'Debe entrar en modo de edición de texto');
+      assert.equal(inputController.isEditingText, true, 'Debe entrar en modo de edición de texto con doble toque');
       assert.equal(inputController.currentTool, 'text', 'La herramienta debe conmutar a texto');
       assert.ok(focusCount > initialFocusCount, 'Debe haber llamado a focus en el proxy de texto');
       assert.equal(mockDocument.activeElement, mockProxy, 'El proxy debe ser el elemento activo');
 
-      // Paso 3: Al levantar el dedo (pointerup), asegurar que no se pierda el foco
+      // Al levantar el dedo (pointerup) del double-tap, asegurar que no se pierda el foco
       canvas.dispatchSimulatedEvent('pointerup', {
         pointerId: 1,
-        clientX: 50,
-        clientY: 120,
+        clientX: 105,
+        clientY: 158,
         pointerType: 'touch',
       });
       assert.equal(inputController.isEditingText, true);
@@ -670,8 +717,8 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       const focusBeforeRetouch = focusCount;
       canvas.dispatchSimulatedEvent('pointerdown', {
         pointerId: 1,
-        clientX: 60,
-        clientY: 120,
+        clientX: 105,
+        clientY: 158,
         pointerType: 'touch',
         button: 0,
         preventDefault: () => { preventedDefault3 = true; },
@@ -882,5 +929,106 @@ describe('TouchGestureController y Soporte Táctil Móvil', () => {
       (globalThis as any).document = origDoc;
       (globalThis as any).window = origWindow;
     }
+  });
+
+  it('11. en mobile, tocar y arrastrar un texto no activa edición de texto y lo mueve con comodidad', async () => {
+    const canvas = createMockCanvas();
+    const stateManager = new StateManager();
+    const commandManager = new CommandManager();
+    const viewportManager = new ViewportManager({ zoom: 1, panX: 0, panY: 0 });
+
+    const inputController = new InputController(canvas, stateManager, commandManager, {
+      viewportManager,
+    });
+
+    const layerId = stateManager.getState().children[0].id;
+    const textNode: Text = {
+      id: 'text-move-mobile',
+      type: 'text',
+      name: 'Texto Mover Mobile',
+      x: 100,
+      y: 100,
+      text: 'Arrastrame',
+      fontFamily: 'Inter',
+      fontSize: 16,
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textAlign: 'left',
+      fill: '#000000',
+      stroke: 'none',
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+    };
+    stateManager.addShape(layerId, textNode);
+
+    // 1. Toque para seleccionar el texto en mobile
+    canvas.dispatchSimulatedEvent('pointerdown', {
+      pointerId: 1,
+      clientX: 120,
+      clientY: 108,
+      pointerType: 'touch',
+      button: 0,
+    });
+    canvas.dispatchSimulatedEvent('pointerup', {
+      pointerId: 1,
+      clientX: 120,
+      clientY: 108,
+      pointerType: 'touch',
+    });
+
+    assert.equal(inputController.isTouch, true);
+    assert.equal(stateManager.getSelectedNodes().length, 1);
+    assert.equal(stateManager.getSelectedNodes()[0].id, textNode.id);
+    assert.equal(inputController.isEditingText, false);
+    assert.equal(inputController.currentTool, 'select');
+
+    // 2. Esperar para no disparar double-tap y tocar nuevamente el texto para arrastrarlo
+    await new Promise((r) => setTimeout(r, 350));
+
+    canvas.dispatchSimulatedEvent('pointerdown', {
+      pointerId: 1,
+      clientX: 120,
+      clientY: 108,
+      pointerType: 'touch',
+      button: 0,
+    });
+
+    // Debe seguir en herramienta select y NO entrar en edición de texto
+    assert.equal(inputController.isEditingText, false, 'No debe activar edición de texto al tocar');
+    assert.equal(inputController.currentTool, 'select');
+    assert.equal(inputController.selectToolHandler.isDragging, true, 'Debe activar arrastre (drag)');
+
+    // 3. Arrastrar 40px hacia la derecha y 30px hacia abajo
+    canvas.dispatchSimulatedEvent('pointermove', {
+      pointerId: 1,
+      clientX: 160,
+      clientY: 138,
+      pointerType: 'touch',
+    });
+
+    canvas.dispatchSimulatedEvent('pointerup', {
+      pointerId: 1,
+      clientX: 160,
+      clientY: 138,
+      pointerType: 'touch',
+    });
+
+    assert.equal(inputController.isEditingText, false);
+    assert.equal(inputController.selectToolHandler.isDragging, false);
+
+    const moved = stateManager.findNode(textNode.id) as Text;
+    assert.equal(moved.x, 140, 'La posición X debe haberse desplazado +40px');
+    assert.equal(moved.y, 130, 'La posición Y debe haberse desplazado +30px');
+
+    // Undo revierte el movimiento
+    assert.ok(commandManager.canUndo);
+    commandManager.undo();
+    const undone = stateManager.findNode(textNode.id) as Text;
+    assert.equal(undone.x, 100);
+    assert.equal(undone.y, 100);
+
+    inputController.destroy();
   });
 });

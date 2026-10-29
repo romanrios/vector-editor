@@ -1087,8 +1087,11 @@ export class InputController {
   }
 
   public handleDoubleClick(event: MouseEvent): void {
+    const isPointerTouch =
+      (event as any).pointerType === 'touch' || (event as any).pointerType === 'pen';
     const isSyntheticMouse =
-      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+      !isPointerTouch &&
+      (!('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents);
     if (
       isSyntheticMouse &&
       (Date.now() - this._lastPointerDownTimestamp < 800 ||
@@ -1143,8 +1146,11 @@ export class InputController {
 
   public handleMouseDown(event: MouseEvent): void {
     // Si fue precedido inmediatamente por un evento Pointer/Touch y el evento es un MouseEvent sintético, ignorarlo
+    const isPointerTouch =
+      (event as any).pointerType === 'touch' || (event as any).pointerType === 'pen';
     const isSyntheticMouse =
-      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+      !isPointerTouch &&
+      (!('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents);
     if (
       isSyntheticMouse &&
       (Date.now() - this._lastPointerDownTimestamp < 800 ||
@@ -1234,27 +1240,6 @@ export class InputController {
     }
 
     // Modo 'select'
-    if (this.isTouch && this._currentTool === 'select') {
-      const selectedNodes = this.stateManager.getSelectedNodes();
-      if (
-        selectedNodes.length === 1 &&
-        isText(selectedNodes[0]) &&
-        !this.selectToolHandler.isPointOnHandle(coords)
-      ) {
-        const hitShape = this.hitTest(x, y);
-        if (hitShape && isText(hitShape) && hitShape.id === selectedNodes[0].id) {
-          event.preventDefault?.();
-          this._currentTool = 'text';
-          this.emit('toolChange', 'text');
-          this.canvas.style.cursor = 'text';
-          const ctx = this.textEditManager.getMeasureContext();
-          const charIndex = getTextIndexAtPosition(hitShape, x, y, ctx);
-          this.startEditingText(hitShape.id, charIndex);
-          return;
-        }
-      }
-    }
-
     this.selectToolHandler.onMouseDown(event, coords);
   }
 
@@ -1324,8 +1309,11 @@ export class InputController {
   }
 
   public handleMouseMove(event: MouseEvent): void {
+    const isPointerTouch =
+      (event as any).pointerType === 'touch' || (event as any).pointerType === 'pen';
     const isSyntheticMouse =
-      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+      !isPointerTouch &&
+      (!('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents);
     if (
       isSyntheticMouse &&
       (Date.now() - this._lastPointerMoveTimestamp < 400 ||
@@ -1422,8 +1410,11 @@ export class InputController {
     }
 
     // Ignorar eventos mouseup sintéticos tras interacción táctil
+    const isPointerTouch =
+      (event as any).pointerType === 'touch' || (event as any).pointerType === 'pen';
     const isSyntheticMouse =
-      !('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents;
+      !isPointerTouch &&
+      (!('pointerType' in event) || (event as any).sourceCapabilities?.firesTouchEvents);
     if (
       isSyntheticMouse &&
       (Date.now() - this._lastPointerDownTimestamp < 800 ||
