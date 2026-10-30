@@ -14,8 +14,6 @@ import {
   getTextLineRanges,
   getTextLineHeight,
   getTextMeasureContext,
-  measureSingleLineTextWidth,
-  measureStyledRun,
 } from './geometry.ts';
 import { splitTextIntoRuns } from './textSpans.ts';
 
@@ -151,14 +149,24 @@ function ensureParserPatched(): void {
               if (!pointsCount) {
                 const glyph = glyphs.get(glyphIndex);
                 glyph.path;
-                pointsCount = glyph.points.length + 4;
+                const isComposite =
+                  (glyph.numberOfContours ?? 0) < 0 ||
+                  (glyph.components && glyph.components.length > 0);
+                pointsCount = isComposite
+                  ? glyph.components.length + 4
+                  : glyph.points.length + 4;
               }
             } else {
               pointsCount = sharedPoints.length;
               if (!pointsCount) {
                 const glyph = glyphs.get(glyphIndex);
                 glyph.path;
-                pointsCount = glyph.points.length + 4;
+                const isComposite =
+                  (glyph.numberOfContours ?? 0) < 0 ||
+                  (glyph.components && glyph.components.length > 0);
+                pointsCount = isComposite
+                  ? glyph.components.length + 4
+                  : glyph.points.length + 4;
               }
             }
           } else if (flavor === 'cvar') {
@@ -280,6 +288,104 @@ export function patchFontInstance(font: opentype.Font): opentype.Font {
         const normalizedCoords = this.getNormalizedCoords(coords);
         const { headers, sharedPoints } = variationData;
         const axisCount = this.fvar().axes.length;
+
+        const glyph = args.glyph;
+        const isComposite =
+          glyph &&
+          ((glyph.numberOfContours ?? 0) < 0 ||
+            (glyph.components && glyph.components.length > 0));
+
+        if (flavor === 'gvar' && isComposite) {
+          const compTransforms = glyph.components.map((c: any) => ({
+            glyphIndex: c.glyphIndex,
+            xScale: c.xScale ?? 1,
+            scale01: c.scale01 ?? 0,
+            scale10: c.scale10 ?? 0,
+            yScale: c.yScale ?? 1,
+            dx: c.dx ?? 0,
+            dy: c.dy ?? 0,
+          }));
+
+          for (let h = 0; h < headers.length; h++) {
+            const header = headers[h];
+            let factor = 1;
+            for (let a = 0; a < axisCount; a++) {
+              let tupleCoords = header.peakTuple
+                ? header.peakTuple
+                : this.gvar().sharedTuples[header.sharedTupleRecordsIndex];
+              if (tupleCoords[a] === 0) continue;
+              if (normalizedCoords[a] === 0) {
+                factor = 0;
+                break;
+              }
+              if (!header.intermediateStartTuple) {
+                if (
+                  normalizedCoords[a] < Math.min(0, tupleCoords[a]) ||
+                  normalizedCoords[a] > Math.max(0, tupleCoords[a])
+                ) {
+                  factor = 0;
+                  break;
+                }
+                factor =
+                  (factor * normalizedCoords[a] + Number.EPSILON) /
+                  (tupleCoords[a] + Number.EPSILON);
+              } else {
+                if (
+                  normalizedCoords[a] < header.intermediateStartTuple[a] ||
+                  normalizedCoords[a] > header.intermediateEndTuple[a]
+                ) {
+                  factor = 0;
+                  break;
+                } else if (normalizedCoords[a] < tupleCoords[a]) {
+                  factor =
+                    (factor *
+                      (normalizedCoords[a] - header.intermediateStartTuple[a] + Number.EPSILON)) /
+                    (tupleCoords[a] - header.intermediateStartTuple[a] + Number.EPSILON);
+                } else {
+                  factor =
+                    (factor *
+                      (header.intermediateEndTuple[a] - normalizedCoords[a] + Number.EPSILON)) /
+                    (header.intermediateEndTuple[a] - tupleCoords[a] + Number.EPSILON);
+                }
+              }
+            }
+            if (factor === 0) continue;
+
+            const tuplePoints = header.hasPrivatePoints
+              ? header.privatePoints
+              : header.privatePoints && header.privatePoints.length
+                ? header.privatePoints
+                : sharedPoints;
+
+            for (let c = 0; c < glyph.components.length; c++) {
+              const deltaIndex = tuplePoints.length === 0 ? c : tuplePoints.indexOf(c);
+              if (deltaIndex > -1 && deltaIndex < header.deltas.length) {
+                compTransforms[c].dx += Math.round(header.deltas[deltaIndex] * factor);
+                compTransforms[c].dy += Math.round(header.deltasY[deltaIndex] * factor);
+              }
+            }
+          }
+
+          const transformedPoints: any[] = [];
+          for (let c = 0; c < glyph.components.length; c++) {
+            const component = glyph.components[c];
+            const componentGlyph = this.font.glyphs.get(component.glyphIndex);
+            const variedComponentGlyph = this.getTransform(componentGlyph, coords);
+            const compPoints = variedComponentGlyph.points || [];
+            const transform = compTransforms[c];
+            for (let i = 0; i < compPoints.length; i++) {
+              const pt = compPoints[i];
+              transformedPoints.push({
+                x: transform.xScale * pt.x + transform.scale10 * pt.y + transform.dx,
+                y: transform.scale01 * pt.x + transform.yScale * pt.y + transform.dy,
+                onCurve: pt.onCurve,
+                lastPointOfContour: pt.lastPointOfContour,
+              });
+            }
+          }
+          return transformedPoints;
+        }
+
         let transformedPoints: any[];
         if (flavor === 'gvar') {
           transformedPoints = points.map(copyPoint);
@@ -349,16 +455,7 @@ export function patchFontInstance(font: opentype.Font): opentype.Font {
             : header.privatePoints && header.privatePoints.length
               ? header.privatePoints
               : sharedPoints;
-          if (flavor === 'gvar' && args.glyph && args.glyph.isComposite) {
-            this.transformComponents(
-              args.glyph,
-              transformedPoints,
-              coords,
-              tuplePoints,
-              header,
-              factor
-            );
-          } else if (tuplePoints.length === 0) {
+          if (tuplePoints.length === 0) {
             for (let i = 0; i < transformedPoints.length; i++) {
               const point = transformedPoints[i];
               if (flavor === 'gvar') {
@@ -671,7 +768,7 @@ export async function loadFont(
   const weight = parseFontWeight(fontWeight);
   const cacheKey = `${normFamily}-${weight}-${isItalic ? 'italic' : 'normal'}`;
 
-  const cached = fontCache.get(cacheKey) || fontCache.get(normFamily);
+  const cached = fontCache.get(cacheKey);
   if (cached) {
     return await cached;
   }
@@ -864,8 +961,18 @@ export async function convertTextToPaths(
     let totalLineWidth = 0;
     for (let i = 0; i < lineChars.length; i++) {
       totalLineWidth += lineChars[i].adv;
-      if (i < lineChars.length - 1 && lineChars[i].lSpacing !== 0) {
-        totalLineWidth += lineChars[i].lSpacing;
+      if (i < lineChars.length - 1) {
+        if (lineChars[i].lSpacing !== 0) {
+          totalLineWidth += lineChars[i].lSpacing;
+        }
+        const curr = lineChars[i];
+        const next = lineChars[i + 1];
+        if (curr.font === next.font) {
+          const kern = curr.font.getKerningValue(curr.glyph, next.glyph);
+          if (kern) {
+            totalLineWidth += (kern / (curr.font.unitsPerEm || 2048)) * curr.fSize;
+          }
+        }
       }
     }
 
@@ -979,8 +1086,17 @@ export async function convertTextToPaths(
       }
 
       cursorX += adv;
-      if (i < lineChars.length - 1 && lSpacing !== 0) {
-        cursorX += lSpacing;
+      if (i < lineChars.length - 1) {
+        if (lSpacing !== 0) {
+          cursorX += lSpacing;
+        }
+        const next = lineChars[i + 1];
+        if (font === next.font) {
+          const kern = font.getKerningValue(glyph, next.glyph);
+          if (kern) {
+            cursorX += (kern / (font.unitsPerEm || 2048)) * fSize;
+          }
+        }
       }
     }
   }

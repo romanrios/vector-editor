@@ -527,6 +527,59 @@ describe('Text to Curves (Vectorización de tipografía)', () => {
     }
   });
 
+  it('el punto de la "i" en Inter y Montserrat permanece milimétricamente centrado con el fuste en todos los pesos', async () => {
+    for (const font of ['Inter', 'Montserrat']) {
+      for (const weight of [400, 700, 900]) {
+        const paths = await convertTextToPaths({
+          id: `test-i-${font}-${weight}`,
+          type: 'text',
+          x: 100,
+          y: 100,
+          text: 'i',
+          fontSize: 32,
+          fontFamily: font,
+          fontWeight: weight,
+        });
+
+        assert.strictEqual(paths.length, 1, `Debe generar 1 figura para 'i' en ${font} con peso ${weight}`);
+        const glyph = paths[0];
+
+        const contours: Array<Array<{ x: number; y: number }>> = [];
+        let cur: Array<{ x: number; y: number }> = [];
+        for (const pt of glyph.points) {
+          if (pt.moveTo && cur.length > 0) {
+            contours.push(cur);
+            cur = [];
+          }
+          cur.push(pt);
+        }
+        if (cur.length > 0) contours.push(cur);
+
+        assert.strictEqual(contours.length, 2, `El glifo 'i' debe tener 2 contornos (fuste y punto) en ${font} con peso ${weight}`);
+
+        // El punto está en la parte superior (menor coordenada Y en Canvas)
+        contours.sort((a, b) => Math.min(...a.map((p) => p.y)) - Math.min(...b.map((p) => p.y)));
+        const dotContour = contours[0];
+        const stemContour = contours[1];
+
+        const dotMinX = Math.min(...dotContour.map((p) => p.x));
+        const dotMaxX = Math.max(...dotContour.map((p) => p.x));
+        const stemMinX = Math.min(...stemContour.map((p) => p.x));
+        const stemMaxX = Math.max(...stemContour.map((p) => p.x));
+
+        const dotCenter = (dotMinX + dotMaxX) / 2;
+        const stemCenter = (stemMinX + stemMaxX) / 2;
+        const diff = Math.abs(dotCenter - stemCenter);
+
+        // La diferencia entre el centro horizontal del punto y del fuste debe ser menor a 0.05px
+        assert.ok(
+          diff <= 0.05,
+          `En ${font} con peso ${weight}, el punto (${dotCenter}) se desplazó respecto al fuste (${stemCenter}), diferencia: ${diff}px`
+        );
+      }
+    }
+  });
+
   it('convertTextToPaths respeta la métrica de espaciado y alineación horizontal', async () => {
     const textNode: Text = {
       id: 'text-spacing',
