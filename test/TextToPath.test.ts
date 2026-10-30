@@ -146,6 +146,32 @@ describe('Text to Curves (Vectorización de tipografía)', () => {
     assert.strictEqual(paths[1].fillRule, 'nonzero');
   });
 
+  it('convertTextToPaths alinea verticalmente los glifos con el origen superior (top) de la caja de texto', async () => {
+    const textNode: Text = {
+      id: 'text-align-y',
+      name: 'Align Y',
+      type: 'text',
+      x: 100,
+      y: 100,
+      text: 'H',
+      fontSize: 100,
+      fontFamily: 'Inter',
+    };
+
+    const paths = await convertTextToPaths(textNode);
+    assert.strictEqual(paths.length, 1);
+    const pathH = paths[0];
+
+    // En Inter a 100px:
+    // Con textBaseline = 'top', la baseline se ubica a ~80px (y = 180).
+    // La altura de la 'H' (capHeight) es ~73px, por lo que su parte superior queda en y = ~107.
+    // Antes se desplazaba hacia abajo hasta y = ~124 (un desvío hacia abajo de ~17px).
+    assert.ok(
+      pathH.y >= 105 && pathH.y <= 110,
+      `El punto superior de la figura (${pathH.y}) debe quedar en la franja superior correspondiente [105, 110]`
+    );
+  });
+
   it('convertTextToPaths respeta la rotación geométrica', async () => {
     const textNode: Text = {
       id: 'text-rot',
@@ -409,5 +435,122 @@ describe('Text to Curves (Vectorización de tipografía)', () => {
 
     const stateAfterShortcut = stateManager.getState();
     assert.strictEqual(stateAfterShortcut.children[0].children[0].type, 'group');
+  });
+
+  it('Montserrat "o" en pesos negrita (700, 800, 900) no se deforma, conserva simetría y no invierte contornos', async () => {
+    for (const weight of [400, 700, 800, 900]) {
+      const textNode: Text = {
+        id: `text-montserrat-o-${weight}`,
+        name: `Montserrat O ${weight}`,
+        type: 'text',
+        x: 0,
+        y: 0,
+        text: 'o',
+        fontSize: 100,
+        fontFamily: 'Montserrat',
+        fontWeight: weight,
+      };
+
+      const paths = await convertTextToPaths(textNode);
+      assert.strictEqual(paths.length, 1, `Debe generar 1 trazado para 'o' con peso ${weight}`);
+      const glyph = paths[0];
+
+      // Separar los subcontornos (exterior e interior) mediante el flag moveTo
+      const contours: Array<Array<{ x: number; y: number }>> = [];
+      let currentContour: Array<{ x: number; y: number }> = [];
+      for (const pt of glyph.points) {
+        if (pt.moveTo && currentContour.length > 0) {
+          contours.push(currentContour);
+          currentContour = [];
+        }
+        currentContour.push(pt);
+      }
+      if (currentContour.length > 0) {
+        contours.push(currentContour);
+      }
+
+      assert.strictEqual(contours.length, 2, `El glifo 'o' con peso ${weight} debe tener 2 contornos cerrados`);
+
+      const outerContour = contours[0];
+      const innerContour = contours[1];
+
+      const outerMinX = Math.min(...outerContour.map((p) => p.x));
+      const outerMaxX = Math.max(...outerContour.map((p) => p.x));
+      const innerMinX = Math.min(...innerContour.map((p) => p.x));
+      const innerMaxX = Math.max(...innerContour.map((p) => p.x));
+
+      // 1. El contorno interior debe estar estrictamente dentro del exterior (sin punch-through ni inversión)
+      assert.ok(
+        innerMinX > outerMinX,
+        `Peso ${weight}: innerMinX (${innerMinX}) debe ser mayor que outerMinX (${outerMinX})`
+      );
+      assert.ok(
+        innerMaxX < outerMaxX,
+        `Peso ${weight}: innerMaxX (${innerMaxX}) debe ser menor que outerMaxX (${outerMaxX})`
+      );
+
+      // 2. Las paredes laterales (izquierda y derecha) deben ser simétricas (diferencia <= 0.5px)
+      const leftWall = innerMinX - outerMinX;
+      const rightWall = outerMaxX - innerMaxX;
+      const wallDiff = Math.abs(leftWall - rightWall);
+
+      assert.ok(
+        wallDiff <= 0.5,
+        `Peso ${weight}: paredes laterales deben ser simétricas (izq: ${leftWall}, der: ${rightWall}, dif: ${wallDiff})`
+      );
+    }
+  });
+
+  it('Inter "i", "j", "ñ" en pesos no normales conservan sus acentos y detalles redondeados sin deformación', async () => {
+    for (const weight of [300, 700, 900]) {
+      const textNode: Text = {
+        id: `text-inter-${weight}`,
+        name: `Inter ${weight}`,
+        type: 'text',
+        x: 0,
+        y: 0,
+        text: 'ijñ',
+        fontSize: 32,
+        fontFamily: 'Inter',
+        fontWeight: weight,
+      };
+
+      const paths = await convertTextToPaths(textNode);
+      assert.strictEqual(paths.length, 3, `Debe generar 3 trazados para ijñ con peso ${weight}`);
+
+      // Comprobar que cada glifo tiene trazados cerrados válidos con suficientes puntos Bézier suaves
+      for (const p of paths) {
+        assert.ok(p.points.length >= 10, `Glifo ${p.name} con peso ${weight} debe tener geometría vectorial completa`);
+        assert.strictEqual(p.closed, true);
+        assert.strictEqual(p.fillRule, 'nonzero');
+      }
+    }
+  });
+
+  it('convertTextToPaths respeta la métrica de espaciado y alineación horizontal', async () => {
+    const textNode: Text = {
+      id: 'text-spacing',
+      name: 'Spacing',
+      type: 'text',
+      x: 100,
+      y: 100,
+      text: 'AB C',
+      fontSize: 24,
+      fontFamily: 'Inter',
+      letterSpacing: 4,
+    };
+
+    const paths = await convertTextToPaths(textNode);
+    // ' ' se omite en paths, por lo que quedan 'A', 'B' y 'C' (3 figuras)
+    assert.strictEqual(paths.length, 3);
+
+    // Las posiciones X deben ser estrictamente crecientes
+    assert.ok(paths[0].x < paths[1].x, 'B debe estar a la derecha de A');
+    assert.ok(paths[1].x < paths[2].x, 'C debe estar a la derecha de B con espacio intermedio');
+
+    // La distancia entre B y C debe ser mayor que entre A y B debido al carácter de espacio ' '
+    const distAB = paths[1].x - paths[0].x;
+    const distBC = paths[2].x - paths[1].x;
+    assert.ok(distBC > distAB, `La distancia B-C (${distBC}px) debe superar A-B (${distAB}px) por el espacio`);
   });
 });

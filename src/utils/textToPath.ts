@@ -10,7 +10,13 @@ import type {
 } from '../types/scene-graph.ts';
 import { isGroup, isText } from '../types/scene-graph.ts';
 import { parseSvgPathD } from './svg/pathParser.ts';
-import { getWrappedTextLines, getTextLineHeight } from './geometry.ts';
+import {
+  getTextLineRanges,
+  getTextLineHeight,
+  getTextMeasureContext,
+  measureSingleLineTextWidth,
+  measureStyledRun,
+} from './geometry.ts';
 import { splitTextIntoRuns } from './textSpans.ts';
 
 interface OpenTypeVariationManager {
@@ -58,14 +64,366 @@ export function parseFontWeight(weight?: string | number): number {
   return 400;
 }
 
+const gvarMasks = {
+  SHARED_POINT_NUMBERS: 0x8000,
+  COUNT_MASK: 0x0fff,
+  EMBEDDED_PEAK_TUPLE: 0x8000,
+  INTERMEDIATE_REGION: 0x4000,
+  PRIVATE_POINT_NUMBERS: 0x2000,
+  TUPLE_INDEX_MASK: 0x0fff,
+};
+
+function copyPoint(point: any) {
+  return {
+    x: point.x,
+    y: point.y,
+    onCurve: point.onCurve,
+    lastPointOfContour: point.lastPointOfContour,
+  };
+}
+
 /**
- * Obtiene las coordenadas para los ejes de variación ('wght', 'opsz') de una fuente OpenType variable,
+ * Corrige el analizador TupleVariationStore de OpenType.js.
+ *
+ * En la especificación TrueType Font Variations:
+ * Cuando una cabecera de variación define PRIVATE_POINT_NUMBERS pero el recuento de puntos
+ * privados es 0, los deltas se aplican a TODOS los puntos del glifo (pointsCount = glyph.points.length + 4).
+ * El analizador nativo de OpenType.js evaluaba `header.privatePoints.length || sharedPoints.length`.
+ * Dado que `0 || sharedPoints.length` resulta en truthy con el recuento de puntos compartidos,
+ * leía solo un subconjunto de deltas de X y leía el resto de deltas de X como si fueran de Y,
+ * corrompiendo totalmente formas como la 'o' de Montserrat en pesos superiores a 400.
+ */
+function ensureParserPatched(): void {
+  const otAny = opentype as any;
+  if (!otAny._parse?.Parser?.prototype) return;
+  const proto = otAny._parse.Parser.prototype;
+  if (proto._patchedTupleStore) return;
+
+  proto.parseTupleVariationStore = function (
+    tableOffset: number,
+    axisCount: number,
+    flavor: string,
+    glyphs: any,
+    glyphIndex: number
+  ) {
+    const relativeOffset = this.relativeOffset;
+    this.relativeOffset = tableOffset;
+    if (flavor === 'cvar') {
+      this.relativeOffset += 4;
+    }
+    const tupleVariationCount = this.parseUShort();
+    const hasSharedPoints = !!(tupleVariationCount & gvarMasks.SHARED_POINT_NUMBERS);
+    const count = tupleVariationCount & gvarMasks.COUNT_MASK;
+    const dataOffset = this.parseOffset16();
+    const headers: any[] = [];
+    let sharedPoints: number[] = [];
+    for (let h = 0; h < count; h++) {
+      const headerData = this.parseTupleVariationHeader(axisCount, flavor);
+      headers.push(headerData);
+    }
+    if (this.relativeOffset !== tableOffset + dataOffset) {
+      this.relativeOffset = tableOffset + dataOffset;
+    }
+    if (hasSharedPoints) {
+      sharedPoints = this.parsePackedPointNumbers();
+    }
+    let serializedDataOffset = this.relativeOffset;
+    for (let h = 0; h < count; h++) {
+      const header = headers[h];
+      header.privatePoints = [];
+      this.relativeOffset = serializedDataOffset;
+      const hasPrivatePoints = !!(header.flags && header.flags.privatePointNumbers);
+      header.hasPrivatePoints = hasPrivatePoints;
+      if (hasPrivatePoints) {
+        header.privatePoints = this.parsePackedPointNumbers();
+      }
+      delete header.flags;
+      const deltasOffset = this.offset;
+      const deltasRelativeOffset = this.relativeOffset;
+      const defineDeltas = (propertyName: string) => {
+        let _deltas: any = undefined;
+        let _deltasY: any = undefined;
+        const parseDeltas = () => {
+          let pointsCount = 0;
+          if (flavor === 'gvar') {
+            if (header.hasPrivatePoints) {
+              pointsCount = header.privatePoints.length;
+              if (!pointsCount) {
+                const glyph = glyphs.get(glyphIndex);
+                glyph.path;
+                pointsCount = glyph.points.length + 4;
+              }
+            } else {
+              pointsCount = sharedPoints.length;
+              if (!pointsCount) {
+                const glyph = glyphs.get(glyphIndex);
+                glyph.path;
+                pointsCount = glyph.points.length + 4;
+              }
+            }
+          } else if (flavor === 'cvar') {
+            pointsCount = glyphs.length;
+          }
+          this.offset = deltasOffset;
+          this.relativeOffset = deltasRelativeOffset;
+          _deltas = this.parsePackedDeltas(pointsCount);
+          if (flavor === 'gvar') {
+            _deltasY = this.parsePackedDeltas(pointsCount);
+          }
+        };
+        return {
+          configurable: true,
+          get: function () {
+            if (_deltas === undefined) parseDeltas();
+            return propertyName === 'deltasY' ? _deltasY : _deltas;
+          },
+          set: function (deltas: any) {
+            if (_deltas === undefined) parseDeltas();
+            if (propertyName === 'deltasY') {
+              _deltasY = deltas;
+            } else {
+              _deltas = deltas;
+            }
+          },
+        };
+      };
+      Object.defineProperty(header, 'deltas', defineDeltas.call(this, 'deltas'));
+      if (flavor === 'gvar') {
+        Object.defineProperty(header, 'deltasY', defineDeltas.call(this, 'deltasY'));
+      }
+      serializedDataOffset += header.variationDataSize;
+      delete header.variationDataSize;
+    }
+    this.relativeOffset = relativeOffset;
+    const result: any = { headers };
+    result.sharedPoints = sharedPoints;
+    return result;
+  };
+
+  proto._patchedTupleStore = true;
+}
+
+ensureParserPatched();
+
+/**
+ * Aplica correcciones críticas al procesador de fuentes variables de OpenType.js.
+ *
+ * 1. Corrige el algoritmo TrueType IUP (Interpolate Unreferenced Points) en deltaInterpolate:
+ *    - Cuando dos puntos de referencia comparten la misma coordenada (in1 === in2),
+ *      OpenType.js los descartaba por completo si out1 !== out2, deformando glifos como la 'o' de Montserrat.
+ *      Aplica el desplazamiento promedio de acuerdo a la especificación OpenType.
+ *    - Evita mutar los índices ref1 y ref2 entre las iteraciones de los ejes X e Y.
+ *
+ * 2. Corrige applyTupleVariationStore para respetar tuplePoints cuando hasPrivatePoints es true
+ *    pero privatePoints está vacío (indicando que los deltas aplican directamente a todos los puntos).
+ */
+export function patchFontInstance(font: opentype.Font): opentype.Font {
+  ensureParserPatched();
+  const vFont = font as any;
+  if (vFont.variation?.process) {
+    const process = vFont.variation.process;
+    if (!process._patchedAll) {
+      process.deltaInterpolate = function (
+        p1: number,
+        p2: number,
+        ref1: number,
+        ref2: number,
+        glyphPoints: any[],
+        points: any[]
+      ) {
+        if (p1 > p2) return;
+        const iterable = ['x', 'y'];
+        for (let i = 0; i < iterable.length; i++) {
+          const k = iterable[i];
+          let r1 = ref1;
+          let r2 = ref2;
+          if (glyphPoints[r1][k] > glyphPoints[r2][k]) {
+            const tmp = r1;
+            r1 = r2;
+            r2 = tmp;
+          }
+          const in1 = glyphPoints[r1][k];
+          const in2 = glyphPoints[r2][k];
+          const out1 = points[r1][k];
+          const out2 = points[r2][k];
+          if (in1 !== in2) {
+            const scale = (out2 - out1) / (in2 - in1);
+            for (let p3 = p1; p3 <= p2; p3++) {
+              const val = glyphPoints[p3][k];
+              if (val <= in1) {
+                points[p3][k] = val + (out1 - in1);
+              } else if (val >= in2) {
+                points[p3][k] = val + (out2 - in2);
+              } else {
+                points[p3][k] = out1 + (val - in1) * scale;
+              }
+            }
+          } else {
+            const shift = (out1 - in1 + (out2 - in2)) / 2;
+            for (let p3 = p1; p3 <= p2; p3++) {
+              points[p3][k] = glyphPoints[p3][k] + shift;
+            }
+          }
+        }
+      };
+
+      process.applyTupleVariationStore = function (
+        variationData: any,
+        points: any[],
+        coords: any,
+        flavor = 'gvar',
+        args: any = {}
+      ) {
+        if (!coords) {
+          coords = this.font.variation.get();
+        }
+        const normalizedCoords = this.getNormalizedCoords(coords);
+        const { headers, sharedPoints } = variationData;
+        const axisCount = this.fvar().axes.length;
+        let transformedPoints: any[];
+        if (flavor === 'gvar') {
+          transformedPoints = points.map(copyPoint);
+        } else if (flavor === 'cvar') {
+          transformedPoints = [...points];
+        } else {
+          transformedPoints = points;
+        }
+        for (let h = 0; h < headers.length; h++) {
+          const header = headers[h];
+          let factor = 1;
+          for (let a = 0; a < axisCount; a++) {
+            let tupleCoords = [0];
+            switch (flavor) {
+              case 'gvar':
+                tupleCoords = header.peakTuple
+                  ? header.peakTuple
+                  : this.gvar().sharedTuples[header.sharedTupleRecordsIndex];
+                break;
+              case 'cvar':
+                tupleCoords = header.peakTuple;
+                break;
+            }
+            if (tupleCoords[a] === 0) {
+              continue;
+            }
+            if (normalizedCoords[a] === 0) {
+              factor = 0;
+              break;
+            }
+            if (!header.intermediateStartTuple) {
+              if (
+                normalizedCoords[a] < Math.min(0, tupleCoords[a]) ||
+                normalizedCoords[a] > Math.max(0, tupleCoords[a])
+              ) {
+                factor = 0;
+                break;
+              }
+              factor =
+                (factor * normalizedCoords[a] + Number.EPSILON) /
+                (tupleCoords[a] + Number.EPSILON);
+            } else {
+              if (
+                normalizedCoords[a] < header.intermediateStartTuple[a] ||
+                normalizedCoords[a] > header.intermediateEndTuple[a]
+              ) {
+                factor = 0;
+                break;
+              } else if (normalizedCoords[a] < tupleCoords[a]) {
+                factor =
+                  (factor *
+                    (normalizedCoords[a] - header.intermediateStartTuple[a] + Number.EPSILON)) /
+                  (tupleCoords[a] - header.intermediateStartTuple[a] + Number.EPSILON);
+              } else {
+                factor =
+                  (factor *
+                    (header.intermediateEndTuple[a] - normalizedCoords[a] + Number.EPSILON)) /
+                  (header.intermediateEndTuple[a] - tupleCoords[a] + Number.EPSILON);
+              }
+            }
+          }
+          if (factor === 0) {
+            continue;
+          }
+          const tuplePoints = header.hasPrivatePoints
+            ? header.privatePoints
+            : header.privatePoints && header.privatePoints.length
+              ? header.privatePoints
+              : sharedPoints;
+          if (flavor === 'gvar' && args.glyph && args.glyph.isComposite) {
+            this.transformComponents(
+              args.glyph,
+              transformedPoints,
+              coords,
+              tuplePoints,
+              header,
+              factor
+            );
+          } else if (tuplePoints.length === 0) {
+            for (let i = 0; i < transformedPoints.length; i++) {
+              const point = transformedPoints[i];
+              if (flavor === 'gvar') {
+                transformedPoints[i] = {
+                  x: Math.round(point.x + header.deltas[i] * factor),
+                  y: Math.round(point.y + header.deltasY[i] * factor),
+                  onCurve: point.onCurve,
+                  lastPointOfContour: point.lastPointOfContour,
+                };
+              } else if (flavor === 'cvar') {
+                transformedPoints[i] = Math.round(point + header.deltas[i] * factor);
+              }
+            }
+          } else {
+            let interpolatedPoints: any[];
+            if (flavor === 'gvar') {
+              interpolatedPoints = transformedPoints.map(copyPoint);
+            } else {
+              interpolatedPoints = transformedPoints;
+            }
+            const deltaMap = Array(points.length).fill(false);
+            for (let i = 0; i < tuplePoints.length; i++) {
+              const pointIndex = tuplePoints[i];
+              if (pointIndex < points.length) {
+                const point = interpolatedPoints[pointIndex];
+                if (flavor === 'gvar') {
+                  deltaMap[pointIndex] = true;
+                  point.x += header.deltas[i] * factor;
+                  point.y += header.deltasY[i] * factor;
+                } else if (flavor === 'cvar') {
+                  transformedPoints[pointIndex] = Math.round(point + header.deltas[i] * factor);
+                }
+              }
+            }
+            if (flavor === 'gvar') {
+              this.interpolatePoints(interpolatedPoints, transformedPoints, deltaMap);
+              for (let i = 0; i < points.length; i++) {
+                const deltaX = interpolatedPoints[i].x - transformedPoints[i].x;
+                const deltaY = interpolatedPoints[i].y - transformedPoints[i].y;
+                transformedPoints[i].x = Math.round(transformedPoints[i].x + deltaX);
+                transformedPoints[i].y = Math.round(transformedPoints[i].y + deltaY);
+              }
+            }
+          }
+        }
+        return transformedPoints;
+      };
+
+      process._patchedAll = true;
+    }
+  }
+  return font;
+}
+
+/**
+ * Obtiene las coordenadas para el eje de variación 'wght' de una fuente OpenType variable,
  * acotando los valores a los límites permitidos por la tabla fvar.
+ *
+ * NOTA: Omitimos deliberadamente el eje 'opsz' (optical size) porque Canvas 2D en el navegador
+ * renderiza por defecto sin variación forzada de opsz, y el motor de OpenType.js presenta
+ * artefactos en el cálculo de deltas multieje que distorsionan trazos y acentos (i, j, ñ).
  */
 function getVariationCoords(
   font: opentype.Font,
-  weight: number,
-  fontSize?: number
+  weight: number
 ): Record<string, number> | undefined {
   const vFont = font as OpenTypeVariableFont;
   if (!vFont.variation || !font.tables?.fvar?.axes) {
@@ -76,11 +434,65 @@ function getVariationCoords(
   if (wghtAxis) {
     coords.wght = Math.max(wghtAxis.minValue, Math.min(wghtAxis.maxValue, weight));
   }
-  const opszAxis = font.tables.fvar.axes.find((a: any) => a.tag === 'opsz');
-  if (opszAxis && typeof fontSize === 'number') {
-    coords.opsz = Math.max(opszAxis.minValue, Math.min(opszAxis.maxValue, fontSize));
-  }
   return Object.keys(coords).length > 0 ? coords : undefined;
+}
+
+/**
+ * Calcula la distancia vertical desde el origen superior de la línea ('top' textBaseline)
+ * hasta la línea base alfabética ('alphabetic' baseline).
+ *
+ * Utiliza el contexto 2D compartido del navegador si está disponible para máxima fidelidad subpíxel;
+ * en caso contrario (o en entornos Node.js), calcula la proporción tipográfica exacta
+ * a partir de las tablas OpenType sTypoAscender / sTypoDescender del archivo de la fuente.
+ */
+export function getBaselineOffsetFromTop(
+  font: opentype.Font,
+  fontSize: number,
+  fontFamily: string,
+  fontWeight?: string | number,
+  fontStyle?: string
+): number {
+  const measureCtx = getTextMeasureContext();
+  if (measureCtx && typeof measureCtx.measureText === 'function') {
+    const fontParts: string[] = [];
+    if (fontStyle && fontStyle !== 'normal') {
+      fontParts.push(fontStyle);
+    }
+    if (fontWeight && fontWeight !== 'normal' && fontWeight !== 400) {
+      fontParts.push(String(fontWeight));
+    }
+    const safeFamily =
+      fontFamily.includes(' ') && !fontFamily.startsWith('"') && !fontFamily.startsWith("'")
+        ? `"${fontFamily}"`
+        : fontFamily;
+    fontParts.push(`${fontSize}px`);
+    fontParts.push(safeFamily);
+
+    try {
+      measureCtx.font = fontParts.join(' ');
+      measureCtx.textBaseline = 'top';
+      const tm = measureCtx.measureText('M');
+      if (typeof tm.alphabeticBaseline === 'number' && !isNaN(tm.alphabeticBaseline)) {
+        return Math.abs(tm.alphabeticBaseline);
+      }
+    } catch (_) { }
+  }
+
+  // Fallback analítico basado en las métricas tipográficas nativas de OpenType
+  const typoAscender =
+    font.tables?.os2?.sTypoAscender ??
+    font.tables?.hhea?.ascender ??
+    font.ascender ??
+    1984;
+  const typoDescender = Math.abs(
+    font.tables?.os2?.sTypoDescender ??
+    font.tables?.hhea?.descender ??
+    font.descender ??
+    -494
+  );
+  const totalLineSpan = typoAscender + typoDescender;
+  const ratio = totalLineSpan > 0 ? typoAscender / totalLineSpan : 0.8;
+  return ratio * fontSize;
 }
 
 /**
@@ -97,6 +509,7 @@ const fontBufferCache = new Map<string, Promise<ArrayBuffer>>();
  * Permite registrar una fuente OpenType directamente en la caché (útil para pruebas unitarias o fuentes precargadas).
  */
 export function registerFont(cacheKey: string, font: opentype.Font): void {
+  patchFontInstance(font);
   fontCache.set(cacheKey.toLowerCase().trim(), Promise.resolve(font));
 }
 
@@ -309,12 +722,13 @@ export async function loadFont(
         fontBuffer instanceof ArrayBuffer
           ? fontBuffer
           : (fontBuffer.buffer as ArrayBuffer).slice(
-              fontBuffer.byteOffset,
-              fontBuffer.byteOffset + fontBuffer.byteLength
-            );
+            fontBuffer.byteOffset,
+            fontBuffer.byteOffset + fontBuffer.byteLength
+          );
     }
 
-    return opentype.parse(ttfBuffer);
+    const font = opentype.parse(ttfBuffer);
+    return patchFontInstance(font);
   })();
 
   fontCache.set(cacheKey, loadPromise);
@@ -351,8 +765,9 @@ export async function convertTextToPaths(
   }
 
   const { precision = 2, fontResolver } = options;
-  const lines = getWrappedTextLines(text);
+  const measureCtx = getTextMeasureContext();
   const lineHeight = getTextLineHeight(text);
+  const lines = getTextLineRanges(text, measureCtx);
   const paths: Path[] = [];
 
   const hasRotation = Boolean(text.rotation);
@@ -361,55 +776,100 @@ export async function convertTextToPaths(
   const sin = hasRotation ? Math.sin(rotRad) : 0;
   const rotCenter = { x: text.x, y: text.y };
 
-  let charIndexOffset = 0;
-
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const lineText = lines[lineIndex];
-    const lineStart = charIndexOffset;
-    const lineEnd = lineStart + lineText.length;
-    charIndexOffset += lineText.length + 1; // +1 por el separador o salto
+    const { text: lineText, start: lineStart, end: lineEnd } = lines[lineIndex];
+    if (!lineText) {
+      continue;
+    }
 
     const lineY = text.y + lineIndex * lineHeight;
-
-    // Desglosar la línea en tramos homogéneos de estilo (spans)
     const runs = splitTextIntoRuns(text, lineStart, lineEnd);
 
-    // Calcular ancho total de la línea
-    let totalLineWidth = 0;
-    const runFonts: opentype.Font[] = [];
-    const runWeights: number[] = [];
+    // 1. Resolver todas las fuentes y glifos de la línea para calcular el avance métrico exacto
+    interface CharLayoutItem {
+      readonly ch: string;
+      readonly glyph: opentype.Glyph;
+      readonly varCoords?: Record<string, number>;
+      readonly font: opentype.Font;
+      readonly fSize: number;
+      readonly lSpacing: number;
+      readonly adv: number;
+      readonly baselineOffset: number;
+      readonly style: any;
+    }
+
+    const lineChars: CharLayoutItem[] = [];
 
     for (let r = 0; r < runs.length; r++) {
       const run = runs[r];
-      const targetWeight = parseFontWeight(run.style.fontWeight);
-      runWeights.push(targetWeight);
+      if (!run.text) {
+        continue;
+      }
 
+      const targetWeight = parseFontWeight(run.style.fontWeight);
       const font = await loadFont(
         run.style.fontFamily,
         targetWeight,
         run.style.fontStyle,
         fontResolver
       );
-      runFonts.push(font);
+      patchFontInstance(font);
 
       const fSize = run.style.fontSize;
       const lSpacing = run.style.letterSpacing;
       const unitsPerEm = font.unitsPerEm || 2048;
-      const varCoords = getVariationCoords(font, targetWeight, fSize);
+      const baselineOffset = getBaselineOffsetFromTop(
+        font,
+        fSize,
+        run.style.fontFamily,
+        targetWeight,
+        run.style.fontStyle
+      );
+      const varCoords = getVariationCoords(font, targetWeight);
       const vFont = font as OpenTypeVariableFont;
 
       for (let c = 0; c < run.text.length; c++) {
         const ch = run.text[c];
         const glyph = font.charToGlyph(ch);
-        const varGlyph = vFont.variation && varCoords ? vFont.variation.getTransform(glyph, varCoords) : glyph;
-        const adv = varGlyph.advanceWidth
-          ? (varGlyph.advanceWidth / unitsPerEm) * fSize
-          : fSize * 0.6;
-        totalLineWidth += adv + (c < run.text.length - 1 ? lSpacing : 0);
+        const gAny = glyph as any;
+        if ((gAny.numberOfContours ?? 0) < 0 || (gAny.components?.length ?? 0) > 0) {
+          gAny.isComposite = true;
+        }
+        const varGlyph =
+          vFont.variation && varCoords ? vFont.variation.getTransform(glyph, varCoords) : glyph;
+        const adv =
+          typeof varGlyph.advanceWidth === 'number' && varGlyph.advanceWidth > 0
+            ? (varGlyph.advanceWidth / unitsPerEm) * fSize
+            : fSize * 0.6;
+
+        lineChars.push({
+          ch,
+          glyph,
+          varCoords,
+          font,
+          fSize,
+          lSpacing,
+          adv,
+          baselineOffset,
+          style: run.style,
+        });
       }
     }
 
-    // Calcular origen horizontal de la línea según alineación
+    if (lineChars.length === 0) {
+      continue;
+    }
+
+    // 2. Ancho total de la línea calculado exactamente a partir de los avances de los glifos
+    let totalLineWidth = 0;
+    for (let i = 0; i < lineChars.length; i++) {
+      totalLineWidth += lineChars[i].adv;
+      if (i < lineChars.length - 1 && lineChars[i].lSpacing !== 0) {
+        totalLineWidth += lineChars[i].lSpacing;
+      }
+    }
+
+    // 3. Inicio horizontal de la línea según alineación tipográfica
     let lineStartX = text.x;
     const hasBoxWidth = typeof text.boxWidth === 'number' && text.boxWidth > 0;
     if (hasBoxWidth) {
@@ -426,115 +886,101 @@ export async function convertTextToPaths(
       }
     }
 
+    // 4. Ubicar y vectorizar cada glifo en su posición milimétrica exacta
     let cursorX = lineStartX;
 
-    // Renderizar cada glifo en la línea
-    for (let r = 0; r < runs.length; r++) {
-      const run = runs[r];
-      const font = runFonts[r];
-      const targetWeight = runWeights[r];
-      const fSize = run.style.fontSize;
-      const lSpacing = run.style.letterSpacing;
-      const ascender = font.ascender || font.tables?.os2?.sTypoAscender || 1984;
-      const unitsPerEm = font.unitsPerEm || 2048;
-      const baselineY = lineY + (ascender / unitsPerEm) * fSize;
-      const varCoords = getVariationCoords(font, targetWeight, fSize);
-      const vFont = font as OpenTypeVariableFont;
+    for (let i = 0; i < lineChars.length; i++) {
+      const item = lineChars[i];
+      const { ch, glyph, varCoords, font, fSize, lSpacing, adv, baselineOffset, style } = item;
 
-      for (let c = 0; c < run.text.length; c++) {
-        const ch = run.text[c];
-        const glyph = font.charToGlyph(ch);
-        const varGlyph = vFont.variation && varCoords ? vFont.variation.getTransform(glyph, varCoords) : glyph;
-        const adv = varGlyph.advanceWidth
-          ? (varGlyph.advanceWidth / unitsPerEm) * fSize
-          : fSize * 0.6;
-
-        // Omitir espacios en blanco y caracteres de control
-        if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
-          cursorX += adv + lSpacing;
-          continue;
-        }
+      if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') {
+        const glyphX = cursorX;
+        const baselineY = lineY + baselineOffset;
 
         const glyphPath = glyph.getPath(
-          cursorX,
+          glyphX,
           baselineY,
           fSize,
           (varCoords ? { variation: varCoords } : undefined) as any,
           font
         );
-        cursorX += adv + lSpacing;
 
         const svgD = glyphPath.toPathData(precision);
-        if (!svgD || svgD.trim().length === 0) {
-          continue;
-        }
+        if (svgD && svgD.trim().length > 0) {
+          const parsed = parseSvgPathD(svgD);
+          if (parsed.points.length > 0) {
+            // Aplicar rotación a los puntos del trazado si corresponde
+            const finalPoints: PathPoint[] = parsed.points.map((pt) => {
+              let px = pt.x;
+              let py = pt.y;
+              let hIn = pt.handleIn;
+              let hOut = pt.handleOut;
 
-        const parsed = parseSvgPathD(svgD);
-        if (parsed.points.length === 0) {
-          continue;
-        }
+              if (hasRotation) {
+                const rot = rotatePoint(pt, rotCenter, cos, sin);
+                px = rot.x;
+                py = rot.y;
+                if (hIn) {
+                  const rIn = rotatePoint(hIn, rotCenter, cos, sin);
+                  hIn = { x: rIn.x, y: rIn.y };
+                }
+                if (hOut) {
+                  const rOut = rotatePoint(hOut, rotCenter, cos, sin);
+                  hOut = { x: rOut.x, y: rOut.y };
+                }
+              }
 
-        // Aplicar rotación a los puntos del trazado si corresponde
-        const finalPoints: PathPoint[] = parsed.points.map((pt) => {
-          let px = pt.x;
-          let py = pt.y;
-          let hIn = pt.handleIn;
-          let hOut = pt.handleOut;
+              return {
+                x: Math.round(px * 100) / 100,
+                y: Math.round(py * 100) / 100,
+                ...(hIn
+                  ? { handleIn: { x: Math.round(hIn.x * 100) / 100, y: Math.round(hIn.y * 100) / 100 } }
+                  : {}),
+                ...(hOut
+                  ? { handleOut: { x: Math.round(hOut.x * 100) / 100, y: Math.round(hOut.y * 100) / 100 } }
+                  : {}),
+                pointType: pt.pointType,
+                ...(pt.moveTo ? { moveTo: true } : {}),
+                ...(pt.closeSubpath ? { closeSubpath: true } : {}),
+              };
+            });
 
-          if (hasRotation) {
-            const rot = rotatePoint(pt, rotCenter, cos, sin);
-            px = rot.x;
-            py = rot.y;
-            if (hIn) {
-              const rIn = rotatePoint(hIn, rotCenter, cos, sin);
-              hIn = { x: rIn.x, y: rIn.y };
+            let minX = finalPoints[0].x;
+            let minY = finalPoints[0].y;
+            for (let k = 1; k < finalPoints.length; k++) {
+              minX = Math.min(minX, finalPoints[k].x);
+              minY = Math.min(minY, finalPoints[k].y);
             }
-            if (hOut) {
-              const rOut = rotatePoint(hOut, rotCenter, cos, sin);
-              hOut = { x: rOut.x, y: rOut.y };
-            }
+
+            glyphIdCounter++;
+            const pathNode: Path = {
+              id: `glyph-${Date.now()}-${glyphIdCounter}`,
+              name: `Glifo ${ch}`,
+              type: 'path',
+              x: minX,
+              y: minY,
+              points: Object.freeze(finalPoints),
+              closed: true,
+              fill: style.fill ?? text.fill ?? '#000000',
+              stroke: text.stroke,
+              strokeWidth: text.strokeWidth,
+              strokeLineCap: text.strokeLineCap,
+              strokeLineJoin: text.strokeLineJoin,
+              strokeDashArray: text.strokeDashArray,
+              opacity: text.opacity,
+              fillRule: 'nonzero',
+              visible: text.visible !== false,
+              locked: Boolean(text.locked),
+            };
+
+            paths.push(pathNode);
           }
-
-          return {
-            x: Math.round(px * 100) / 100,
-            y: Math.round(py * 100) / 100,
-            ...(hIn ? { handleIn: { x: Math.round(hIn.x * 100) / 100, y: Math.round(hIn.y * 100) / 100 } } : {}),
-            ...(hOut ? { handleOut: { x: Math.round(hOut.x * 100) / 100, y: Math.round(hOut.y * 100) / 100 } } : {}),
-            pointType: pt.pointType,
-            ...(pt.moveTo ? { moveTo: true } : {}),
-            ...(pt.closeSubpath ? { closeSubpath: true } : {}),
-          };
-        });
-
-        let minX = finalPoints[0].x;
-        let minY = finalPoints[0].y;
-        for (let k = 1; k < finalPoints.length; k++) {
-          minX = Math.min(minX, finalPoints[k].x);
-          minY = Math.min(minY, finalPoints[k].y);
         }
+      }
 
-        glyphIdCounter++;
-        const pathNode: Path = {
-          id: `glyph-${Date.now()}-${glyphIdCounter}`,
-          name: `Glifo ${ch}`,
-          type: 'path',
-          x: minX,
-          y: minY,
-          points: Object.freeze(finalPoints),
-          closed: true,
-          fill: run.style.fill ?? text.fill ?? '#000000',
-          stroke: text.stroke,
-          strokeWidth: text.strokeWidth,
-          strokeLineCap: text.strokeLineCap,
-          strokeLineJoin: text.strokeLineJoin,
-          strokeDashArray: text.strokeDashArray,
-          opacity: text.opacity,
-          fillRule: 'nonzero',
-          visible: text.visible !== false,
-          locked: Boolean(text.locked),
-        };
-
-        paths.push(pathNode);
+      cursorX += adv;
+      if (i < lineChars.length - 1 && lSpacing !== 0) {
+        cursorX += lSpacing;
       }
     }
   }
