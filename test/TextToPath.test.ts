@@ -532,6 +532,7 @@ describe('Text to Curves (Vectorización de tipografía)', () => {
       for (const weight of [400, 700, 900]) {
         const paths = await convertTextToPaths({
           id: `test-i-${font}-${weight}`,
+          name: `test-i-${font}-${weight}`,
           type: 'text',
           x: 100,
           y: 100,
