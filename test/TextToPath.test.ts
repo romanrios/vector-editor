@@ -4,6 +4,7 @@ import type { Document, Text } from '../src/types/scene-graph.ts';
 import {
   resolveFontPath,
   loadFont,
+  parseFontWeight,
   convertTextToPaths,
   convertTextToGroup,
   convertDocumentTextToCurves,
@@ -15,16 +16,16 @@ import { InputController } from '../src/input/InputController.ts';
 
 describe('Text to Curves (Vectorización de tipografía)', () => {
   it('resolveFontPath resuelve rutas válidas para fuentes locales y del sistema', () => {
-    assert.strictEqual(resolveFontPath('Inter', 400, 'normal'), 'fonts/inter/InterVariable.woff2');
-    assert.strictEqual(resolveFontPath('Inter', 700, 'italic'), 'fonts/inter/InterVariable-Italic.woff2');
-    assert.strictEqual(resolveFontPath('Montserrat', 400, 'normal'), 'fonts/montserrat/Montserrat[wght].woff2');
-    assert.strictEqual(resolveFontPath('Arial', 400, 'normal'), 'fonts/inter/InterVariable.woff2');
-    assert.strictEqual(resolveFontPath('Georgia', 400, 'normal'), 'fonts/merriweather/merriweather-latin-wght-normal.woff2');
-    assert.strictEqual(resolveFontPath('Courier New', 400, 'normal'), 'fonts/roboto-mono/roboto-mono-latin-wght-normal.woff2');
+    assert.strictEqual(resolveFontPath('Inter', 400, 'normal'), 'fonts/inter/InterVariable.ttf');
+    assert.strictEqual(resolveFontPath('Inter', 700, 'italic'), 'fonts/inter/InterVariable-Italic.ttf');
+    assert.strictEqual(resolveFontPath('Montserrat', 400, 'normal'), 'fonts/montserrat/Montserrat[wght].ttf');
+    assert.strictEqual(resolveFontPath('Arial', 400, 'normal'), 'fonts/inter/InterVariable.ttf');
+    assert.strictEqual(resolveFontPath('Georgia', 400, 'normal'), 'fonts/merriweather/merriweather-latin-wght-normal.ttf');
+    assert.strictEqual(resolveFontPath('Courier New', 400, 'normal'), 'fonts/roboto-mono/roboto-mono-latin-wght-normal.ttf');
     assert.strictEqual(resolveFontPath('Poppins', 600, 'normal'), 'fonts/poppins/poppins-latin-600-normal.woff');
   });
 
-  it('loadFont carga y descomprime correctamente fuentes WOFF2', async () => {
+  it('loadFont carga y parsea correctamente fuentes locales TrueType y OpenType', async () => {
     const font = await loadFont('Inter', 400, 'normal');
     assert.ok(font);
     assert.strictEqual(font.unitsPerEm, 2048);
@@ -50,10 +51,99 @@ describe('Text to Curves (Vectorización de tipografía)', () => {
     assert.strictEqual(first.type, 'path');
     assert.strictEqual(first.fill, '#ff0000');
     assert.strictEqual(first.closed, true);
-    assert.strictEqual(first.fillRule, 'evenodd');
+    assert.strictEqual(first.fillRule, 'nonzero');
     assert.ok(first.points.length > 5);
     // Verificar que los puntos tienen coordenadas cerca de (100, 150)
     assert.ok(first.points.every((pt) => pt.x >= 95 && pt.y >= 140));
+  });
+
+  it('parseFontWeight normaliza valores numéricos y nombres comunes de peso', () => {
+    assert.strictEqual(parseFontWeight('normal'), 400);
+    assert.strictEqual(parseFontWeight('bold'), 700);
+    assert.strictEqual(parseFontWeight('bolder'), 700);
+    assert.strictEqual(parseFontWeight('lighter'), 300);
+    assert.strictEqual(parseFontWeight(700), 700);
+    assert.strictEqual(parseFontWeight('900'), 900);
+    assert.strictEqual(parseFontWeight('100'), 100);
+    assert.strictEqual(parseFontWeight(1200), 900); // clamped max
+    assert.strictEqual(parseFontWeight(50), 100);   // clamped min
+    assert.strictEqual(parseFontWeight(undefined), 400);
+  });
+
+  it('convertTextToPaths preserva fielmente el peso tipográfico (fontWeight) en fuentes variables', async () => {
+    const textRegular: Text = {
+      id: 'text-reg',
+      name: 'Regular',
+      type: 'text',
+      x: 0,
+      y: 100,
+      text: 'B',
+      fontSize: 48,
+      fontFamily: 'Inter',
+      fontWeight: 400,
+    };
+
+    const textBold: Text = {
+      id: 'text-bold',
+      name: 'Bold',
+      type: 'text',
+      x: 0,
+      y: 100,
+      text: 'B',
+      fontSize: 48,
+      fontFamily: 'Inter',
+      fontWeight: 700,
+    };
+
+    const pathsReg = await convertTextToPaths(textRegular);
+    const pathsBold = await convertTextToPaths(textBold);
+
+    assert.strictEqual(pathsReg.length, 1);
+    assert.strictEqual(pathsBold.length, 1);
+
+    // Calcular ancho de envolvente de cada glifo
+    const ptsReg = pathsReg[0].points;
+    const ptsBold = pathsBold[0].points;
+    const widthReg = Math.max(...ptsReg.map((p) => p.x)) - Math.min(...ptsReg.map((p) => p.x));
+    const widthBold = Math.max(...ptsBold.map((p) => p.x)) - Math.min(...ptsBold.map((p) => p.x));
+
+    // El glifo en negrita (700) debe ser apreciablemente más ancho y grueso que el regular (400)
+    assert.ok(
+      widthBold > widthReg,
+      `El glifo en negrita (${widthBold}px) debe ser más ancho que el regular (${widthReg}px)`
+    );
+
+    // Ambos deben usar fillRule: 'nonzero' para evitar agujeros transparentes en superposiciones
+    assert.strictEqual(pathsReg[0].fillRule, 'nonzero');
+    assert.strictEqual(pathsBold[0].fillRule, 'nonzero');
+  });
+
+  it('convertTextToPaths soporta spans con pesos tipográficos mixtos dentro de la misma línea', async () => {
+    const textMixed: Text = {
+      id: 'text-mixed',
+      name: 'Mixed',
+      type: 'text',
+      x: 0,
+      y: 50,
+      text: 'AB',
+      fontSize: 32,
+      fontFamily: 'Inter',
+      fontWeight: 400,
+      spans: [
+        {
+          start: 1,
+          end: 2,
+          fontWeight: 700,
+        },
+      ],
+    };
+
+    const paths = await convertTextToPaths(textMixed);
+    assert.strictEqual(paths.length, 2);
+
+    // El primer glifo ('A') tiene peso 400, el segundo ('B') tiene peso 700
+    assert.strictEqual(paths[0].fillRule, 'nonzero');
+    assert.strictEqual(paths[1].fillRule, 'nonzero');
   });
 
   it('convertTextToPaths respeta la rotación geométrica', async () => {

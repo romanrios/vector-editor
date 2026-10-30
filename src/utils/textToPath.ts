@@ -1,5 +1,4 @@
 import opentype from 'opentype.js';
-import { decompress } from 'wawoff2';
 import type {
   Document,
   Group,
@@ -13,6 +12,14 @@ import { isGroup, isText } from '../types/scene-graph.ts';
 import { parseSvgPathD } from './svg/pathParser.ts';
 import { getWrappedTextLines, getTextLineHeight } from './geometry.ts';
 import { splitTextIntoRuns } from './textSpans.ts';
+
+interface OpenTypeVariationManager {
+  getTransform(glyph: opentype.Glyph, coords?: Record<string, number>): opentype.Glyph;
+}
+
+interface OpenTypeVariableFont extends opentype.Font {
+  variation?: OpenTypeVariationManager;
+}
 
 export interface TextToPathOptions {
   /**
@@ -33,9 +40,58 @@ export interface TextToPathOptions {
 let glyphIdCounter = 0;
 
 /**
+ * Convierte cualquier representación de peso de fuente a un valor numérico estándar (100-900).
+ */
+export function parseFontWeight(weight?: string | number): number {
+  if (typeof weight === 'number') {
+    return Math.max(100, Math.min(900, Math.round(weight)));
+  }
+  if (!weight) return 400;
+  const str = String(weight).trim().toLowerCase();
+  if (str === 'bold' || str === 'bolder') return 700;
+  if (str === 'normal') return 400;
+  if (str === 'lighter') return 300;
+  const parsed = parseInt(str, 10);
+  if (!isNaN(parsed)) {
+    return Math.max(100, Math.min(900, Math.round(parsed)));
+  }
+  return 400;
+}
+
+/**
+ * Obtiene las coordenadas para los ejes de variación ('wght', 'opsz') de una fuente OpenType variable,
+ * acotando los valores a los límites permitidos por la tabla fvar.
+ */
+function getVariationCoords(
+  font: opentype.Font,
+  weight: number,
+  fontSize?: number
+): Record<string, number> | undefined {
+  const vFont = font as OpenTypeVariableFont;
+  if (!vFont.variation || !font.tables?.fvar?.axes) {
+    return undefined;
+  }
+  const coords: Record<string, number> = {};
+  const wghtAxis = font.tables.fvar.axes.find((a: any) => a.tag === 'wght');
+  if (wghtAxis) {
+    coords.wght = Math.max(wghtAxis.minValue, Math.min(wghtAxis.maxValue, weight));
+  }
+  const opszAxis = font.tables.fvar.axes.find((a: any) => a.tag === 'opsz');
+  if (opszAxis && typeof fontSize === 'number') {
+    coords.opsz = Math.max(opszAxis.minValue, Math.min(opszAxis.maxValue, fontSize));
+  }
+  return Object.keys(coords).length > 0 ? coords : undefined;
+}
+
+/**
  * Caché en memoria para fuentes OpenType parseadas (evita lecturas o descargas repetidas).
  */
 const fontCache = new Map<string, Promise<opentype.Font>>();
+
+/**
+ * Caché en memoria para buffers de fuentes ya descargados o leídos de disco.
+ */
+const fontBufferCache = new Map<string, Promise<ArrayBuffer>>();
 
 /**
  * Permite registrar una fuente OpenType directamente en la caché (útil para pruebas unitarias o fuentes precargadas).
@@ -49,6 +105,7 @@ export function registerFont(cacheKey: string, font: opentype.Font): void {
  */
 export function clearFontCache(): void {
   fontCache.clear();
+  fontBufferCache.clear();
 }
 
 /**
@@ -61,52 +118,49 @@ export function resolveFontPath(
 ): string {
   const normFamily = (fontFamily || 'Inter').toLowerCase().trim();
   const isItalic = fontStyle === 'italic';
-  const weight =
-    typeof fontWeight === 'number'
-      ? fontWeight
-      : parseInt(String(fontWeight), 10) || 400;
+  const weight = parseFontWeight(fontWeight);
 
   switch (normFamily) {
     case 'inter':
       return isItalic
-        ? 'fonts/inter/InterVariable-Italic.woff2'
-        : 'fonts/inter/InterVariable.woff2';
+        ? 'fonts/inter/InterVariable-Italic.ttf'
+        : 'fonts/inter/InterVariable.ttf';
     case 'montserrat':
       return isItalic
-        ? 'fonts/montserrat/Montserrat-Italic[wght].woff2'
-        : 'fonts/montserrat/Montserrat[wght].woff2';
+        ? 'fonts/montserrat/Montserrat-Italic[wght].ttf'
+        : 'fonts/montserrat/Montserrat[wght].ttf';
     case 'roboto':
       return isItalic
-        ? 'fonts/roboto/roboto-latin-wght-italic.woff2'
-        : 'fonts/roboto/roboto-latin-wght-normal.woff2';
+        ? 'fonts/roboto/roboto-latin-wght-italic.ttf'
+        : 'fonts/roboto/roboto-latin-wght-normal.ttf';
     case 'open sans':
       return isItalic
-        ? 'fonts/open-sans/open-sans-latin-wght-italic.woff2'
-        : 'fonts/open-sans/open-sans-latin-wght-normal.woff2';
+        ? 'fonts/open-sans/open-sans-latin-wght-italic.ttf'
+        : 'fonts/open-sans/open-sans-latin-wght-normal.ttf';
     case 'bebas neue':
-      return 'fonts/bebas-neue/bebas-neue-latin-400-normal.woff2';
+      return 'fonts/bebas-neue/bebas-neue-latin-400-normal.ttf';
     case 'fira code':
-      return 'fonts/fira-code/fira-code-latin-wght-normal.woff2';
+      return 'fonts/fira-code/fira-code-latin-wght-normal.ttf';
     case 'roboto mono':
       return isItalic
-        ? 'fonts/roboto-mono/roboto-mono-latin-wght-italic.woff2'
-        : 'fonts/roboto-mono/roboto-mono-latin-wght-normal.woff2';
+        ? 'fonts/roboto-mono/roboto-mono-latin-wght-italic.ttf'
+        : 'fonts/roboto-mono/roboto-mono-latin-wght-normal.ttf';
     case 'google sans':
       return isItalic
-        ? 'fonts/google-sans/google-sans-latin-wght-italic.woff2'
-        : 'fonts/google-sans/google-sans-latin-wght-normal.woff2';
+        ? 'fonts/google-sans/google-sans-latin-wght-italic.ttf'
+        : 'fonts/google-sans/google-sans-latin-wght-normal.ttf';
     case 'lora':
       return isItalic
-        ? 'fonts/lora/lora-latin-wght-italic.woff2'
-        : 'fonts/lora/lora-latin-wght-normal.woff2';
+        ? 'fonts/lora/lora-latin-wght-italic.ttf'
+        : 'fonts/lora/lora-latin-wght-normal.ttf';
     case 'merriweather':
       return isItalic
-        ? 'fonts/merriweather/merriweather-latin-wght-italic.woff2'
-        : 'fonts/merriweather/merriweather-latin-wght-normal.woff2';
+        ? 'fonts/merriweather/merriweather-latin-wght-italic.ttf'
+        : 'fonts/merriweather/merriweather-latin-wght-normal.ttf';
     case 'playfair display':
       return isItalic
-        ? 'fonts/playfair/playfair-latin-wght-italic.woff2'
-        : 'fonts/playfair/playfair-latin-wght-normal.woff2';
+        ? 'fonts/playfair/playfair-latin-wght-italic.ttf'
+        : 'fonts/playfair/playfair-latin-wght-normal.ttf';
     case 'poppins': {
       const roundedWeight = Math.round(weight / 100) * 100;
       const safeWeight = Math.max(100, Math.min(900, roundedWeight || 400));
@@ -118,23 +172,23 @@ export function resolveFontPath(
     case 'helvetica':
     case 'sans-serif':
       return isItalic
-        ? 'fonts/inter/InterVariable-Italic.woff2'
-        : 'fonts/inter/InterVariable.woff2';
+        ? 'fonts/inter/InterVariable-Italic.ttf'
+        : 'fonts/inter/InterVariable.ttf';
     case 'georgia':
     case 'times new roman':
     case 'serif':
       return isItalic
-        ? 'fonts/merriweather/merriweather-latin-wght-italic.woff2'
-        : 'fonts/merriweather/merriweather-latin-wght-normal.woff2';
+        ? 'fonts/merriweather/merriweather-latin-wght-italic.ttf'
+        : 'fonts/merriweather/merriweather-latin-wght-normal.ttf';
     case 'courier new':
     case 'monospace':
       return isItalic
-        ? 'fonts/roboto-mono/roboto-mono-latin-wght-italic.woff2'
-        : 'fonts/roboto-mono/roboto-mono-latin-wght-normal.woff2';
+        ? 'fonts/roboto-mono/roboto-mono-latin-wght-italic.ttf'
+        : 'fonts/roboto-mono/roboto-mono-latin-wght-normal.ttf';
     default:
       return isItalic
-        ? 'fonts/inter/InterVariable-Italic.woff2'
-        : 'fonts/inter/InterVariable.woff2';
+        ? 'fonts/inter/InterVariable-Italic.ttf'
+        : 'fonts/inter/InterVariable.ttf';
   }
 }
 
@@ -143,8 +197,14 @@ export function resolveFontPath(
  */
 async function fetchFontBuffer(fontRelativePath: string): Promise<ArrayBuffer> {
   if (typeof window !== 'undefined' && typeof fetch === 'function') {
-    const url = `/${fontRelativePath.replace(/^\/+/, '')}`;
-    const res = await fetch(url);
+    const base =
+      typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL
+        ? import.meta.env.BASE_URL
+        : '/';
+    const cleanBase = base.endsWith('/') ? base : `${base}/`;
+    const cleanPath = fontRelativePath.replace(/^\/+/, '');
+    const url = `${cleanBase}${cleanPath}`;
+    const res = await fetch(encodeURI(url));
     if (!res.ok) {
       throw new Error(`Error HTTP ${res.status} al descargar fuente en ${url}`);
     }
@@ -195,13 +255,10 @@ export async function loadFont(
 ): Promise<opentype.Font> {
   const normFamily = (fontFamily || 'Inter').toLowerCase().trim();
   const isItalic = fontStyle === 'italic';
-  const weight =
-    typeof fontWeight === 'number'
-      ? fontWeight
-      : parseInt(String(fontWeight), 10) || 400;
+  const weight = parseFontWeight(fontWeight);
   const cacheKey = `${normFamily}-${weight}-${isItalic ? 'italic' : 'normal'}`;
 
-  const cached = fontCache.get(cacheKey);
+  const cached = fontCache.get(cacheKey) || fontCache.get(normFamily);
   if (cached) {
     return await cached;
   }
@@ -209,18 +266,29 @@ export async function loadFont(
   const loadPromise = (async () => {
     let fontBuffer: ArrayBuffer | Uint8Array | null = null;
     if (customResolver) {
-      fontBuffer = await customResolver(fontFamily || 'Inter', fontWeight, fontStyle);
+      fontBuffer = await customResolver(fontFamily || 'Inter', weight, fontStyle);
     }
 
-    const fontPath = resolveFontPath(fontFamily, fontWeight, fontStyle);
+    const fontPath = resolveFontPath(fontFamily, weight, fontStyle);
     if (!fontBuffer) {
       try {
-        fontBuffer = await fetchFontBuffer(fontPath);
+        let bufPromise = fontBufferCache.get(fontPath);
+        if (!bufPromise) {
+          bufPromise = fetchFontBuffer(fontPath);
+          fontBufferCache.set(fontPath, bufPromise);
+        }
+        fontBuffer = await bufPromise;
       } catch (err) {
+        fontBufferCache.delete(fontPath);
         // Fallback resiliente a Inter
         if (normFamily !== 'inter') {
           const fallbackPath = resolveFontPath('Inter', 400, 'normal');
-          fontBuffer = await fetchFontBuffer(fallbackPath);
+          let fallbackPromise = fontBufferCache.get(fallbackPath);
+          if (!fallbackPromise) {
+            fallbackPromise = fetchFontBuffer(fallbackPath);
+            fontBufferCache.set(fallbackPath, fallbackPromise);
+          }
+          fontBuffer = await fallbackPromise;
         } else {
           throw err;
         }
@@ -229,8 +297,13 @@ export async function loadFont(
 
     let ttfBuffer: ArrayBuffer;
     if (isWoff2(fontBuffer) || fontPath.toLowerCase().endsWith('.woff2')) {
-      const u8 = await decompress(fontBuffer);
-      ttfBuffer = (u8.buffer as ArrayBuffer).slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      if (typeof window === 'undefined') {
+        const { decompress } = await import(/* @vite-ignore */ 'wawoff2');
+        const u8 = await decompress(fontBuffer);
+        ttfBuffer = (u8.buffer as ArrayBuffer).slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      } else {
+        throw new Error('Las fuentes WOFF2 requieren conversión previa a TTF en el navegador.');
+      }
     } else {
       ttfBuffer =
         fontBuffer instanceof ArrayBuffer
@@ -304,12 +377,16 @@ export async function convertTextToPaths(
     // Calcular ancho total de la línea
     let totalLineWidth = 0;
     const runFonts: opentype.Font[] = [];
+    const runWeights: number[] = [];
 
     for (let r = 0; r < runs.length; r++) {
       const run = runs[r];
+      const targetWeight = parseFontWeight(run.style.fontWeight);
+      runWeights.push(targetWeight);
+
       const font = await loadFont(
         run.style.fontFamily,
-        run.style.fontWeight,
+        targetWeight,
         run.style.fontStyle,
         fontResolver
       );
@@ -317,11 +394,16 @@ export async function convertTextToPaths(
 
       const fSize = run.style.fontSize;
       const lSpacing = run.style.letterSpacing;
+      const unitsPerEm = font.unitsPerEm || 2048;
+      const varCoords = getVariationCoords(font, targetWeight, fSize);
+      const vFont = font as OpenTypeVariableFont;
+
       for (let c = 0; c < run.text.length; c++) {
         const ch = run.text[c];
         const glyph = font.charToGlyph(ch);
-        const adv = glyph.advanceWidth
-          ? (glyph.advanceWidth / font.unitsPerEm) * fSize
+        const varGlyph = vFont.variation && varCoords ? vFont.variation.getTransform(glyph, varCoords) : glyph;
+        const adv = varGlyph.advanceWidth
+          ? (varGlyph.advanceWidth / unitsPerEm) * fSize
           : fSize * 0.6;
         totalLineWidth += adv + (c < run.text.length - 1 ? lSpacing : 0);
       }
@@ -350,17 +432,21 @@ export async function convertTextToPaths(
     for (let r = 0; r < runs.length; r++) {
       const run = runs[r];
       const font = runFonts[r];
+      const targetWeight = runWeights[r];
       const fSize = run.style.fontSize;
       const lSpacing = run.style.letterSpacing;
       const ascender = font.ascender || font.tables?.os2?.sTypoAscender || 1984;
       const unitsPerEm = font.unitsPerEm || 2048;
       const baselineY = lineY + (ascender / unitsPerEm) * fSize;
+      const varCoords = getVariationCoords(font, targetWeight, fSize);
+      const vFont = font as OpenTypeVariableFont;
 
       for (let c = 0; c < run.text.length; c++) {
         const ch = run.text[c];
         const glyph = font.charToGlyph(ch);
-        const adv = glyph.advanceWidth
-          ? (glyph.advanceWidth / unitsPerEm) * fSize
+        const varGlyph = vFont.variation && varCoords ? vFont.variation.getTransform(glyph, varCoords) : glyph;
+        const adv = varGlyph.advanceWidth
+          ? (varGlyph.advanceWidth / unitsPerEm) * fSize
           : fSize * 0.6;
 
         // Omitir espacios en blanco y caracteres de control
@@ -369,7 +455,13 @@ export async function convertTextToPaths(
           continue;
         }
 
-        const glyphPath = glyph.getPath(cursorX, baselineY, fSize);
+        const glyphPath = glyph.getPath(
+          cursorX,
+          baselineY,
+          fSize,
+          (varCoords ? { variation: varCoords } : undefined) as any,
+          font
+        );
         cursorX += adv + lSpacing;
 
         const svgD = glyphPath.toPathData(precision);
@@ -437,7 +529,7 @@ export async function convertTextToPaths(
           strokeLineJoin: text.strokeLineJoin,
           strokeDashArray: text.strokeDashArray,
           opacity: text.opacity,
-          fillRule: 'evenodd',
+          fillRule: 'nonzero',
           visible: text.visible !== false,
           locked: Boolean(text.locked),
         };
@@ -455,12 +547,13 @@ export async function convertTextToPaths(
  */
 export async function convertTextToGroup(
   text: Text,
-  options: TextToPathOptions = {}
+  options: TextToPathOptions & { preserveId?: boolean } = {}
 ): Promise<Group> {
   const paths = await convertTextToPaths(text, options);
   glyphIdCounter++;
+  const groupId = options.preserveId ? text.id : `group-text-${Date.now()}-${glyphIdCounter}`;
   const group: Group = {
-    id: `group-text-${Date.now()}-${glyphIdCounter}`,
+    id: groupId,
     type: 'group',
     name: text.name ?? text.text ?? 'Texto en curvas',
     children: Object.freeze(paths),
@@ -481,7 +574,7 @@ export async function convertDocumentTextToCurves(
 ): Promise<Document> {
   async function transformChild(child: LayerChildNode): Promise<LayerChildNode> {
     if (isText(child)) {
-      return await convertTextToGroup(child, options);
+      return await convertTextToGroup(child, { ...options, preserveId: true });
     }
     if (isGroup(child)) {
       const transformedChildren: LayerChildNode[] = [];
